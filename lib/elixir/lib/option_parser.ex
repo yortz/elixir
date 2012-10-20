@@ -85,7 +85,7 @@ defmodule OptionParser do
   end
 
   defp parse([], _, _, dict, args, true) do
-    { dict, List.reverse(args) }
+    { dict, Enum.reverse(args) }
   end
 
   defp parse([h|t], aliases, flags, dict, args, true) do
@@ -111,7 +111,7 @@ defmodule OptionParser do
     Keyword.put dict, option, value
   end
 
-  defp normalize_option(<<?-, option|:binary>>, aliases) do
+  defp normalize_option(<<?-, option :: binary>>, aliases) do
     normalize_option(option, aliases)
   end
 

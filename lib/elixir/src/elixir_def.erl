@@ -63,71 +63,64 @@ wrap_definition(Kind, Line, Name, Args, Guards, Expr, S) ->
 % Invoked by the wrap definition with the function abstract tree.
 % Each function is then added to the function table.
 
-store_definition(Kind, Line, nil, _Name, _Args, _Guards, _Expr, RawS) ->
+store_definition(Kind, Line, nil, _Name, _Args, _Guards, _Body, RawS) ->
   S = elixir_scope:deserialize(RawS),
   elixir_errors:syntax_error(Line, S#elixir_scope.file, "cannot define function outside module, invalid scope for ~s", [Kind]);
 
-store_definition(Kind, Line, Module, Name, Args, Guards, RawExpr, RawS) ->
+store_definition(Kind, Line, Module, Name, Args, Guards, Body, RawS) ->
   Arity = length(Args),
   DS    = elixir_scope:deserialize(RawS),
   S     = DS#elixir_scope{function={Name,Arity}, module=Module},
-  Expr  = def_body(Line, RawExpr),
+  Expr  = def_body(Line, Body),
+
+  CO = elixir_compiler:get_opts(),
+  Location = retrieve_file(Module, CO),
+  run_on_definition_callbacks(Kind, Line, Module, Name, Args, Guards, Body, S, CO),
 
   { Function, Defaults, TS } = translate_definition(Kind, Line, Name, Args, Guards, Expr, S),
 
-  CO = elixir_compiler:get_opts(),
-  compile_docs(Kind, Line, Module, Name, Arity, Args, TS, CO),
-
-  File     = TS#elixir_scope.file,
-  Table    = table(Module),
-  Stack    = S#elixir_scope.macro,
-  Location = retrieve_file(Module, CO),
+  File  = TS#elixir_scope.file,
+  Table = table(Module),
+  Stack = TS#elixir_scope.macro,
 
   %% Store function
-  case RawExpr of
-    skip_definition -> [];
-    _ ->
+  if
+    (Body == nil) -> [];
+    true ->
       compile_super(Module, TS),
       CheckClauses = S#elixir_scope.check_clauses,
       store_each(CheckClauses, Kind, File, Location,
         Stack, Table, length(Defaults), Function)
   end,
 
-  %% Store defaults
   [store_each(false, Kind, File, Location, Stack, Table, 0,
     function_for_default(Kind, Name, Default)) || Default <- Defaults],
 
   { Name, Arity }.
 
-def_body(_Line, skip_definition) -> nil;
-def_body(_Line, [{ do, Expr }])  -> Expr;
-def_body(Line, Else)             -> { 'try', Line, [Else] }.
+def_body(_Line, nil)            -> nil;
+def_body(_Line, [{ do, Expr }]) -> Expr;
+def_body(Line, Else)            -> { 'try', Line, [Else] }.
 
-%% Compile super clause
+%% @on_definition
 
-compile_super(Module, #elixir_scope{function=Function, super=true}) ->
-  elixir_def_overridable:store(Module, Function, true);
-
-compile_super(_Module, _S) -> [].
-
-%% Compile docs
-
-compile_docs(Kind, Line, Module, Name, Arity, Args, S, CO) ->
-  case elixir_compiler:get_opt(docs, CO) of
-    false -> [];
-    true  ->
-      case 'Elixir.Module':compile_doc(Module, Line, Kind, { Name, Arity }, Args) of
-        { error, Message } -> elixir_errors:handle_file_warning(S#elixir_scope.file,
-          { Line, ?MODULE, { Message, { Name, Arity } } });
-        _ -> []
-      end
+run_on_definition_callbacks(Kind, Line, Module, Name, Args, Guards, Expr, S, CO) ->
+  case elixir_compiler:get_opt(internal, CO) of
+    true ->
+      ok;
+    _ ->
+      Env = elixir_scope:to_ex_env({ Line, S }),
+      Callbacks = 'Elixir.Module':get_attribute(Module, on_definition),
+      [Mod:Fun(Env, Kind, Name, Args, Guards, Expr) || { Mod, Fun } <- Callbacks]
   end.
+
+%% Retrieve @file
 
 retrieve_file(Module, CO) ->
   case elixir_compiler:get_opt(internal, CO) of
     true -> [];
     _ ->
-      case 'Elixir.Module':read_attribute(Module, file) of
+      case 'Elixir.Module':get_attribute(Module, file) of
         nil  -> [];
         Else ->
           'Elixir.Module':delete_attribute(Module, file),
@@ -135,10 +128,20 @@ retrieve_file(Module, CO) ->
       end
   end.
 
+%% Compile super
+
+compile_super(Module, #elixir_scope{function=Function, super=true}) ->
+  elixir_def_overridable:store(Module, Function, true);
+
+compile_super(_Module, _S) -> ok.
+
 %% Translate the given call and expression given
 %% and then store it in memory.
 
-translate_definition(Kind, Line, Name, Args, Guards, Expr, S) ->
+translate_definition(Kind, Line, Name, RawArgs, RawGuards, RawExpr, S) ->
+  Args    = elixir_quote:linify(Line, RawArgs),
+  Guards  = elixir_quote:linify(Line, RawGuards),
+  Expr    = elixir_quote:linify(Line, RawExpr),
   Arity   = length(Args),
   IsMacro = is_macro(Kind),
 
@@ -290,12 +293,6 @@ check_valid_defaults(Line, File, Name, Arity, _) ->
 
 format_error({clauses_with_docs,{Name,Arity}}) ->
   io_lib:format("function ~s/~B has default values and multiple clauses, use a separate clause for declaring defaults", [Name, Arity]);
-
-format_error({private_doc,{Name,Arity}}) ->
-  io_lib:format("function ~s/~B is private, @doc's are always discarded for private functions", [Name, Arity]);
-
-format_error({existing_doc,{Name,Arity}}) ->
-  io_lib:format("@doc's for function ~s/~B have been given more than once, the first version is being kept", [Name, Arity]);
 
 format_error({changed_clause,{{Name,Arity},{ElseName,ElseArity}}}) ->
   io_lib:format("function ~s/~B does not match previous clause ~s/~B", [Name, Arity, ElseName, ElseArity]);

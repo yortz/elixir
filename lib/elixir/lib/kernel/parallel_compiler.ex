@@ -1,5 +1,5 @@
 defmodule Kernel.ParallelCompiler do
-  alias Erlang.orddict, as: Orddict
+  alias :orddict, as: OrdDict
 
   @moduledoc """
   A module responsible for compiling files in parallel.
@@ -43,13 +43,14 @@ defmodule Kernel.ParallelCompiler do
 
     child  = spawn_link fn ->
       Process.put(:elixir_compiler_pid, parent)
+      Process.put(:elixir_ensure_compiled, true)
       Process.flag(:error_handler, Kernel.ErrorHandler)
 
       try do
         if output do
-          Erlang.elixir_compiler.file_to_path(h, output)
+          :elixir_compiler.file_to_path(h, output)
         else
-          Erlang.elixir_compiler.file(h)
+          :elixir_compiler.file(h)
         end
         parent <- { :compiled, self(), h }
       catch
@@ -80,26 +81,26 @@ defmodule Kernel.ParallelCompiler do
     receive do
       { :compiled, child, file } ->
         callback.(file)
-        new_queued  = List.keydelete(queued, child, 1)
+        new_queued  = List.keydelete(queued, child, 0)
         # Sometimes we may have spurious entries in the waiting
         # list because someone invoked try/rescue UndefinedFunctionError
-        new_waiting = List.keydelete(waiting, child, 1)
+        new_waiting = List.keydelete(waiting, child, 0)
         spawn_compilers(files, output, callback, new_waiting, new_queued, result)
       { :module_available, child, module, binary } ->
         new_waiting = release_waiting_processes(module, waiting)
         new_result  = [{module, binary}|result]
         wait_for_messages(files, output, callback, new_waiting, queued, new_result)
       { :waiting, child, on } ->
-        new_waiting = Orddict.store(child, on, waiting)
+        new_waiting = OrdDict.store(child, on, waiting)
         spawn_compilers(files, output, callback, new_waiting, queued, result)
       { :failure, child, kind, reason, stacktrace } ->
-        extra = if match?({^child, module}, List.keyfind(waiting, child, 1)) do
+        extra = if match?({^child, module}, List.keyfind(waiting, child, 0)) do
           " (undefined module #{inspect module})"
         end
 
-      {^child, file} = List.keyfind(queued, child, 1)
+      {^child, file} = List.keyfind(queued, child, 0)
       IO.puts "== Compilation error on file #{file}#{extra} =="
-      Erlang.erlang.raise(kind, reason, stacktrace)
+      :erlang.raise(kind, reason, stacktrace)
     end
   end
 

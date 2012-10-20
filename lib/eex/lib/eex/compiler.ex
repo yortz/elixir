@@ -23,7 +23,7 @@ defmodule EEx.Compiler do
   end
 
   defp generate_buffer([{ :expr, line, mark, chars }|t], buffer, scope, state) do
-    expr = maybe_block Erlang.elixir_translator.forms(chars, line, state.file)
+    expr = maybe_block :elixir_translator.forms!(chars, line, state.file, [])
     buffer = state.engine.handle_expr(buffer, mark, expr)
     generate_buffer(t, buffer, scope, state)
   end
@@ -41,7 +41,7 @@ defmodule EEx.Compiler do
 
   defp generate_buffer([{ :end_expr, line, _, chars }|t], buffer, [current|_], state) do
     { wrapped, state } = wrap_expr(current, line, buffer, chars, state)
-    tuples = maybe_block Erlang.elixir_translator.forms(wrapped, state.start_line, state.file)
+    tuples = maybe_block :elixir_translator.forms!(wrapped, state.start_line, state.file, [])
     buffer = insert_quotes(tuples, state.dict)
     { buffer, t }
   end
@@ -95,7 +95,7 @@ defmodule EEx.Compiler do
   # Changes placeholder to real expression
 
   defp insert_quotes({ :__EEX__, _, [key] }, dict) do
-    { ^key, value } = List.keyfind dict, key, 1
+    { ^key, value } = List.keyfind dict, key, 0
     value
   end
 

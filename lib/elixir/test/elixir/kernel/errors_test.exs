@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Kernel.ErrorsTest do
   use ExUnit.Case, async: true
@@ -72,8 +72,16 @@ defmodule Kernel.ErrorsTest do
     assert "nofile:3: cannot invoke defmacro outside module" == format_rescue '\n\ndefmacro Foo, do: 2'
   end
 
+  test :invalid_unquote do
+    assert "nofile:1: unquote called outside quote" == format_rescue 'unquote 1'
+  end
+
   test :invalid_quote_args do
     assert "nofile:1: invalid args for quote" == format_rescue 'quote 1'
+  end
+
+  test :invalid_parens do
+    assert "nofile:1: unexpected parenthesis after foo(1)" == format_rescue 'foo(1)(2)'
   end
 
   test :invalid_fn_args do
@@ -122,7 +130,7 @@ defmodule Kernel.ErrorsTest do
 
   test :no_macros do
     assert "nofile:2: could not load macros from module lists" ==
-      format_rescue 'defmodule Foo do\nimport :macros, Erlang.lists\nend'
+      format_rescue 'defmodule Foo do\nimport :macros, :lists\nend'
   end
 
   test :unloaded_module do
@@ -155,16 +163,25 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :duplicated_bitstring_size do
-    assert "nofile:1: duplicated size specifier 12 in <<>>" == format_rescue '<<1|12-12>>'
+    assert "nofile:1: duplicated size definition for bitstring" == format_rescue '<<1 :: [size(12), size(13)]>>'
   end
 
   test :invalid_bitstring_specified do
-    assert "nofile:1: invalid specifier for <<>>" == format_rescue '<<1|12-binary()>>'
+    assert "nofile:1: unknown bitstring specifier :atom" == format_rescue '<<1 :: :atom>>'
+    assert "nofile:1: unknown bitstring specifier unknown" == format_rescue '<<1 :: unknown>>'
+    assert "nofile:1: unknown bitstring specifier another(12)" == format_rescue '<<1 :: another(12)>>'
+    assert "nofile:1: size in bitstring expects an integer or a variable as argument" == format_rescue '<<1 :: size(:a)>>'
+    assert "nofile:1: unit in bitstring expects an integer as argument" == format_rescue '<<1 :: unit(x)>>'
   end
 
   test :invalid_alias do
     assert "nofile:1: invalid args for alias, cannot create nested alias Sample.Lists" ==
-      format_rescue 'alias Erlang.lists, as: Sample.Lists'
+      format_rescue 'alias :lists, as: Sample.Lists'
+  end
+
+  test :invalid_import_option do
+    assert "nofile:1: unsupported option ops given to import" ==
+      format_rescue 'import :lists, [ops: 1]'
   end
 
   test :invalid_access_protocol_not_alias do
@@ -178,7 +195,7 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :invalid_access_protocol_not_record do
-    assert "cannot use module Kernel.ErrorsTest in access protocol because it does not export __access__/2" ==
+    assert "cannot use module Kernel.ErrorsTest in access protocol because it does not export __record__/1" ==
       format_rescue 'defmodule Foo do\ndef sample(Kernel.ErrorsTest[integer: 0]), do: true\nend'
   end
 
@@ -228,8 +245,8 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :macros_compiled_callback do
-    assert [{Kernel.ErrorsTest,:before_compile,[Foo],_}|_] =
-      rescue_stacktrace("defmodule Foo do\nModule.add_attribute(__MODULE__, :before_compile, Kernel.ErrorsTest)\nend")
+    assert [{Kernel.ErrorsTest,:__before_compile__,[Foo],_}|_] =
+      rescue_stacktrace("defmodule Foo do\nModule.put_attribute(__MODULE__, :before_compile, Kernel.ErrorsTest)\nend")
   end
 
   defmacro sample(0), do: 0
@@ -242,7 +259,7 @@ defmodule Kernel.ErrorsTest do
 
   defp format_rescue(expr) do
     result = try do
-      Erlang.elixir.eval(to_char_list(expr), [])
+      :elixir.eval(to_char_list(expr), [])
       nil
     rescue
       error -> error.message
@@ -253,7 +270,7 @@ defmodule Kernel.ErrorsTest do
 
   defp rescue_stacktrace(expr) do
     result = try do
-      Erlang.elixir.eval(to_char_list(expr), [])
+      :elixir.eval(to_char_list(expr), [])
       nil
     rescue
       error -> System.stacktrace

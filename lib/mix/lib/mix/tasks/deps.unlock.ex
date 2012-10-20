@@ -8,20 +8,17 @@ defmodule Mix.Tasks.Deps.Unlock do
   are given, unlock all.
   """
 
-  import Mix.Deps, only: [all: 0, by_name: 1]
+  import Mix.Deps, only: [all: 0, by_name!: 1]
 
   def run([]) do
-    do_unlock all
+    Mix.Deps.Lock.write([])
   end
 
   def run(args) do
-    do_unlock by_name(args)
-  end
-
-  defp do_unlock(deps) do
     lock =
-      Enum.reduce deps, Mix.Deps.Lock.read, fn(dep, lock) ->
-        Keyword.delete(lock, dep.app)
+      Enum.reduce args, Mix.Deps.Lock.read, fn(arg, lock) ->
+        if is_binary(arg), do: arg = binary_to_atom(arg)
+        Keyword.delete(lock, arg)
       end
 
     Mix.Deps.Lock.write(lock)

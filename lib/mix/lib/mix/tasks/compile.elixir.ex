@@ -19,26 +19,15 @@ defmodule Mix.Tasks.Compile.Elixir do
   force compilation regardless of mod times by passing
   the `--force` option.
 
+  A list of files can be given after the task
+  name in order to select the files to compile.
+
   ## Configuration
-
-  * `:source_paths` - directories to find source files.
-    Defaults to `["lib"]`, can be configured as:
-
-        [source_paths: ["lib", "other"]]
-
-  * `:compile_path` - directory to output compiled files.
-    Defaults to `"ebin"`, can be configured as:
-
-        [compile_path: "ebin"]
-
-  * `:compile_first` - which files need to be compiled first.
-    Defaults to an empty list, can be configured as:
-
-        [compile_first: ["lib/foo.ex" "lib/bar.ex"]]
 
   * `:elixirc_options` - compilation options that applies
      to Elixir's compiler, they are: `:ignore_module_conflict`,
-     `:docs` and `:debug_info`. They all default to false.
+     `:docs` and `:debug_info`. By default, uses the same
+     behaviour as Elixir
 
   ## Command line options
 
@@ -46,16 +35,21 @@ defmodule Mix.Tasks.Compile.Elixir do
 
   """
   def run(args) do
-    { opts, _ } = OptionParser.parse(args, flags: [:force])
+    { opts, files } = OptionParser.parse(args, flags: [:force])
 
     project       = Mix.project
-    compile_path  = project[:compile_path]  || "ebin"
-    compile_first = project[:compile_first] || []
-    source_paths  = project[:source_paths]  || ["lib"]
-    to_compile    = extract_files(source_paths)
+    compile_path  = project[:compile_path]
+    compile_first = project[:compile_first]
+    compile_exts  = project[:compile_exts]
+    watch_exts    = project[:watch_exts]
+    source_paths  = project[:source_paths]
 
-    if opts[:force] or Mix.Utils.stale?(to_compile, [compile_path]) do
-      File.mkdir_p!(compile_path)
+    to_compile = Mix.Utils.extract_files(source_paths, files, compile_exts)
+    to_watch   = Mix.Utils.extract_files(source_paths, files, watch_exts)
+
+    if opts[:force] or Mix.Utils.stale?(to_watch, [compile_path]) do
+      File.mkdir_p! compile_path
+      Code.delete_path compile_path
 
       if elixir_opts = project[:elixirc_options] do
         Code.compiler_options(elixir_opts)
@@ -63,16 +57,12 @@ defmodule Mix.Tasks.Compile.Elixir do
 
       ordered = List.uniq compile_first ++ to_compile
       compile_files ordered, compile_path
-      File.touch(compile_path)
+
+      Code.prepend_path compile_path
+      :ok
     else
       :noop
     end
-  end
-
-  defp extract_files(paths) do
-    List.concat(lc path inlist paths do
-      File.wildcard(File.join([path, "**/*.ex"]))
-    end)
   end
 
   defp compile_files(files, to) do

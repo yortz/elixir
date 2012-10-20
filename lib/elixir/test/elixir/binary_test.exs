@@ -1,6 +1,6 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
-defmodule BinaryTest do
+defmodule Binary.LiteralTest do
   use ExUnit.Case, async: true
 
   test :heredoc do
@@ -46,35 +46,6 @@ bar
     assert x == "bar"
   end
 
-  test :__B__ do
-    assert %B(foo) == "foo"
-    assert %B[foo] == "foo"
-    assert %B{foo} == "foo"
-    assert %B'foo' == "foo"
-    assert %B"foo" == "foo"
-    assert %B|foo| == "foo"
-    assert %B(f#{o}o) == "f\#{o}o"
-    assert %B(f\no) == "f\\no"
-  end
-
-  test :__b__ do
-    assert %b(foo) == "foo"
-    assert %b(f#{:o}o) == "foo"
-    assert %b(f\no) == "f\no"
-  end
-
-  test :__B__with_heredoc do
-    assert "  f\#{o}o\\n\n" == %B"""
-      f#{o}o\n
-    """
-  end
-
-  test :__b__with_heredoc do
-    assert "  foo\n\n" == %b"""
-      f#{:o}o\n
-    """
-  end
-
   test :octals do
     assert "\123" == "S"
     assert "\128" == "\n8"
@@ -88,19 +59,46 @@ bar
 
   test :pattern_match do
     s = 16
-    assert <<a, b|s>> = "foo"
+    assert <<a, b :: size(s)>> = "foo"
+  end
+
+  test :partial_application do
+    assert (<< &1, 2 >>).(1) == << 1, 2 >>
+    assert (<< &1, &2 >>).(1, 2) == << 1, 2 >>
+    assert (<< &2, &1 >>).(2, 1) == << 1, 2 >>
   end
 
   test :bitsyntax_translation do
     refb = "sample"
     sec_data = "another"
-    << size(refb) | 1 - :big - :signed - :integer - {:unit, 8},
-       refb | :binary,
-       size(sec_data) | 1 - :big - :signed - :integer - {:unit, 16},
-       sec_data|:binary >>
+    << size(refb) :: [size(1), big, signed, integer, unit(8)],
+       refb :: binary,
+       size(sec_data) :: [size(1), big, signed, integer, unit(16)],
+       sec_data :: binary >>
   end
 
-  defp is_match?(<<char, _|:binary>>, char) do
+  defmacrop signed_16 do
+    quote do
+      [big, signed, integer, unit(16)]
+    end
+  end
+
+  defmacrop refb_spec do
+    quote do
+      [size(1), big, signed, integer, unit(8)]
+    end
+  end
+
+  test :bitsyntax_macro do
+    refb = "sample"
+    sec_data = "another"
+    << size(refb) :: refb_spec,
+       refb :: binary,
+       size(sec_data) :: [size(1) | signed_16],
+       sec_data :: binary >>
+  end
+
+  defp is_match?(<<char, _ :: binary>>, char) do
     true
   end
 

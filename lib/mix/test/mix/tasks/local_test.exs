@@ -1,11 +1,11 @@
-Code.require_file "../../../test_helper", __FILE__
+Code.require_file "../../../test_helper.exs", __FILE__
 
 defmodule Mix.Tasks.LocalTest do
   use MixTest.Case
 
   test "manage local tasks" do
     File.rm_rf! tmp_path("userhome")
-    System.put_env "MIXHOME", tmp_path("userhome")
+    System.put_env "MIX_HOME", tmp_path("userhome")
 
     # Install it!
     self <- { :mix_shell_input, :yes?, true }

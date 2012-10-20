@@ -20,7 +20,7 @@ defmodule List do
 
   """
   def concat(list) when is_list(list) do
-    Erlang.lists.append(list)
+    :lists.append(list)
   end
 
   @doc """
@@ -52,7 +52,22 @@ defmodule List do
 
   """
   def delete(list, item) do
-    Erlang.lists.delete(item, list)
+    :lists.delete(item, list)
+  end
+
+  @doc """
+  Duplicates the given element n times in a list.
+
+  ## Examples
+
+      List.duplicate "hello", 3
+      #=> ["hello","hello","hello"]
+
+      List.duplicate [1,2], 2
+      #=> [[1,2],[1,2]]
+  """
+  def duplicate(elem, n) do
+    :lists.duplicate(n, elem)
   end
 
   @doc """
@@ -70,11 +85,11 @@ defmodule List do
 
   """
   def flatten(list) do
-    Erlang.lists.flatten(list)
+    :lists.flatten(list)
   end
 
   def flatten(list, tail) do
-    Erlang.lists.flatten(list, tail)
+    :lists.flatten(list, tail)
   end
 
   @doc """
@@ -91,7 +106,7 @@ defmodule List do
 
   """
   def foldl(list, acc, function) when is_list(list) and is_function(function) do
-    Erlang.lists.foldl(function, acc, list)
+    :lists.foldl(function, acc, list)
   end
 
   @doc """
@@ -105,20 +120,12 @@ defmodule List do
 
   """
   def foldr(list, acc, function) when is_list(list) and is_function(function) do
-    Erlang.lists.foldr(function, acc, list)
+    :lists.foldr(function, acc, list)
   end
 
-  @doc """
-  Reverses the given list. This function simply delegates
-  to `lists:reverse` which is implemented in C for performance.
-
-  ## Examples
-
-      List.reverse [1,2,3]
-      #=> [3,2,1]
-
-  """
+  @doc false
   def reverse(list) do
+    IO.write "[WARNING] List.reverse/1 is deprecated, please use Enum.reverse/1 instead\n#{Exception.formatted_stacktrace}"
     :lists.reverse(list)
   end
 
@@ -156,7 +163,7 @@ defmodule List do
 
   """
   def member?(list, term) do
-    Erlang.lists.member(term, list)
+    :lists.member(term, list)
   end
 
   @doc """
@@ -166,18 +173,18 @@ defmodule List do
 
   ## Examples
 
-      List.keyfind([a: 1, b: 2], :a, 1)
+      List.keyfind([a: 1, b: 2], :a, 0)
       #=> { :a, 1 }
 
-      List.keyfind([a: 1, b: 2], 2, 2)
+      List.keyfind([a: 1, b: 2], 2, 1)
       #=> { :b, 2 }
 
-      List.keyfind([a: 1, b: 2], :c, 1)
+      List.keyfind([a: 1, b: 2], :c, 0)
       #=> nil
 
   """
-  def keyfind(list, item, position, default // nil) do
-    Erlang.lists.keyfind(item, position, list) || default
+  def keyfind(list, key, position, default // nil) do
+    :lists.keyfind(key, position + 1, list) || default
   end
 
   @doc """
@@ -187,18 +194,47 @@ defmodule List do
 
   ## Examples
 
-      List.keymember?([a: 1, b: 2], :a, 1)
+      List.keymember?([a: 1, b: 2], :a, 0)
       #=> true
 
-      List.keymember?([a: 1, b: 2], 2, 2)
+      List.keymember?([a: 1, b: 2], 2, 1)
       #=> true
 
-      List.keymember?([a: 1, b: 2], :c, 1)
+      List.keymember?([a: 1, b: 2], :c, 0)
       #=> false
 
   """
-  def keymember?(list, item, position) do
-    Erlang.lists.keymember(item, position, list)
+  def keymember?(list, key, position) do
+    :lists.keymember(key, position + 1, list)
+  end
+
+  @doc """
+  Receives a list of tuples and replaces the item
+  identified by `key` at position `pos` if it exists.
+
+  ## Examples
+
+      List.keyreplace([a: 1, b: 2], :a, 0, { :a, 3 })
+      #=> [a: 3, b: 2]
+
+  """
+  def keyreplace(list, key, position, new_tuple) do
+    :lists.keyreplace(key, position + 1, list, new_tuple)
+  end
+
+  @doc """
+  Receives a list of tuples and replaces the item
+  identified by `key` at position `pos`. If the item
+  does not exist, it is added to the end of the list.
+
+  ## Examples
+
+      List.keystore([a: 1, b: 2], :a, 0, { :a, 3 })
+      #=> [a: 3, b: 2]
+
+  """
+  def keystore(list, key, position, new_tuple) do
+    :lists.keystore(key, position + 1, list, new_tuple)
   end
 
   @doc """
@@ -208,18 +244,18 @@ defmodule List do
 
   ## Examples
 
-      List.keydelete([a: 1, b: 2], :a, 1)
+      List.keydelete([a: 1, b: 2], :a, 0)
       #=> [{ :b, 2 }]
 
-      List.keydelete([a: 1, b: 2], 2, 2)
+      List.keydelete([a: 1, b: 2], 2, 1)
       #=> [{ :a, 1 }]
 
-      List.keydelete([a: 1, b: 2], :c, 1)
+      List.keydelete([a: 1, b: 2], :c, 0)
       #=> [{ :a, 1 }, { :b, 2 }]
 
   """
-  def keydelete(list, item, position) do
-    Erlang.lists.keydelete(item, position, list)
+  def keydelete(list, key, position) do
+    :lists.keydelete(key, position + 1, list)
   end
 
   @doc """
@@ -243,22 +279,22 @@ defmodule List do
   def range(first, last, step) when is_integer(first) and is_integer(last) and first <= last do
     step = case step do
       nil ->
-        Erlang.lists.seq(first, last, 1)
+        :lists.seq(first, last, 1)
       x when x < 0 ->
         []
       _ ->
-        Erlang.lists.seq(first, last, step)
+        :lists.seq(first, last, step)
     end
   end
 
   def range(first, last, step) when is_integer(first) and is_integer(last) and first > last do
     step = case step do
       nil ->
-        Erlang.lists.seq(first, last, -1)
+        :lists.seq(first, last, -1)
       x when x > 0 ->
         []
       _ ->
-        Erlang.lists.seq(first, last, step)
+        :lists.seq(first, last, step)
     end
   end
 
@@ -304,21 +340,6 @@ defmodule List do
   end
 
   @doc """
-  Duplicates the given element n times in a list.
-
-  ## Examples
-
-      List.duplicate "hello", 3
-      #=> ["hello","hello","hello"]
-
-      List.duplicate [1,2], 2
-      #=> [[1,2],[1,2]]
-  """
-  def duplicate(elem, n) do
-    Erlang.lists.duplicate(n, elem)
-  end
-
-  @doc """
   Wraps the argument in a list.
   If the argument is already a list, returns the list.
   If the argument is nil, returns an empty list.
@@ -340,21 +361,9 @@ defmodule List do
     [other]
   end
 
-  @doc """
-  Zips corresponding elements from two lists (or tuples) into one list of tuples. The
-  number of elements in the resulting list is equal to the length of the
-  shortest list among the given ones.
-
-  ## Examples
-
-      List.zip [1, 2, 3], [4, 5, 6]
-      #=> [{1, 4}, {2, 5}, {3, 6}]
-
-      List.zip [1, 2], [4, 5, 6]
-      #=> [{1, 4}, {2, 5}]
-
-  """
+  @doc false
   def zip(item1, item2) do
+    IO.write "[WARNING] List.zip/2 is deprecated, please use Enum.zip/2 instead\n#{Exception.formatted_stacktrace}"
     do_zip(to_list(item1), to_list(item2), [])
   end
 
@@ -370,6 +379,7 @@ defmodule List do
       #=> [{1, 3, 5}]
 
   """
+  def zip([]), do: []
   def zip(list_of_lists) when is_list(list_of_lists) do
     do_zip(list_of_lists, [])
   end
@@ -396,7 +406,7 @@ defmodule List do
   # uniq
 
   defp do_uniq([h|t], acc) do
-    case Erlang.lists.member(h, acc) do
+    case :lists.member(h, acc) do
       true ->
         do_uniq(t, acc)
       false ->
@@ -415,7 +425,7 @@ defmodule List do
   end
 
   defp do_zip(_, _, acc) do
-    reverse acc
+    :lists.reverse acc
   end
 
   defp do_zip(list, acc) do

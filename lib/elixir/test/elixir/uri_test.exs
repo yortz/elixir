@@ -22,15 +22,21 @@ defmodule URITest do
 
   test :decode_query do
     assert URI.decode_query("q=search%20query&cookie=ab%26cd&block%20buster=") ==
-                Orddict.new [{"block buster", ""}, {"cookie", "ab&cd"}, {"q", "search query"}]
-    assert URI.decode_query("") == Orddict.new
-    assert URI.decode_query("something=weird%3Dhappening") == Orddict.new [{"something", "weird=happening"}]
+                OrdDict.new [{"block buster", ""}, {"cookie", "ab&cd"}, {"q", "search query"}]
+    assert URI.decode_query("") == OrdDict.new
+    assert URI.decode_query("something=weird%3Dhappening") == OrdDict.new [{"something", "weird=happening"}]
 
     assert URI.decode_query("", HashDict.new) == HashDict.new
 
-    assert URI.decode_query("garbage") == nil
-    assert URI.decode_query("=value") == nil
-    assert URI.decode_query("something=weird=happening") == nil
+    assert URI.decode_query("garbage")                   == OrdDict.new [{"garbage", nil}]
+    assert URI.decode_query("=value")                    == OrdDict.new [{"", "value"}]
+    assert URI.decode_query("something=weird=happening") == OrdDict.new [{"something", "weird=happening"}]
+  end
+
+  test :decoder do
+    decoder  = URI.query_decoder("q=search%20query&cookie=ab%26cd&block%20buster=")
+    expected = [{"q", "search query"}, {"cookie", "ab&cd"}, {"block buster", ""}]
+    assert Enum.map(decoder, fn(x) -> x end) == expected
   end
 
   test :decode do
@@ -107,6 +113,10 @@ defmodule URITest do
                     authority: "foo.com:4444",
                     userinfo: nil] ==
                  URI.parse("http://foo.com:4444")
+  end
+
+  test :parse_char_list do
+    assert "/" == URI.parse('/').path
   end
 
   test :parse_bad_uris do

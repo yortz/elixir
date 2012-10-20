@@ -5,46 +5,67 @@ defmodule Mix.Tasks.Deps.Get do
 
   @moduledoc """
   Get all out of date dependencies, i.e. dependencies
-  that are not available or have a wrong lock.
+  that are not available or have an invalid lock.
   """
 
-  import Mix.Deps, only: [all: 0, by_name: 1, format_dep: 1,
-                          deps_path: 1, check_lock: 2, out_of_date?: 1]
+  import Mix.Deps, only: [all: 2, by_name!: 1, format_dep: 1,
+    deps_path: 1, check_lock: 2, out_of_date?: 1]
+
+  def run([]) do
+    finalize_get all(init, deps_getter(&1, &2))
+  end
 
   def run(args) do
-    case OptionParser.parse(args) do
-      { _, [] } ->
-        lock = Mix.Deps.Lock.read
-        deps = lc dep inlist all, dep = check_lock(dep, lock), out_of_date?(dep), do: dep
-        do_get(deps)
-      { _, tail } ->
-        do_get(by_name(tail))
+    { _, acc } = Enum.map_reduce by_name!(args), init, deps_getter(&1, &2)
+    finalize_get acc
+  end
+
+  defp init do
+    { [], Mix.Deps.Lock.read }
+  end
+
+  defp finalize_get({ apps, lock }) do
+    if apps == [] do
+      Mix.shell.info "All dependencies up to date"
+    else
+      Mix.Deps.Lock.write(lock)
+      Mix.Task.run "deps.compile", apps
     end
   end
 
-  defp do_get(_) do
+  defp deps_getter(dep, { acc, lock }) do
     shell = Mix.shell
+    dep = check_lock(dep, lock)
 
-    apps = Mix.Deps.Lock.update_lock all, fn(dep, lock) ->
-      Mix.Dep[scm: scm, opts: opts] = dep
+    if out_of_date?(dep) do
+      Mix.Dep[app: app, scm: scm, opts: opts] = dep
       shell.info "* Getting #{format_dep(dep)}"
+
+      old  = lock[app]
+      opts = Keyword.put(opts, :lock, old)
       path = deps_path(dep)
-      File.mkdir_p!(path)
 
-      opts = Keyword.put(opts, :lock, lock)
-      new  = if unavailable?(dep), do: scm.get(path, opts), else: scm.update(path, opts)
+      new =
+        if scm.available?(path, opts) do
+          scm.update(path, opts)
+        else
+          File.mkdir_p!(path)
+          scm.checkout(path, opts)
+        end
 
-      if new && lock && lock != new do
-        Mix.shell.error "  dependency could not be updated to lock #{inspect lock}"
-        nil
-      else
-        new
+      cond do
+        !new ->
+          { dep, { acc, lock } }
+        new && old && new != old ->
+          Mix.shell.error "  dependency is not set to lock #{inspect old}"
+          { dep, { acc, lock } }
+        true ->
+          # Update the dependency returned so it is now
+          # available and nested dependencies can be fetched
+          { Mix.Deps.update(dep), { [app|acc], Keyword.put(lock, app, new) } }
       end
+    else
+      { dep, { acc, lock } }
     end
-
-    Mix.Task.run "deps.compile", apps
   end
-
-  defp unavailable?(Mix.Dep[status: { :unavailable, _ }]), do: true
-  defp unavailable?(_),                                    do: false
 end

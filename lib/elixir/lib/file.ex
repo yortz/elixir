@@ -1,33 +1,35 @@
-defrecord File.Stat, Record.extract(:file_info, from_lib: "kernel/include/file.hrl"), moduledoc: """
-A record responsible to hold file information. Its fields are:
+defrecord File.Stat, Record.extract(:file_info, from_lib: "kernel/include/file.hrl") do
+  @moduledoc """
+  A record responsible to hold file information. Its fields are:
 
-* `size` - Size of file in bytes.
-* `type` - `:device`, `:directory`, `:regular`, `:other`. The type of the file.
-* `access` - `:read`, `:write`, `:read_write`, `:none`. The current system access to
-              the file.
-* `atime` - The last time the file was read.
-* `mtime` - The last time the file was written.
-* `ctime` - The interpretation of this time field depends on the operating
-            system. On Unix, it is the last time the file or the inode was
-            changed. In Windows, it is the create time.
-* `mode` - The file permissions.
-* `links` - The number of links to this file. This is always 1 for file
-            systems which have no concept of links.
-* `major_device` - Identifies the file system where the file is located.
-                   In windows, the number indicates a drive as follows:
-                   0 means A:, 1 means B:, and so on.
-* `minor_device` - Only valid for character devices on Unix. In all other
-                   cases, this field is zero.
-* `inode` - Gives the inode number. On non-Unix file systems, this field
-            will be zero.
-* `uid` - Indicates the owner of the file.
-* `gid` - Gives the group that the owner of the file belongs to. Will be
-          zero for non-Unix file systems.
+  * `size` - Size of file in bytes.
+  * `type` - `:device`, `:directory`, `:regular`, `:other`. The type of the file.
+  * `access` - `:read`, `:write`, `:read_write`, `:none`. The current system access to
+                the file.
+  * `atime` - The last time the file was read.
+  * `mtime` - The last time the file was written.
+  * `ctime` - The interpretation of this time field depends on the operating
+              system. On Unix, it is the last time the file or the inode was
+              changed. In Windows, it is the create time.
+  * `mode` - The file permissions.
+  * `links` - The number of links to this file. This is always 1 for file
+              systems which have no concept of links.
+  * `major_device` - Identifies the file system where the file is located.
+                     In windows, the number indicates a drive as follows:
+                     0 means A:, 1 means B:, and so on.
+  * `minor_device` - Only valid for character devices on Unix. In all other
+                     cases, this field is zero.
+  * `inode` - Gives the inode number. On non-Unix file systems, this field
+              will be zero.
+  * `uid` - Indicates the owner of the file.
+  * `gid` - Gives the group that the owner of the file belongs to. Will be
+            zero for non-Unix file systems.
 
-The time type returned in `atime`, `mtime`, and `ctime` is dependent on the
-time type set in options. `{:time, type}` where type can be `:local`,
-`:universal`, or `:posix`. Default is `:local`.
-"""
+  The time type returned in `atime`, `mtime`, and `ctime` is dependent on the
+  time type set in options. `{:time, type}` where type can be `:local`,
+  `:universal`, or `:posix`. Default is `:local`.
+  """
+end
 
 defexception File.Error, [reason: nil, action: "", path: nil] do
   def message(exception) do
@@ -85,11 +87,16 @@ defmodule File do
   should be used when the developer expects his software
   to fail in case the file cannot be read (i.e. it is
   literally an exception).
+
+  Finally, the functions in this module accept either
+  a char lists or a binary. When manipulating paths, a char
+  list is returned if one is given as argument. However,
+  when reading files, binaries are always returned.
   """
 
-  alias Erlang.file,     as: F
-  alias Erlang.filename, as: FN
-  alias Erlang.filelib,  as: FL
+  alias :file,     as: F
+  alias :filename, as: FN
+  alias :filelib,  as: FL
 
   @doc """
   Expands the path by returning its absolute name and expanding
@@ -385,7 +392,7 @@ defmodule File do
                On some platforms, `:enoent` is returned instead.
   * :enomem  - There is not enough memory for the contents of the file.
 
-  You can use `Erlang.file.format_error(reason)` to get a descriptive string of the error.
+  You can use `:file.format_error(reason)` to get a descriptive string of the error.
   """
   def read(path) do
     F.read_file(path)
@@ -456,12 +463,12 @@ defmodule File do
 
   """
   def wildcard(glob) when is_binary(glob) do
-    paths = Erlang.elixir_glob.wildcard binary_to_list(glob)
+    paths = :elixir_glob.wildcard binary_to_list(glob)
     Enum.map paths, list_to_binary(&1)
   end
 
   def wildcard(glob) when is_list(glob) do
-    Erlang.elixir_glob.wildcard(glob)
+    :elixir_glob.wildcard(glob)
   end
 
   @doc """
@@ -487,16 +494,6 @@ defmodule File do
     end
   end
 
-  def read_info(path, opts // []) do
-    IO.puts "File.read_info is deprecated in favor of File.stat"
-    stat(path, opts)
-  end
-
-  def read_info!(path, opts // []) do
-    IO.puts "File.read_info! is deprecated in favor of File.stat"
-    stat!(path, opts)
-  end
-
   @doc """
   Same as `stat` but returns the `File.Stat` directly and
   throws `File.Error` if an error is returned.
@@ -514,7 +511,7 @@ defmodule File do
   path. Returns `:ok` or `{ :error, reason }`.
   """
   def write_stat(path, File.Stat[] = stat, opts // []) do
-    F.write_file_info(path, setelem(stat, 1, :file_info), opts)
+    F.write_file_info(path, setelem(stat, 0, :file_info), opts)
   end
 
   @doc """
@@ -738,16 +735,25 @@ defmodule File do
     acc
   end
 
+  defp copy_file_mode!(src, dest) do
+    src_stat = File.stat!(src)
+    dest_stat = File.stat!(dest)
+    File.write_stat!(dest, File.Stat.mode(File.Stat.mode(src_stat), dest_stat))
+  end
+
   # Both src and dest are files.
   defp do_cp_file(src, dest, callback, acc) do
     case copy(src, { dest, [:exclusive] }) do
       { :ok, _ } ->
+        copy_file_mode!(src, dest)
         [dest|acc]
       { :error, :eexist } ->
         if callback.(src, dest) do
           rm(dest)
           case copy(src, dest) do
-            { :ok, _ } -> [dest|acc]
+            { :ok, _ } ->
+              copy_file_mode!(src, dest)
+              [dest|acc]
             reason -> reason
           end
         else
@@ -1017,9 +1023,9 @@ defmodule File do
 
   ## Examples
 
-    File.open!("foo.txt", [:read, :write], fn(file) ->
-      IO.readline(file)
-    end)
+      File.open!("foo.txt", [:read, :write], fn(file) ->
+        IO.readline(file)
+      end)
 
   """
   def open(path, modes, function) do
@@ -1146,7 +1152,7 @@ defmodule File do
       source = File.iterator("README.md")
       File.open "NEWREADME.md", [:write], fn(target) ->
         Enum.each source, fn(line) ->
-          IO.write target, Regex.replace_all(%r/"/, line, "'")
+          IO.write target, Regex.replace(%r/"/, line, "'")
         end
       end
 
@@ -1158,17 +1164,28 @@ defmodule File do
   end
 
   def iterator(device) do
-    fn(_) ->
-      case :io.get_line(device, "") do
-        :eof ->
-          close(device)
-          :stop
-        { :error, reason } ->
-          raise File.IteratorError, reason: reason
-        data ->
-          { data, :ok }
+    fn ->
+      function = fn(_) ->
+        case :io.get_line(device, "") do
+          :eof ->
+            close(device)
+            :stop
+          { :error, reason } ->
+            raise File.IteratorError, reason: reason
+          data ->
+            { strip_ending(data), :ok }
+        end
       end
+      { function, function.(:start) }
     end
+  end
+
+  defp strip_ending("\r\n"), do: <<>>
+  defp strip_ending("\n"),   do: <<>>
+  defp strip_ending(""),     do: <<>>
+
+  defp strip_ending(<< h, t :: binary >>) do
+    << h, strip_ending(t) :: binary >>
   end
 
   @doc """
@@ -1209,7 +1226,7 @@ defmodule File do
   end
 
   defp normalize([], acc) do
-    join List.reverse(acc)
+    join Enum.reverse(acc)
   end
 
   defp open_defaults([:charlist|t], add_encoding, _add_binary) do

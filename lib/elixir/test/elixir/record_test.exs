@@ -1,12 +1,50 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defrecord RecordTest.FileInfo,
   Record.extract(:file_info, from_lib: "kernel/include/file.hrl")
 
 name = RecordTest.DynamicName
-defrecord name, a: 0, b: 1
+defrecord name, a: 0, b: 1 do
+  def get_a(RecordTest.DynamicName[a: a]) do
+    a
+  end
+end
+
+defrecord RecordTest.SomeRecord, a: 0, b: 1
 
 defrecord RecordTest.WithNoField, []
+
+defmodule RecordTest.Macros do
+  Record.defmacros :_user, [:name, :age], __ENV__
+
+  def new(name, age) do
+    _user(name: name, age: age)
+  end
+
+  def name(_user(name: name)) do
+    name
+  end
+
+  def add_bar_to_name(_user(name: name) = user) do
+    _user(user, name: name <> " bar")
+  end
+
+  def age(user) do
+    _user(user, :age)
+  end
+
+  def to_keywords(user) do
+    _user(user)
+  end
+
+  def name_and_age(user) do
+    _user(user, [:name, :age])
+  end
+
+  def age_and_name(user) do
+    _user(user, [:age, :name])
+  end
+end
 
 defmodule RecordTest do
   use ExUnit.Case, async: true
@@ -48,7 +86,16 @@ defmodule RecordTest do
     refute is_record(a_list, RecordTest.FileInfo)
     refute is_record(RecordTest.FileInfo.new, List)
   end
-  
+
+  test :__index__ do
+    record = RecordTest.DynamicName.new(a: "a", b: "b")
+    assert elem(record, record.__index__(:a)) == "a"
+    assert elem(record, record.__index__(:b)) == "b"
+    assert record.__index__(:c) == nil
+    record = RecordTest.FileInfo.new
+    assert RecordTest.FileInfo.__index__(:atime) == record.__index__(:atime)
+  end
+
   test :to_keywords do
     record = RecordTest.DynamicName.new(a: "a", b: "b")
     assert record.to_keywords[:a] == "a"
@@ -63,8 +110,34 @@ defmodule RecordTest do
       catch_error(RecordTest.DynamicName[_: "x"] = RecordTest.DynamicName[_: "y"])
   end
 
+  test :access_protocol_on_being_defined_record do
+    assert RecordTest.DynamicName.new(a: "a").get_a == "a"
+  end
+
+  test :record_macros do
+    record = RecordTest.Macros.new("Foo", 25)
+    assert record.name == "Foo"
+
+    record = record.add_bar_to_name
+    assert record.name == "Foo bar"
+
+    assert record.age == 25
+    assert record.to_keywords == [name: record.name, age: record.age]
+
+    assert record.name_and_age == [record.name, record.age]
+    assert record.age_and_name == [record.age, record.name]
+  end
+
+  test :record_update do
+    record = RecordTest.SomeRecord.new
+    assert RecordTest.SomeRecord.a(record.update(a: 2, b: 3)) == 2
+    assert RecordTest.SomeRecord.b(record.update(a: 2, b: 3)) == 3
+    assert RecordTest.SomeRecord.a(record.update(a: 2)) == 2
+    assert RecordTest.SomeRecord.b(record.update(b: 2)) == 2
+  end
+
   defp file_info do
-    { :ok, file_info } = Erlang.file.read_file_info(__FILE__)
+    { :ok, file_info } = :file.read_file_info(__FILE__)
     file_info
   end
 

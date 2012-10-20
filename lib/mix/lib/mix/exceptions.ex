@@ -10,8 +10,14 @@ defexception Mix.InvalidTaskError, task: nil do
   end
 end
 
-defexception Mix.NoProjectError, message: "Could not find a Mix.Project"
+defexception Mix.NoProjectError,
+  message: "Could not find a Mix.Project"
 
-defexception Mix.Error, message: nil
+defexception Mix.Error,
+  message: nil
 
-defexception Mix.OutOfDateDepsError, message: "Some dependencies are out of date, please run `mix deps.get` to proceed"
+defexception Mix.OutOfDateDepsError, env: nil do
+  def message(exception) do
+    "Some dependencies are out of date, please run `MIX_ENV=#{exception.env} mix deps.get` to proceed"
+  end
+end

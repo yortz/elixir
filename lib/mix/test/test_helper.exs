@@ -21,6 +21,8 @@ unless File.dir?(target) do
 
   File.cd! target, fn ->
     System.cmd("git init")
+    System.cmd("git config user.email \"mix@example.com\"")
+    System.cmd("git config user.name \"Mix Repo\"")
     System.cmd("git add .")
     System.cmd("git commit -m \"ok\"")
   end
@@ -50,9 +52,11 @@ defmodule MixTest.Case do
       import MixTest.Case
 
       def teardown(_) do
+        Mix.env(:dev)
         Mix.Task.clear
         Mix.Shell.Process.flush
-        System.put_env("MIXHOME", tmp_path)
+        Mix.Deps.Converger.clear_cache
+        System.put_env("MIX_HOME", tmp_path)
         del_tmp_paths
       end
 
@@ -110,7 +114,7 @@ defmodule MixTest.Case do
 
   defmacro in_fixture(which, block) do
     module   = inspect __CALLER__.module
-    function = atom_to_binary elem(__CALLER__.function, 1)
+    function = atom_to_binary elem(__CALLER__.function, 0)
     tmp      = File.join(module, function)
 
     quote do

@@ -13,6 +13,8 @@ defmodule IEx.Autocomplete do
   end
 
   defimpl Entry, for: Mod do
+    @moduledoc false
+
     def to_entries(mod) do
       [mod.name]
     end
@@ -23,6 +25,8 @@ defmodule IEx.Autocomplete do
   end
 
   defimpl Entry, for: Fun do
+    @moduledoc false
+
     def to_entries(fun) do
       lc a inlist fun.arities, do: '#{fun.name}/#{a}'
     end
@@ -34,7 +38,7 @@ defmodule IEx.Autocomplete do
 
   def expand([]) do
     funs = module_funs(IEx.Helpers) ++ module_funs(Kernel)
-    mods = [Mod[name: 'Elixir', type: :elixir], Mod[name: 'Erlang', type: :elixir]]
+    mods = [Mod[name: 'Elixir', type: :elixir]]
     format_expansion mods ++ funs
   end
 
@@ -57,12 +61,8 @@ defmodule IEx.Autocomplete do
     case Code.string_to_ast expr do
       {:ok, atom} when is_atom(atom) ->
         expand_module_funs atom
-      {:ok, {:__aliases__,_,[:Erlang]}} ->
-        expand_erlang_modules
       {:ok, {:__aliases__,_,list}} ->
         expand_elixir_modules list
-      {:ok, {{:.,_,[{:__aliases__,_,[:Erlang]},mod]},_,[]}} when is_atom(mod) ->
-        expand_module_funs mod
       _ ->
         no_match
     end
@@ -76,9 +76,9 @@ defmodule IEx.Autocomplete do
         expand_module_funs Kernel, atom_to_list(atom)
       {:ok, {:__aliases__,_,[root]}} ->
         expand_elixir_modules [], atom_to_list(root)
-      {:ok, {:__aliases__,_,list}} ->
+      {:ok, {:__aliases__,_,[h|_] = list}} when is_atom(h) ->
         hint = atom_to_list(List.last(list))
-        list = :lists.sublist(list, length(list)-1)
+        list = Enum.take(list, length(list) - 1)
         expand_elixir_modules list, hint
       {:ok, {{:., _, [mod,fun]},_,[]}} when is_atom(fun) ->
         expand_call mod, atom_to_list(fun)
@@ -87,7 +87,7 @@ defmodule IEx.Autocomplete do
   end
 
   defp reduce(expr) do
-    last_token(List.reverse(expr), [' ', '(', '[', '+', '-'])
+    last_token(Enum.reverse(expr), [' ', '(', '[', '+', '-'])
   end
 
   defp last_token(s, []) do
@@ -150,16 +150,6 @@ defmodule IEx.Autocomplete do
     expand_module_funs mod, hint
   end
 
-  # Erlang.mod.fun
-  defp expand_call({ { :., _, [{ :__aliases__, _, [:Erlang] }, mod] }, _, [] }, hint) when is_atom(mod) do
-    expand_module_funs mod, hint
-  end
-
-  # Erlang.mod
-  defp expand_call({ :__aliases__, _, [:Erlang] }, hint) do
-    expand_erlang_modules hint
-  end
-
   # Elixir.fun
   defp expand_call({ :__aliases__, _, list }, hint) do
     expand_module_funs Module.concat(list), hint
@@ -211,7 +201,7 @@ defmodule IEx.Autocomplete do
   end
 
   defp modules_as_lists(true) do
-    ['Elixir-Elixir', 'Elixir-Erlang'] ++ modules_as_lists(false)
+    ['Elixir-Elixir'] ++ modules_as_lists(false)
   end
 
   defp modules_as_lists(false) do
@@ -248,11 +238,7 @@ defmodule IEx.Autocomplete do
 
   defp get_funs(mod) do
     if function_exported?(mod, :__info__, 1) do
-      if docs = mod.__info__(:docs) do
-        lc { pair, _line, _kind, _sign, doc } inlist docs, doc != false, do: pair
-      else
-        (mod.__info__(:functions) -- [__info__: 1]) ++ mod.__info__(:macros)
-      end
+      (mod.__info__(:functions) -- [__info__: 1]) ++ mod.__info__(:macros)
     else
       mod.module_info(:exports)
     end

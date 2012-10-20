@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Mix.UtilsTest do
   use MixTest.Case
@@ -33,7 +33,7 @@ defmodule Mix.UtilsTest do
       baz: [yet: "another"]
     ]
 
-    assert Mix.Utils.config_merge(old, new) == [
+    assert Keyword.equal? Mix.Utils.config_merge(old, new), [
       foo: "bye",
       bar: [1,2,3,4],
       baz: [some: "option", yet: "another"],
@@ -53,6 +53,8 @@ defmodule Mix.UtilsTest do
     assert Mix.Utils.underscore("FOOBar") == "foo_bar"
     assert Mix.Utils.underscore("FooBAR") == "foo_bar"
     assert Mix.Utils.underscore("FoBaZa") == "fo_ba_za"
+    assert Mix.Utils.underscore("Foo.Bar") == "foo/bar"
+    assert Mix.Utils.underscore(Foo.Bar) == "foo/bar"
   end
 
   test :camelize do
@@ -63,5 +65,12 @@ defmodule Mix.UtilsTest do
     assert Mix.Utils.camelize("foo_") == "Foo"
     assert Mix.Utils.camelize("_foo") == "Foo"
     assert Mix.Utils.camelize("foo__bar") == "FooBar"
+    assert Mix.Utils.camelize("foo/bar") == "Foo.Bar"
+  end
+
+  test :extract_files do
+    files = Mix.Utils.extract_files [File.join(fixture_path, "extract")], ["ex"]
+    assert length(files) == 1
+    assert File.basename(hd(files)) == "a.ex"
   end
 end

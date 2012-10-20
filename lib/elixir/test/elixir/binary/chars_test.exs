@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Binary.Chars.AtomTest do
   use ExUnit.Case, async: true
@@ -32,7 +32,7 @@ defmodule Binary.Chars.BitStringTest do
 
   test :bitstring do
     assert_raise FunctionClauseError, fn ->
-      to_binary(<<1|12-:integer-:signed>>)
+      to_binary(<<1 :: [size(12), integer, signed]>>)
     end
   end
 

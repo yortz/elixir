@@ -3,14 +3,14 @@ defmodule ExUnit.Formatter do
   # public API for the formatter to allow customization
   @moduledoc false
 
-  use GenServer.Behavior
+  use GenServer.Behaviour
 
   defrecord Config, counter: 0, failures: []
 
   import Exception, only: [format_stacktrace: 1]
 
   def start do
-    { :ok, pid } = Erlang.gen_server.start_link(__MODULE__, [], [])
+    { :ok, pid } = :gen_server.start_link(__MODULE__, [], [])
     pid
   end
 
@@ -35,7 +35,7 @@ defmodule ExUnit.Formatter do
 
   def handle_call(:finish, _from, config) do
     IO.write "\n\n"
-    Enum.reduce List.reverse(config.failures), 1, print_failure(&1, &2)
+    Enum.reduce Enum.reverse(config.failures), 1, print_failure(&1, &2)
     failures_count = length(config.failures)
     IO.puts "#{config.counter} tests, #{failures_count} failures."
     { :reply, failures_count, config }

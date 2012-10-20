@@ -1,10 +1,10 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule IEx.AutocompleteTest do
   use ExUnit.Case, async: true
 
   def expand(expr) do
-    IEx.Autocomplete.expand(List.reverse expr)
+    IEx.Autocomplete.expand(Enum.reverse expr)
   end
 
   test :erlang_module_simple_completion do
@@ -13,19 +13,7 @@ defmodule IEx.AutocompleteTest do
 
   test :erlang_module_no_completion do
     assert expand(':x') == {:no, '', []}
-  end
-
-  test :erlang_alias_completion do
-    assert expand('Erlang.z') == {:yes, 'lib.', []}
-  end
-
-  test :erlang_alias_call_completion do
-    assert expand('Erlang.lists.flatt') == {:yes, 'en', []}
-  end
-
-  test :erlang_alias_function_list_completion do
-    {:yes, '', list} = expand('Erlang.lists.')
-    assert is_list(list)
+    assert expand('x.Foo') == {:no, '', []}
   end
 
   test :erlang_module_common_prefix_completion do
@@ -74,7 +62,7 @@ defmodule IEx.AutocompleteTest do
   test :elixir_root_completion do
     {:yes, '', list} = expand('')
     assert is_list(list)
-    assert 'd/1' in list
+    assert 'h/1' in list
     assert 'Elixir' in list
   end
 
@@ -82,20 +70,13 @@ defmodule IEx.AutocompleteTest do
     assert expand('defreco') == {:yes, 'rd', []}
   end
 
-  test :elixir_and_erlang_proxies do
+  test :elixir_proxy do
     {:yes, '', list} = expand('E')
     assert 'Elixir' in list
-    assert 'Erlang' in list
   end
 
   test :elixir_erlang_module_root_completion do
     {:yes, '', list} = expand(':')
-    assert is_list(list)
-    assert 'lists' in list
-  end
-
-  test :elixir_erlang_alias_root_completion do
-    {:yes, '', list} = expand('Erlang.')
     assert is_list(list)
     assert 'lists' in list
   end

@@ -1,4 +1,4 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule FileTest do
   import PathHelpers
@@ -7,6 +7,20 @@ defmodule FileTest do
 
   defmodule Cp do
     use ExUnit.Case
+
+    ##
+    ## cp_r/c is managed in setup/teardown because if it is stored in 
+    ## the repository, reltool can't build a release
+    ##
+    def setup do
+      src = fixture_path("cp_r")
+      :file.make_symlink 'certainly/invalid', File.join([src, "c"])
+    end
+
+    def teardown do
+      src = fixture_path("cp_r")
+      File.rm File.join([src, "c"])
+    end
 
     test :cp_with_src_file_and_dest_file do
       src  = fixture_path("foo.txt")
@@ -348,6 +362,20 @@ defmodule FileTest do
       assert_raise File.CopyError, "could not copy recursively from #{src} to #{dest}: no such file or directory", fn ->
         File.cp_r!(src, dest)
       end
+    end
+
+    test :cp_preserves_mode do
+     src = fixture_path("cp_mode")
+     dest = tmp_path("tmp/cp_mode")
+     File.cp! src, dest
+     File.Stat[mode: src_mode] = File.stat! src
+     File.Stat[mode: dest_mode] = File.stat! dest
+     assert src_mode == dest_mode
+     # on overwrite
+     File.cp! src, dest, fn(_,_) -> true end
+     File.Stat[mode: src_mode] = File.stat! src
+     File.Stat[mode: dest_mode] = File.stat! dest
+     assert src_mode == dest_mode     
     end
 
   end
@@ -756,6 +784,20 @@ defmodule FileTest do
   defmodule Rm do
     use ExUnit.Case
 
+    ##
+    ## cp_r/c is managed in setup/teardown because if it is stored in 
+    ## the repository, reltool can't build a release
+    ##
+    def setup do
+      src = fixture_path("cp_r")
+      :file.make_symlink 'certainly/invalid', File.join([src, "c"])
+    end
+
+    def teardown do
+      src = fixture_path("cp_r")
+      File.rm File.join([src, "c"])
+    end
+
     test :rm_file do
       fixture = tmp_path("tmp_test.txt")
       File.write(fixture, "test")
@@ -938,7 +980,7 @@ defmodule FileTest do
       iterator = File.iterator(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.write target, Regex.replace_all(%r/"/, line, "'")
+          IO.puts target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }
@@ -955,7 +997,7 @@ defmodule FileTest do
       { :ok, iterator } = File.iterator(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.write target, Regex.replace_all(%r/"/, line, "'")
+          IO.puts target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }
@@ -972,7 +1014,7 @@ defmodule FileTest do
       iterator = File.iterator!(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.write target, Regex.replace_all(%r/"/, line, "'")
+          IO.puts target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }

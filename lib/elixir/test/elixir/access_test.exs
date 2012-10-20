@@ -1,10 +1,16 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
-defmodule Access.TupleTest do
+defmodule AccessTest do
   use ExUnit.Case, async: true
 
   test :list do
     assert [foo: :bar][:foo] == :bar
+    assert [foo: [bar: :baz]][:foo][:bar] == :baz
+    assert [foo: [bar: :baz]][:fuu][:bar] == nil
+  end
+
+  test :nil do
+    assert nil[:foo] == nil
   end
 
   test :function do
@@ -12,6 +18,16 @@ defmodule Access.TupleTest do
     assert function[:foo] == true
     assert function[:bar] == false
   end
+
+  # Test nil at compilation time does not fail
+  # and that @config[:foo] has proper precedence.
+  nil = @config[:foo]
+
+  @config [foo: :bar]
+  :bar = @config[:foo]
+
+  @mod :lists
+  [1,2,3] = @mod.flatten([1,[2],3])
 
   test :atom do
     exception = assert_raise RuntimeError, fn ->

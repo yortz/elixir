@@ -1,7 +1,7 @@
 %% Convenience functions used to manipulate scope
 %% and its variables.
 -module(elixir_scope).
--export([translate_var/3,
+-export([translate_var/4,
   build_erl_var/2, build_ex_var/2,
   serialize/1, deserialize/1, deserialize/2,
   to_erl_env/1, to_ex_env/1, filename/1,
@@ -10,30 +10,36 @@
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
-translate_var(Line, Name, S) ->
-  Match = S#elixir_scope.context == assign,
+translate_var(Line, Name, Kind, S) ->
   Vars = S#elixir_scope.vars,
-  TempVars = S#elixir_scope.temp_vars,
-  ClauseVars = S#elixir_scope.clause_vars,
 
   case Name of
     '_' -> { {var, Line, Name}, S };
     _ ->
-      case { Match, dict:is_key(Name, Vars), dict:is_key(Name, TempVars) } of
-        { true, true, true } -> { {var, Line, dict:fetch(Name, Vars) }, S };
-        { true, Else, _ } ->
-          { NewVar, NS } = case Else or S#elixir_scope.noname of
-            true -> build_erl_var(Line, S);
-            false -> { {var, Line, Name}, S }
-          end,
-          RealName = element(3, NewVar),
-          { NewVar, NS#elixir_scope{
-            vars=dict:store(Name, RealName, Vars),
-            temp_vars=dict:store(Name, RealName, TempVars),
-            clause_vars=dict:store(Name, RealName, ClauseVars)
-          } };
-        { false, false, _ } -> elixir_translator:translate_each({Name, Line, []}, S);
-        { false, true, _ }  -> { {var, Line, dict:fetch(Name, Vars) }, S }
+      case S#elixir_scope.context of
+        assign ->
+          TempVars = S#elixir_scope.temp_vars,
+          case { orddict:is_key(Name, Vars), orddict:find(Name, TempVars) } of
+            { true, { ok, Kind } } ->
+              { {var, Line, orddict:fetch(Name, Vars) }, S };
+            { Else, _ } ->
+              { NewVar, NS } = case Else or S#elixir_scope.noname of
+                true -> build_erl_var(Line, S);
+                false -> { {var, Line, Name}, S }
+              end,
+              RealName = element(3, NewVar),
+              ClauseVars = S#elixir_scope.clause_vars,
+              { NewVar, NS#elixir_scope{
+                vars=orddict:store(Name, RealName, Vars),
+                temp_vars=orddict:store(Name, Kind, TempVars),
+                clause_vars=orddict:store({ Name, Kind }, RealName, ClauseVars)
+              } }
+          end;
+        _ ->
+          case orddict:is_key(Name, Vars) of
+            false -> elixir_translator:translate_each({Name, Line, []}, S);
+            true  -> { {var, Line, orddict:fetch(Name, Vars) }, S }
+          end
       end
   end.
 
@@ -87,7 +93,7 @@ deserialize({ File, Functions, CheckClauses, Macro, Requires, Macros, Aliases, S
     macros=Macros,
     aliases=Aliases,
     scheduled=Scheduled,
-    vars=dict:from_list(Vars),
+    vars=orddict:from_list(Vars),
     counter=length(Vars)
   }.
 
@@ -102,9 +108,9 @@ umergev(S1, S2) ->
   C1 = S1#elixir_scope.clause_vars,
   C2 = S2#elixir_scope.clause_vars,
   S2#elixir_scope{
-    vars=dict:merge(fun var_merger/3, V1, V2),
-    quote_vars=dict:merge(fun var_merger/3, Q1, Q2),
-    clause_vars=dict:merge(fun var_merger/3, C1, C2)
+    vars=orddict:merge(fun var_merger/3, V1, V2),
+    quote_vars=orddict:merge(fun var_merger/3, Q1, Q2),
+    clause_vars=orddict:merge(fun clause_var_merger/3, C1, C2)
   }.
 
 % Receives two scopes and return a new scope based on the first
@@ -121,13 +127,16 @@ umergec(S1, S2) ->
 
 % Merge variables trying to find the most recently created.
 
+clause_var_merger({ Var, _ }, K1, K2) ->
+  var_merger(Var, K1, K2).
+
 var_merger(Var, Var, K2) -> K2;
 var_merger(Var, K1, Var) -> K1;
 var_merger(_Var, K1, K2) ->
-  V1 = list_to_integer(var_number(atom_to_list(K1))),
-  V2 = list_to_integer(var_number(atom_to_list(K2))),
+  V1 = var_number(atom_to_list(K1)),
+  V2 = var_number(atom_to_list(K2)),
   if V1 > V2 -> K1;
      true -> K2
   end.
 
-var_number([_,_|T]) -> T.
+var_number([_,_|T]) -> list_to_integer(T).

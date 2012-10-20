@@ -1,10 +1,11 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule Macro.ExternalTest do
   defmacro external do
-    17 = __CALLER__.line
+    18 = __CALLER__.line
     __FILE__ = __CALLER__.file
-    [line: 17, file: __FILE__] = __CALLER__.location
+    18 = __CALLER__.location[:line]
+    __FILE__ = __CALLER__.location[:file]
   end
 end
 
@@ -71,8 +72,14 @@ defmodule MacroTest do
     assert Macro.expand(quote(do: Elixir.Bar.Baz), __ENV__) == Elixir.Bar.Baz
   end
 
+  test :expand_with_op do
+    assert Macro.expand(quote(do: Foo.bar.Baz), __ENV__) == (quote do
+      Foo.bar.Baz
+    end)
+  end
+
   test :expand_with_erlang do
-    assert Macro.expand(quote(do: Erlang.foo), __ENV__) == :foo
+    assert Macro.expand(quote(do: :foo), __ENV__) == :foo
   end
 
   test :expand_with_imported_macro do
@@ -98,6 +105,13 @@ defmodule MacroTest do
     assert Macro.expand(expr, __ENV__) == expr
   end
 
+  @foo 1
+  @bar Macro.expand(quote(do: @foo), __ENV__)
+
+  test :expand_with_module_at do
+    assert @bar == 1
+  end
+
   ## to_binary
 
   test :var_to_binary do
@@ -106,18 +120,22 @@ defmodule MacroTest do
 
   test :local_call_to_binary do
     assert Macro.to_binary(quote do: foo(1, 2, 3)) == "foo(1, 2, 3)"
+    assert Macro.to_binary(quote do: foo([1, 2, 3])) == "foo([1, 2, 3])"
   end
 
   test :remote_call_to_binary do
     assert Macro.to_binary(quote do: foo.bar(1, 2, 3)) == "foo.bar(1, 2, 3)"
+    assert Macro.to_binary(quote do: foo.bar([1, 2, 3])) == "foo.bar([1, 2, 3])"
   end
 
   test :remote_and_fun_call_to_binary do
     assert Macro.to_binary(quote do: foo.bar.(1, 2, 3)) == "foo.bar().(1, 2, 3)"
+    assert Macro.to_binary(quote do: foo.bar.([1, 2, 3])) == "foo.bar().([1, 2, 3])"
   end
 
   test :aliases_call_to_binary do
     assert Macro.to_binary(quote do: Foo.Bar.baz(1, 2, 3)) == "Foo.Bar.baz(1, 2, 3)"
+    assert Macro.to_binary(quote do: Foo.Bar.baz([1, 2, 3])) == "Foo.Bar.baz([1, 2, 3])"
   end
 
   test :blocks_to_binary do
@@ -198,5 +216,28 @@ defmodule MacroTest do
   test :unary_ops_to_binary do
     assert Macro.to_binary(quote do: -1) == "-1"
     assert Macro.to_binary(quote do: @foo(bar)) == "@foo(bar)"
+  end
+
+  ## safe_term
+
+  test :safe_terms do
+   assert Macro.safe_term(quote do: 1) == :ok
+   assert Macro.safe_term(quote do: 1.1) == :ok
+   assert Macro.safe_term(quote do: -1) == :ok
+   assert Macro.safe_term(quote do: +1) == :ok
+   assert Macro.safe_term(quote do: []) == :ok
+   assert Macro.safe_term(quote do: [1,2,3]) == :ok
+   assert Macro.safe_term(quote do: "") == :ok
+   assert Macro.safe_term(quote do: {}) == :ok
+   assert Macro.safe_term(quote do: {1,2}) == :ok
+   assert Macro.safe_term(quote do: {1,2,3}) == :ok
+   assert Macro.safe_term(quote do: {1,2,3,4}) == :ok
+   assert Macro.safe_term(quote do: Alias) == :ok
+  end
+
+  test :unsafe_terms do
+   assert Macro.safe_term(quote do: 1+1)   == { :unsafe, quote do: 1 + 1 }
+   assert Macro.safe_term(quote do: [1+1]) == { :unsafe, quote do: 1 + 1 }
+   assert Macro.safe_term(quote do: {1+1}) == { :unsafe, quote do: 1 + 1 }
   end
 end

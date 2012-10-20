@@ -20,17 +20,22 @@ defmodule Mix.Tasks.Deps.Check do
     case Enum.partition all, ok?(&1) do
       { _, [] }     -> :ok
       { _, not_ok } ->
-        if Enum.all? not_ok, out_of_date?(&1) do
-          raise Mix.OutOfDateDepsError
-        else
-          shell = Mix.shell
+        shell = Mix.shell
+        shell.error "Unchecked dependencies for environment #{Mix.env}:"
 
+        if Enum.all? not_ok, out_of_date?(&1) do
           Enum.each not_ok, fn(dep) ->
             shell.error "* #{format_dep(dep)}"
-            shell.error "  #{format_status dep.status}"
           end
 
-          raise Mix.Error, message: "Some dependencies did not check"
+          raise Mix.OutOfDateDepsError, env: Mix.env
+        else
+          Enum.each not_ok, fn(dep) ->
+            shell.error "* #{format_dep(dep)}"
+            shell.error "  #{format_status dep}"
+          end
+
+          raise Mix.Error
         end
     end
   end

@@ -60,7 +60,7 @@ defmodule Exception do
   @doc false
   def check!(module) do
     unless :erlang.function_exported(module, :message, 1) do
-      raise "Expected #{inspect  module} to implement message/1"
+      raise "Expected #{inspect module} to implement message/1"
     end
   end
 
@@ -70,13 +70,26 @@ defmodule Exception do
   of arguments. It follows the same syntax as in stacktraces.
   """
   def format_module_fun_arity(module, fun, arity) do
-    << ?:, fun | :binary >> = inspect(fun)
+    case inspect(fun) do
+      << ?:, fun :: binary >> -> :ok
+      fun -> :ok
+    end
 
     if is_list(arity) do
       inspected = lc x inlist arity, do: inspect(x)
       "#{inspect module}.#{fun}(#{Enum.join(inspected, ", ")})"
     else
       "#{inspect module}.#{fun}/#{arity}"
+    end
+  end
+
+  @doc """
+  Returns the stacktrace as a binary formatted as per `format_stacktrace/1`.
+  """
+  def formatted_stacktrace(trace // System.stacktrace) do
+    case trace do
+      [] -> ""
+      s  -> "    " <> Enum.map_join(s, "\n    ", format_stacktrace(&1)) <> "\n"
     end
   end
 
@@ -89,7 +102,7 @@ defmodule Exception do
 
   @doc """
   Formats file and line information present in stacktraces.
-  Expect them to be given in a keywords list.
+  Expect them to be given in a keyword list.
   """
   def format_file_line(file_line) do
     format_file_line(Keyword.get(file_line, :file), Keyword.get(file_line, :line))

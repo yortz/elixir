@@ -56,6 +56,92 @@ defmodule Macro do
 
   def escape(other), do: other
 
+  @doc %B"""
+  Unescape the given chars. This is the unescaping behavior
+  used by default in Elixir single- and double-quoted strings.
+  Check `unescape_binary/2` for information on how to customize
+  the escaping map.
+
+  In this setup, Elixir will escape the following: `\b`, `\d`,
+  `\e`, `\f`, `\n`, `\r`, `\s`, `\t` and `\v`. Octals are also
+  escaped according to the latin1 set they represent.
+
+  This function is commonly used on sigil implementations
+  (like `%r`, `%b` and others).
+
+  ## Examples
+
+      Macro.unescape_binary "example\\n"
+      #=> "example\n"
+
+  In the example above, we pass a string with `\n` escaped
+  and we return a version with it unescaped.
+  """
+  def unescape_binary(chars) do
+    :elixir_interpolation.unescape_chars(chars)
+  end
+
+  @doc %B"""
+  Unescape the given chars according to the map given.
+  Check `unescape/1` if you want to use the same map as
+  Elixir single- and double-quoted strings.
+
+  ## Map
+
+  The map must be a function. The function receives an integer
+  representing the number of the characters it wants to unescape.
+  Here is the default mapping function implemented by Elixir:
+
+      def unescape_map(?b), do: ?\b
+      def unescape_map(?d), do: ?\d
+      def unescape_map(?e), do: ?\e
+      def unescape_map(?f), do: ?\f
+      def unescape_map(?n), do: ?\n
+      def unescape_map(?r), do: ?\r
+      def unescape_map(?s), do: ?\s
+      def unescape_map(?t), do: ?\t
+      def unescape_map(?v), do: ?\v
+      def unescape_map(e),  do: e
+
+  If the `unescape_map` function returns false. The char is
+  not escaped and `\` is kept in the char list.
+
+  ## Octals
+
+  Octals will by default be escaped unless the map function
+  returns false for ?0.
+
+  ## Examples
+
+  Using the unescape_map defined above is easy:
+
+      Macro.unescape_binary "example\\n", unescape_map(&1)
+
+  """
+  def unescape_binary(chars, map) do
+    :elixir_interpolation.unescape_chars(chars, map)
+  end
+
+  @doc """
+  Unescape the given tokens according to the default map.
+  Check `unescape/1` and `unescape/2` for more information
+  about unescaping. Only tokens that are binaries are
+  unescaped, all others are ignored. This method is useful
+  when implementing your own sigils. Check the implementation
+  of `Kernel.__b__` for examples.
+  """
+  def unescape_tokens(tokens) do
+    :elixir_interpolation.unescape_tokens(tokens)
+  end
+
+  @doc """
+  Unescape the given tokens according to the given map.
+  Check `unescape_tokens/1` and `unescaped/2` for more information.
+  """
+  def unescape_tokens(tokens, map) do
+    :elixir_interpolation.unescape_tokens(tokens, map)
+  end
+
   @doc """
   Converts the given expression to a binary.
 
@@ -124,7 +210,7 @@ defmodule Macro do
 
   # All other calls
   def to_binary({ target, _, args }) when is_list(args) do
-    { list, last } = Erlang.elixir_tree_helpers.split_last(args)
+    { list, last } = :elixir_tree_helpers.split_last(args)
     case is_kw_blocks?(last) do
       true  -> call_to_binary_with_args(target, list) <> kw_blocks_to_binary(last)
       false -> call_to_binary_with_args(target, args)
@@ -142,12 +228,14 @@ defmodule Macro do
   end
 
   # All other structures
-  def to_binary(other), do: Binary.Inspect.inspect(other)
+  def to_binary(other), do: Binary.Inspect.inspect(other, raw: true)
 
   # Block keywords
   defmacrop kw_keywords, do: [:do, :catch, :rescue, :after, :else]
 
-  defp is_kw_blocks?([_|_] = kw), do: Enum.all?(kw, fn({x,_}) -> x in kw_keywords end)
+  defp is_kw_blocks?([_|_] = kw) do
+    Enum.all?(kw, match?({x, _} when x in kw_keywords, &1))
+  end
   defp is_kw_blocks?(_),          do: false
 
   defp call_to_binary(atom) when is_atom(atom),  do: atom_to_binary(atom, :utf8)
@@ -162,7 +250,7 @@ defmodule Macro do
 
   defp kw_blocks_to_binary(kw) do
     Enum.reduce(kw_keywords, " ", fn(x, acc) ->
-      case Keyword.key?(kw, x) do
+      case Keyword.has_key?(kw, x) do
         true  -> acc <> kw_block_to_binary(x, Keyword.get(kw, x))
         false -> acc
       end
@@ -198,7 +286,7 @@ defmodule Macro do
       << case x == ?\n do
         true  -> replacement
         false -> <<x>>
-      end | :binary >>
+      end :: binary >>
     end
   end
 
@@ -300,19 +388,27 @@ defmodule Macro do
   # In case aliases contains more than one item, we need
   # to loop them checking if they are all atoms or not.
   # Macros and pseudo-variables are then expanded.
-  def expand({ :__aliases__, _, [h|t] }, env) do
+  def expand({ :__aliases__, _, [h|t] } = original, env) do
     aliases = case h do
       x when is_atom(x) and x != Elixir -> [expand_alias(x, env)|t]
       _                                 -> [h|t]
     end
 
     aliases = lc alias inlist aliases, do: expand(alias, env)
-    :lists.all(is_atom(&1), aliases) && Erlang.elixir_aliases.concat(aliases)
+
+    case :lists.all(is_atom(&1), aliases) do
+      true  -> :elixir_aliases.concat(aliases)
+      false -> original
+    end
   end
 
-  # Expand Erlang.foo calls
-  def expand({ { :., _, [{ :__aliases__, _, [:Erlang] }, atom] }, _, args }, _env) when
-    is_atom(atom) and (is_atom(args) or args == []), do: atom
+  # Expand @ calls
+  def expand({ :@, _, [{ name, _, args }] } = original, env) when is_atom(args) or args == [] do
+    case (module = env.module) && Module.open?(module) do
+      true  -> Module.get_attribute(module, name)
+      false -> original
+    end
+  end
 
   # Expand pseudo-variables
   def expand({ :__MODULE__, _, atom }, env) when is_atom(atom), do: env.module
@@ -329,7 +425,7 @@ defmodule Macro do
     case not is_partial?(args) do
       false -> original
       true  ->
-        expand = Erlang.elixir_dispatch.expand_import(line, { atom, length(args) }, args,
+        expand = :elixir_dispatch.expand_import(line, { atom, length(args) }, args,
           env.module, env.function, env.requires, env.macros, env)
         case expand do
           { :ok, _, expanded } -> expanded
@@ -345,7 +441,7 @@ defmodule Macro do
     case is_atom(receiver) and not is_partial?(args) do
       false -> original
       true  ->
-        expand = Erlang.elixir_dispatch.expand_require(line, receiver, { right, length(args) },
+        expand = :elixir_dispatch.expand_require(line, receiver, { right, length(args) },
           args, env.module, env.function, env.requires, env)
         case expand do
           { :ok, expanded } -> expanded
@@ -365,6 +461,29 @@ defmodule Macro do
 
   defp expand_alias(h, env) do
     atom = list_to_atom('Elixir-' ++ atom_to_list(h))
-    Erlang.elixir_aliases.lookup(atom, env.aliases)
+    :elixir_aliases.lookup(atom, env.aliases)
   end
+
+  @doc """
+  Recurs the quoted expression checking if all sub terms are
+  safe (i.e. they represented data structured and don't actually
+  evaluate code) and returns `:ok` unless a given term is unsafe,
+  which is returned as `{ :unsafe, term }`.
+  """
+  def safe_term(terms) do
+    do_safe_term(terms) || :ok
+  end
+
+  def do_safe_term({ local, _, terms }) when local in [:{}, :[], :__aliases__] do
+    do_safe_term(terms)
+  end
+
+  def do_safe_term({ unary, _, [term] }) when unary in [:+, :-] do
+    do_safe_term(term)
+  end
+
+  def do_safe_term({ left, right }), do: do_safe_term(left) || do_safe_term(right)
+  def do_safe_term(terms) when is_list(terms),  do: Enum.find_value(terms, do_safe_term(&1))
+  def do_safe_term(terms) when is_tuple(terms), do: { :unsafe, terms }
+  def do_safe_term(_), do: nil
 end

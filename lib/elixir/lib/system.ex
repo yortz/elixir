@@ -5,12 +5,12 @@ defmodule System do
   with the VM or the host system.
   """
 
-  # Tries to run `git rev-parse HEAD`. In case of success
-  # returns the commit sha, otherwise returns an empty string.
-  defmacrop get_head_sha do
+  # Tries to run `git describe --always --tags`. In case of success
+  # returns the most recent tag, otherwise returns an empty string.
+  defmacrop get_describe do
     if :os.find_executable('git') do
-      data = :os.cmd('git rev-parse HEAD')
-      Regex.replace_all %r/\n/, to_binary(data), ""
+      data = :os.cmd('git describe --always --tags')
+      Regex.replace %r/\n/, to_binary(data), ""
     else
       ""
     end
@@ -24,23 +24,20 @@ defmodule System do
   @doc """
   Returns Elixir's version as binary.
   """
-  def version, do: "0.6.0"
+  def version, do: "0.7.0"
 
   @doc """
-  Returns a tuple { Elixir version, commit sha-1, build date }.
-
-  The format of the return value may change in a future release. Please
-  make sure your code doesn't depend on it.
+  Returns a keywords list with version, git tag info and date.
   """
   def build_info do
-    { version, get_head_sha, get_date }
+    [version: version, tag: get_describe, date: get_date]
   end
 
   @doc """
   Returns the list of command-line arguments passed to the program.
   """
   def argv do
-    Erlang.gen_server.call(:elixir_code_server, :argv)
+    :gen_server.call(:elixir_code_server, :argv)
   end
 
   @doc """
@@ -138,7 +135,7 @@ defmodule System do
   Get the stacktrace.
   """
   def stacktrace do
-    filter_stacktrace Erlang.erlang.get_stacktrace
+    filter_stacktrace :erlang.get_stacktrace
   end
 
   ## Helpers
@@ -151,6 +148,6 @@ defmodule System do
   defp filter_stacktrace([]), do: []
 
   defp server_call(args) do
-    Erlang.gen_server.call(:elixir_code_server, args)
+    :gen_server.call(:elixir_code_server, args)
   end
 end

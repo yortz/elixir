@@ -159,10 +159,10 @@ defmodule Kernel do
 
   ## Examples
 
-    !1        #=> false
-    ![1,2,3]  #=> false
-    !false    #=> true
-    !nil      #=> true
+      !1        #=> false
+      ![1,2,3]  #=> false
+      !false    #=> true
+      !nil      #=> true
 
   """
   defmacro !arg
@@ -300,7 +300,9 @@ defmodule Kernel do
       abs(-3)    #=> 3
   """
   @spec abs(number), do: number
-  defmacro abs(number)
+  def abs(number) do
+    :erlang.abs(number)
+  end
 
   @doc """
   Invokes the given `fun` with the array of arguments `args`.
@@ -312,7 +314,9 @@ defmodule Kernel do
 
   """
   @spec apply(fun, list), do: term
-  defmacro apply(fun, args)
+  def apply(fun, args) do
+    :erlang.apply(fun, args)
+  end
 
   @doc """
   Invokes the given `fun` from `module` with the array of arguments `args`.
@@ -324,7 +328,9 @@ defmodule Kernel do
 
   """
   @spec apply(atom, atom, list), do: term
-  defmacro apply(module, fun, args)
+  def apply(module, fun, args) do
+    :erlang.apply(module, fun, args)
+  end
 
   @doc """
   Returns a binary which corresponds to the text representation of `atom`.
@@ -335,11 +341,13 @@ defmodule Kernel do
 
   ## Examples
 
-      atom_to_binary(:elixir, utf8) #=> "elixir"
+      atom_to_binary(:elixir, :utf8) #=> "elixir"
 
   """
   @spec atom_to_binary(atom, :utf8 | :unicode | :latin1), do: binary
-  defmacro atom_to_binary(atom, encoding)
+  def atom_to_binary(atom, encoding) do
+    :erlang.atom_to_binary(atom, encoding)
+  end
 
   @doc """
   Returns a string which corresponds to the text representation of `atom`.
@@ -350,7 +358,9 @@ defmodule Kernel do
 
   """
   @spec atom_to_list(atom), do: list
-  defmacro atom_to_list(atom)
+  def atom_to_list(atom) do
+    :erlang.atom_to_list(atom)
+  end
 
   @doc """
   Extracts the part of the binary starting at `start` with length `length`.
@@ -371,7 +381,9 @@ defmodule Kernel do
 
   """
   @spec binary_part(binary, pos_integer, integer), do: binary
-  defmacro binary_part(binary, start, length)
+  def binary_part(binary, start, length) do
+    :erlang.binary_part(binary, start, length)
+  end
 
   @doc """
   Returns the atom whose text representation is `binary`. If `encoding` is latin1,
@@ -385,19 +397,25 @@ defmodule Kernel do
 
   """
   @spec binary_to_atom(binary, :utf8 | :unicode | :latin1), do: atom
-  defmacro binary_to_atom(binary, encoding)
+  def binary_to_atom(binary, encoding) do
+    :erlang.binary_to_atom(binary, encoding)
+  end
 
   @doc """
   Works like `binary_to_atom/2`, but the atom must already exist.
   """
   @spec binary_to_existing_atom(binary, :utf8 | :unicode | :latin1), do: atom
-  defmacro binary_to_existing_atom(binary, encoding)
+  def binary_to_existing_atom(binary, encoding) do
+    :erlang.binary_to_existing_atom(binary, encoding)
+  end
 
   @doc """
   Returns a list of integers which correspond to the bytes of `binary`.
   """
   @spec binary_to_list(binary), do: list
-  defmacro binary_to_list(binary)
+  def binary_to_list(binary) do
+    :erlang.binary_to_list(binary)
+  end
 
   @doc """
   As binary_to_list/1, but returns a list of integers corresponding to the bytes
@@ -405,7 +423,9 @@ defmodule Kernel do
   are numbered starting from 1.
   """
   @spec binary_to_list(binary, pos_integer, pos_integer), do: list
-  defmacro binary_to_list(binary, start, stop)
+  def binary_to_list(binary, start, stop) do
+    :erlang.binary_to_list(binary, start, stop)
+  end
 
   @doc """
   Returns an Erlang term which is the result of decoding the binary
@@ -418,7 +438,9 @@ defmodule Kernel do
 
   """
   @spec binary_to_term(binary), do: term
-  defmacro binary_to_term(binary)
+  def binary_to_term(binary) do
+    :erlang.binary_to_term(binary)
+  end
 
   @doc """
   As `binary_to_term/1`, but accepts a safe option useful when receiving
@@ -440,7 +462,9 @@ defmodule Kernel do
 
   """
   @spec binary_to_term(binary, [] | [:safe]), do: term
-  defmacro binary_to_term(binary, options)
+  def binary_to_term(binary, options) do
+    :erlang.binary_to_term(binary, options)
+  end
 
   @doc """
   Returns an integer which is the size in bits of `bitstring`.
@@ -454,7 +478,9 @@ defmodule Kernel do
 
   """
   @spec bit_size(bitstring), do: non_neg_integer
-  defmacro bit_size(bitstring)
+  def bit_size(bitstring) do
+    :erlang.bit_size(bitstring)
+  end
 
   @doc """
   Returns a list of integers which correspond to the bytes of `bitstring`. If the
@@ -462,7 +488,9 @@ defmodule Kernel do
   be a bitstring containing the remaining bits (1 up to 7 bits).
   """
   @spec bitstring_to_list(bitstring), do: non_neg_integer
-  defmacro bitstring_to_list(bitstring)
+  def bitstring_to_list(bitstring) do
+    :erlang.bitstring_to_list(bitstring)
+  end
 
   @doc """
   Returns an integer which is the number of bytes needed to contain `bitstring`.
@@ -478,7 +506,9 @@ defmodule Kernel do
 
   """
   @spec byte_size(bitstring), do: non_neg_integer
-  defmacro byte_size(bitstring)
+  def byte_size(bitstring) do
+    :erlang.byte_size(bitstring)
+  end
 
   @doc """
   Stops the execution of the calling process with the given reason.
@@ -492,13 +522,17 @@ defmodule Kernel do
 
   """
   @spec exit(term), do: no_return
-  defmacro exit(reason)
+  def exit(reason) do
+    :erlang.exit(reason)
+  end
 
   @doc """
   Converts the given number to a float. Allowed in guard clauses.
   """
   @spec float(number), do: float
-  defmacro float(number)
+  def float(number) do
+    :erlang.float(number)
+  end
 
   @doc """
   Returns a char list which corresponds to the text representation of the given float.
@@ -510,19 +544,25 @@ defmodule Kernel do
 
   """
   @spec float_to_list(number), do: string
-  defmacro float_to_list(number)
+  def float_to_list(number) do
+    :erlang.float_to_list(number)
+  end
 
   @doc """
   The same as halt(0, []).
   """
   @spec halt(), do: no_return
-  defmacro halt()
+  def halt() do
+    :erlang.halt()
+  end
 
   @doc """
   The same as halt(status, []).
   """
   @spec halt(non_neg_integer | string | :abort), do: no_return
-  defmacro halt(status)
+  def halt(status) do
+    :erlang.halt(status)
+  end
 
   @doc """
   Halts the Erlang runtime system where the first argument status must be a
@@ -552,13 +592,17 @@ defmodule Kernel do
 
   """
   @spec halt(non_neg_integer | string | :abort, [] | [flush: false]), do: no_return
-  defmacro halt(status, options)
+  def halt(status, options) do
+    :erlang.halt(status, options)
+  end
 
   @doc """
   Returns the head of a list, raises badarg if the list is empty.
   """
   @spec hd(list), do: term
-  defmacro hd(list)
+  def hd(list) do
+    :erlang.hd(list)
+  end
 
   @doc """
   Returns a char list which corresponds to the text representation of the given integer.
@@ -570,7 +614,9 @@ defmodule Kernel do
 
   """
   @spec integer_to_list(integer), do: string
-  defmacro integer_to_list(number)
+  def integer_to_list(number) do
+    :erlang.integer_to_list(number)
+  end
 
   @doc """
   Returns a char list which corresponds to the text representation of the
@@ -583,7 +629,9 @@ defmodule Kernel do
 
   """
   @spec integer_to_list(integer, pos_integer), do: string
-  defmacro integer_to_list(number, base)
+  def integer_to_list(number, base) do
+    :erlang.integer_to_list(number, base)
+  end
 
   @doc """
   Returns the size of an iolist.
@@ -595,7 +643,9 @@ defmodule Kernel do
 
   """
   @spec iolist_size(iolist), do: non_neg_integer
-  defmacro iolist_size(item)
+  def iolist_size(item) do
+    :erlang.iolist_size(item)
+  end
 
   @doc """
   Returns a binary which is made from the integers and binaries in iolist.
@@ -611,124 +661,163 @@ defmodule Kernel do
 
   """
   @spec iolist_to_binary(iolist), do: binary
-  defmacro iolist_to_binary(item)
+  def iolist_to_binary(item) do
+    :erlang.iolist_to_binary(item)
+  end
 
   @doc """
-  Returns `true` if `term` is an atom; otherwise returns `false`.
+  Returns true if the local node is alive; that is,
+  if the node can be part of a distributed system.
+  """
+  @spec is_alive, do: boolean
+  def is_alive do
+    :erlang.is_alive
+  end
+
+  @doc """
+  Returns true if `term` is an atom; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_atom(term), do: boolean
-  defmacro is_atom(term)
+  def is_atom(term) do
+    :erlang.is_atom(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a binary; otherwise returns `false`.
+  Returns true if `term` is a binary; otherwise returns false.
 
   A binary always contains a complete number of bytes.
 
   Allowed in guard tests.
   """
   @spec is_binary(term), do: boolean
-  defmacro is_binary(term)
+  def is_binary(term) do
+    :erlang.is_binary(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a bitstring (including a binary); otherwise returns `false`.
+  Returns true if `term` is a bitstring (including a binary); otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_bitstring(term), do: boolean
-  defmacro is_bitstring(term)
+  def is_bitstring(term) do
+    :erlang.is_bitstring(term)
+  end
 
   @doc """
-  Returns `true` if `term` is either the atom `true` or the atom `false` (i.e. a boolean);
-  otherwise returns `false`.
+  Returns true if `term` is either the atom `true` or the atom `false` (i.e. a boolean);
+  otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_boolean(term), do: boolean
-  defmacro is_boolean(term)
+  def is_boolean(term) do
+    :erlang.is_boolean(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a floating point number; otherwise returns `false`.
+  Returns true if `term` is a floating point number; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_float(term), do: boolean
-  defmacro is_float(term)
+  def is_float(term) do
+    :erlang.is_float(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a function; otherwise returns `false`.
+  Returns true if `term` is a function; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_function(term), do: boolean
-  defmacro is_function(term)
+  def is_function(term) do
+    :erlang.is_function(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a function that can be applied with `arity` number of arguments;
-  otherwise returns `false`.
+  Returns true if `term` is a function that can be applied with `arity` number of arguments;
+  otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_function(term, non_neg_integer), do: boolean
-  defmacro is_function(term, arity)
+  def is_function(term, arity) do
+    :erlang.is_function(term, arity)
+  end
 
   @doc """
-  Returns `true` if `term` is an integer; otherwise returns `false`.
+  Returns true if `term` is an integer; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_integer(term), do: boolean
-  defmacro is_integer(term)
+  def is_integer(term) do
+    :erlang.is_integer(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a list with zero or more elements; otherwise returns `false`.
+  Returns true if `term` is a list with zero or more elements; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_list(term), do: boolean
-  defmacro is_list(term)
+  def is_list(term) do
+    :erlang.is_list(term)
+  end
 
   @doc """
-  Returns `true` if `term` is either an integer or a floating point number;
-  otherwise returns `false`.
+  Returns true if `term` is either an integer or a floating point number;
+  otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_number(term), do: boolean
-  defmacro is_number(term)
+  def is_number(term) do
+    :erlang.is_number(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a pid (process identifier); otherwise returns `false`.
+  Returns true if `term` is a pid (process identifier); otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_pid(term), do: boolean
-  defmacro is_pid(term)
+  def is_pid(term) do
+    :erlang.is_pid(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a port identifier; otherwise returns `false`.
+  Returns true if `term` is a port identifier; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_port(term), do: boolean
-  defmacro is_port(term)
+  def is_port(term) do
+    :erlang.is_port(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a reference; otherwise returns `false`.
+  Returns true if `term` is a reference; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_reference(term), do: boolean
-  defmacro is_reference(term)
+  def is_reference(term) do
+    :erlang.is_reference(term)
+  end
 
   @doc """
-  Returns `true` if `term` is a tuple; otherwise returns `false`.
+  Returns true if `term` is a tuple; otherwise returns false.
 
   Allowed in guard tests.
   """
   @spec is_tuple(term), do: boolean
-  defmacro is_tuple(term)
+  def is_tuple(term) do
+    :erlang.is_tuple(term)
+  end
 
   @doc """
   Returns the length of `list`.
@@ -740,7 +829,9 @@ defmodule Kernel do
       length([1,2,3,4,5,6,7,8,9]) #=> 9
   """
   @spec length(list), do: non_neg_integer
-  defmacro length(list)
+  def length(list) do
+    :erlang.length(list)
+  end
 
   @doc """
   Returns the atom whose text representation is `char_list`.
@@ -750,7 +841,9 @@ defmodule Kernel do
       list_to_atom('elixir') #=> :elixir
   """
   @spec list_to_atom(string), do: atom
-  defmacro list_to_atom(char_list)
+  def list_to_atom(char_list) do
+    :erlang.list_to_atom(char_list)
+  end
 
   @doc """
   Returns a binary which is made from the content of `char_list`.
@@ -760,7 +853,9 @@ defmodule Kernel do
       list_to_binary('Elixir') #=> "Elixir"
   """
   @spec list_to_binary(iolist), do: binary
-  defmacro list_to_binary(char_list)
+  def list_to_binary(char_list) do
+    :erlang.list_to_binary(char_list)
+  end
 
   @doc """
   Returns a bitstring which is made from the integers and bitstrings in `bitstring_list`.
@@ -777,14 +872,18 @@ defmodule Kernel do
 
   """
   @spec list_to_bitstring(maybe_improper_list(char | binary | iolist | bitstring, binary | bitstring | [])), do: bitstring
-  defmacro list_to_bitstring(bitstring_list)
+  def list_to_bitstring(bitstring_list) do
+    :erlang.list_to_bitstring(bitstring_list)
+  end
 
   @doc """
   Returns the atom whose text representation is `char_list`, but only if there already
   exists such atom.
   """
   @spec list_to_existing_atom(string), do: atom
-  defmacro list_to_existing_atom(char_list)
+  def list_to_existing_atom(char_list) do
+    :erlang.list_to_existing_atom(char_list)
+  end
 
   @doc """
   Returns the float whose text representation is `char_list`.
@@ -794,7 +893,9 @@ defmodule Kernel do
       list_to_float('2.2017764e+0') #=> 2.2017764
   """
   @spec list_to_float(string), do: float
-  defmacro list_to_float(char_list)
+  def list_to_float(char_list) do
+    :erlang.list_to_float(char_list)
+  end
 
   @doc """
   Returns an integer whose text representation is `char_list`.
@@ -804,17 +905,21 @@ defmodule Kernel do
       list_to_integer('123') #=> 123
   """
   @spec list_to_integer(string), do: integer
-  defmacro list_to_integer(char_list)
+  def list_to_integer(char_list) do
+    :erlang.list_to_integer(char_list)
+  end
 
   @doc """
   Returns an integer whose text representation in base `base` is `char_list`.
 
   ## Examples
 
-      > list_to_integer('3FF', 16) #=> 1023
+      list_to_integer('3FF', 16) #=> 1023
   """
   @spec list_to_integer(string, non_neg_integer), do: integer
-  defmacro list_to_integer(char_list, base)
+  def list_to_integer(char_list, base) do
+    :erlang.list_to_integer(char_list, base)
+  end
 
   @doc """
   Returns a pid whose text representation is `char_list`.
@@ -830,17 +935,21 @@ defmodule Kernel do
       list_to_pid('<0.41>') #=> <0.4.1>
   """
   @spec list_to_pid(string), do: pid
-  defmacro list_to_pid(char_list)
+  def list_to_pid(char_list) do
+    :erlang.list_to_pid(char_list)
+  end
 
   @doc """
   Returns a tuple which corresponds to `list`. `list` can contain any Erlang terms.
 
   ## Examples
 
-      list_to_tuple([share, [:elixir, 163]]). #=> {share, [:elixir, 163]}
+      list_to_tuple([:share, [:elixir, 163]]). #=> {:share, [:elixir, 163]}
   """
   @spec list_to_tuple(list), do: tuple
-  defmacro list_to_tuple(list)
+  def list_to_tuple(list) do
+    :erlang.list_to_tuple(list)
+  end
 
   @doc """
   Returns an almost unique reference.
@@ -855,7 +964,9 @@ defmodule Kernel do
 
   """
   @spec make_ref(), do: reference
-  defmacro make_ref()
+  def make_ref() do
+    :erlang.make_ref()
+  end
 
   @doc """
   Return the biggest of the two given terms according to
@@ -868,7 +979,9 @@ defmodule Kernel do
 
   """
   @spec max(term, term), do: term
-  defmacro max(first, second)
+  def max(first, second) do
+    :erlang.max(first, second)
+  end
 
   @doc """
   Return the smallest of the two given terms according to
@@ -881,7 +994,9 @@ defmodule Kernel do
 
   """
   @spec min(term, term), do: term
-  defmacro min(first, second)
+  def min(first, second) do
+    :erlang.min(first, second)
+  end
 
   @doc """
   Returns an atom representing the name of the local node.
@@ -890,7 +1005,9 @@ defmodule Kernel do
   Allowed in guard tests.
   """
   @spec node(), do: node
-  defmacro node
+  def node do
+    :erlang.node
+  end
 
   @doc """
   Returns the node where the given argmuent is located.
@@ -900,7 +1017,9 @@ defmodule Kernel do
   Allowed in guard tests.
   """
   @spec node(pid|reference|port), do: node
-  defmacro node(arg)
+  def node(arg) do
+    :erlang.node(arg)
+  end
 
   @doc """
   Returns a char list which corresponds to the text representation of pid.
@@ -915,7 +1034,9 @@ defmodule Kernel do
   It should not be used in application programs.
   """
   @spec pid_to_list(pid), do: list
-  defmacro pid_to_list(pid)
+  def pid_to_list(pid) do
+    :erlang.pid_to_list(pid)
+  end
 
   @doc """
   Returns an integer by rounding the given number.
@@ -927,21 +1048,27 @@ defmodule Kernel do
 
   """
   @spec round(number), do: integer
-  defmacro round(number)
+  def round(number) do
+    :erlang.round(number)
+  end
 
   @doc """
   Returns the pid (process identifier) of the calling process.
   Allowed in guard clauses.
   """
   @spec self(), do: pid
-  defmacro self()
+  def self() do
+    :erlang.self()
+  end
 
   @doc """
   Returns the size of the given argument, which must be a tuple
   or a binary. If possible, please use tuple_size or binary_size.
   """
   @spec size(tuple|binary), do: non_neg_integer
-  defmacro size(arg)
+  def size(arg) do
+    :erlang.size(arg)
+  end
 
   @doc """
   Spawns the given function and returns its pid.
@@ -960,7 +1087,9 @@ defmodule Kernel do
 
   """
   @spec spawn(fun), do: pid
-  defmacro spawn(fun)
+  def spawn(fun) do
+    :erlang.spawn(fun)
+  end
 
   @doc """
   Spawns the given module and function passing the given args
@@ -975,7 +1104,9 @@ defmodule Kernel do
 
   """
   @spec spawn(module, atom, list), do: pid
-  defmacro spawn(module, fun, args)
+  def spawn(module, fun, args) do
+    :erlang.spawn(module, fun, args)
+  end
 
   @doc """
   Spawns the given function, links it to the current process and returns its pid.
@@ -995,7 +1126,9 @@ defmodule Kernel do
 
   """
   @spec spawn_link(fun), do: pid
-  defmacro spawn_link(fun)
+  def spawn_link(fun) do
+    :erlang.spawn_link(fun)
+  end
 
   @doc """
   Spawns the given module and function passing the given args,
@@ -1010,7 +1143,9 @@ defmodule Kernel do
 
   """
   @spec spawn_link(module, atom, list), do: pid
-  defmacro spawn_link(module, fun, args)
+  def spawn_link(module, fun, args) do
+    :erlang.spawn_link(module, fun, args)
+  end
 
   @doc """
   Returns a binary data which is the result of encoding the given term
@@ -1018,10 +1153,12 @@ defmodule Kernel do
 
   This can be used for a variety of purposes, for example, writing a term
   to a file in an efficient way, or sending an Erlang term to some type
-  of communications channel not supported by distributed Erlang.
+  of communications channel not supported by distributed :
   """
   @spec term_to_binary(term), do: binary
-  defmacro term_to_binary(term)
+  def term_to_binary(term) do
+    :erlang.term_to_binary(term)
+  end
 
   @doc """
   The same as `term_to_binary/1` but also supports two options:
@@ -1033,19 +1170,25 @@ defmodule Kernel do
 
   """
   @spec term_to_binary(term, list({:compressed, 0..9}|{:minor_version, 0}|{:minor_version, 1})), do: binary
-  defmacro term_to_binary(term, opts)
+  def term_to_binary(term, opts) do
+    :erlang.term_to_binary(term, opts)
+  end
 
   @doc """
   A non-local return from a function. Check try/2 for more information.
   """
   @spec throw(term), do: no_return
-  defmacro throw(term)
+  def throw(term) do
+    :erlang.throw(term)
+  end
 
   @doc """
   Returns the tail of a list. Raises ArgumentError if the list is empty.
   """
   @spec tl(maybe_improper_list), do: maybe_improper_list
-  defmacro tl(list)
+  def tl(list) do
+    :erlang.tl(list)
+  end
 
   @doc """
   Returns an integer by the truncating the given number.
@@ -1057,22 +1200,31 @@ defmodule Kernel do
 
   """
   @spec trunc(number), do: integer
-  defmacro trunc(number)
+  def trunc(number) do
+    :erlang.trunc(number)
+  end
 
   @doc """
   Returns the size of a tuple.
   """
   @spec tuple_size(tuple), do: non_neg_integer
-  defmacro tuple_size(tuple)
+  def tuple_size(tuple) do
+    :erlang.tuple_size(tuple)
+  end
 
   @doc """
   Converts a tuple to a list.
   """
   @spec tuple_to_list(tuple), do: list
-  defmacro tuple_to_list(tuple)
+  def tuple_to_list(tuple) do
+    :erlang.tuple_to_list(tuple)
+  end
 
   @doc """
   Defines a module given by name with the given contents.
+
+  It returns the module name, the module binary and the
+  block contents result.
 
   ## Examples
 
@@ -1207,10 +1359,9 @@ defmodule Kernel do
       name   = :some_function
       args   = quote(do: [first_arg, second_arg])
       guards = quote(do: is_list(first_arg))
+      exprs  = quote(do: ...)
 
-      def name, args, guards do
-        # ...
-      end
+      def name, args, guards, do: exprs
 
   """
   defmacro def(name, args, guards, do: contents)
@@ -1241,7 +1392,7 @@ defmodule Kernel do
   """
   defmacro defp(name, args, guards, do: contents)
 
-  @doc """
+  @doc %B"""
   Define a record given by name and values.
 
   ## Examples
@@ -1263,12 +1414,20 @@ defmodule Kernel do
       IO.inspect FileInfo.new
       { FileInfo, nil, nil }
 
-  ## Default based functions
+  ## Extensions
 
-  Depending on the default value, Elixir will define helpers to interact
-  with the record. For example, ExUnit defines a record which keeps
-  track of how many tests were executed and the failures that happened
-  The record definition is similar to:
+  Besides defining readers and writers for each attribute. Elixir will
+  define extensions functions for each attribute. By default, it will
+  define an `update_#{attribute}` function to update the value. Such
+  functions expect a function as argument that receives the current value
+  and must return the new one:
+
+      file_info.update_atime(fn(_old) -> now() end) #=> Updates the value of atime
+
+  Besides, Elixir may define new functions depending on the default value.
+  For example, ExUnit defines a record which keeps track of how many tests
+  were executed and the failures that happened. The record definition is
+  similar to:
 
       defrecord Config, counter: 0, failures: []
 
@@ -1281,17 +1440,19 @@ defmodule Kernel do
 
       Config.new.increment_counter(10).counter #=> 10
 
-  Besides, if the default is a list, Elixir will define three helpers:
+  Besides, if the default is a list, Elixir will define two helpers:
 
   * `merge_field` - Receives keywords and merge it into the current value;
   * `prepend_field` - Receives another list and prepend its values
 
+  You can define your own extensions or disable them using the except
+  option:
+
+      defrecord Config, [counter: 0, failures: []], except: [:extensions]
+
   ## Documentation
 
   By default records are not documented and have @moduledoc set to false.
-  This can be changed by passing a moduledoc option after values:
-
-      defrecord Config, [counter: 0, failures: []], moduledoc: "A simple record"
 
   """
   defmacro defrecord(name, values, opts // [], do_block // []) do
@@ -1313,17 +1474,11 @@ defmodule Kernel do
   defmacro defexception(name, values, opts // [], do_block // []) do
     opts = Keyword.merge(opts, do_block)
     opts = Keyword.put(opts, :do, quote do
+      @moduledoc nil
       unquote(Keyword.get opts, :do)
       def exception(args), do: new(args)
       def exception(args, self), do: self
     end)
-
-    opts = case Keyword.key?(opts, :moduledoc) do
-      false ->
-        Keyword.put(opts, :moduledoc, nil)
-      _ ->
-        opts
-    end
 
     values = [{ :__exception__, :__exception__ }|values]
     record = Record.defrecord(name, values, opts)
@@ -1391,6 +1546,15 @@ defmodule Kernel do
   defmacro is_regex(thing) do
     quote do
       is_record(unquote(thing), Regex)
+    end
+  end
+
+  @doc """
+  Check if the given argument is a range.
+  """
+  defmacro is_range(thing) do
+    quote do
+      is_record(unquote(thing), Range)
     end
   end
 
@@ -1520,10 +1684,13 @@ defmodule Kernel do
   end
 
   @doc """
-  `use` is a simple mechanism for extending the current module with the
-  given module.
+  `use` is a simple mechanism for using a given module into
+  the current context.
 
   ## Examples
+
+  For example, in other to write tests using the ExUnit framework,
+  a developers should use the `ExUnit.Case` module:
 
       defmodule AssertionTest do
         use ExUnit.Case, async: true
@@ -1534,8 +1701,9 @@ defmodule Kernel do
       end
 
   By calling `use`, a hook called `__using__` will be invoked in
-  `ExUnit.Case` which will then do the proper setup. In other words,
-  `use` is simply a translation to:
+  `ExUnit.Case` which will then do the proper setup.
+
+  Simply put, `use` is simply a translation to:
 
       defmodule AssertionTest do
         require ExUnit.Case
@@ -1548,11 +1716,13 @@ defmodule Kernel do
 
   """
   defmacro use(module, args // []) do
-    expanded = Macro.expand module, __CALLER__
+    expanded = Macro.expand(module, __CALLER__)
 
     case is_atom(expanded) do
-      false -> raise ArgumentError, message: "invalid arguments for use, expected an atom or alias as argument"
-      true  ->
+      false ->
+        raise ArgumentError,
+          message: "invalid arguments for use, expected an atom or alias as argument"
+      true ->
         quote do
           require unquote(expanded)
           unquote(expanded).__using__(unquote(args))
@@ -1563,14 +1733,24 @@ defmodule Kernel do
   @doc """
   Inspect the given arguments according to the Binary.Inspect protocol.
 
+  ## Options
+
+  The following options are supported:
+
+  * :raw - tuples are not formatted as the inspect protocol, they are
+    always shown as tuples, defaults to false;
+
+  * :limit - the limit of items that are shown in tuples, bitstrings and
+    lists. Do not apply to strings;
+
   ## Examples
 
       inspect(:foo)
       #=> ":foo"
 
   """
-  defmacro inspect(arg) do
-    quote do: Binary.Inspect.inspect(unquote(arg))
+  defmacro inspect(arg, opts // []) do
+    quote do: Binary.Inspect.inspect(unquote(arg), unquote(opts))
   end
 
   @doc """
@@ -1601,31 +1781,43 @@ defmodule Kernel do
   end
 
   @doc """
-  Define elem to get Tuple element according to Elixir conventions.
-  We need to implement it as a macro to it can be used in guards.
+  Define elem to get Tuple element according to Elixir conventions
+  (i.e. it expects the tuple as first argument, zero-index based).
+
+  It is implemented as a macro so it can be used in guards.
 
   ## Example
 
-     tuple = { :foo, :bar, 3 }
-     elem(tuple, 1) #=> :foo
+      tuple = { :foo, :bar, 3 }
+      elem(tuple, 1) #=> :bar
 
   """
+  defmacro elem(tuple, index) when is_integer(index) do
+    quote do: :erlang.element(unquote(index + 1), unquote(tuple))
+  end
+
   defmacro elem(tuple, index) do
-    quote do: :erlang.element(unquote(index), unquote(tuple))
+    quote do: :erlang.element(unquote(index) + 1, unquote(tuple))
   end
 
   @doc """
-  Define setelem to set Tuple element according to Elixir conventions.
-  We need to implement it as a macro to it can be used in guards.
+  Define setelem to set Tuple element according to Elixir conventions
+  (i.e. it expects the tuple as first argument, zero-index based).
+
+  It is implemented as a macro so it can be used in guards.
 
   ## Example
 
-     tuple = { :foo, :bar, 3 }
-     setelem(tuple, 1, :baz) #=> { :baz, :bar, 3 }
+      tuple = { :foo, :bar, 3 }
+      setelem(tuple, 0, :baz) #=> { :baz, :bar, 3 }
 
   """
+  defmacro setelem(tuple, index, value) when is_integer(index) do
+    quote do: :erlang.setelement(unquote(index + 1), unquote(tuple), unquote(value))
+  end
+
   defmacro setelem(tuple, index, value) do
-    quote do: :erlang.setelement(unquote(index), unquote(tuple), unquote(value))
+    quote do: :erlang.setelement(unquote(index) + 1, unquote(tuple), unquote(value))
   end
 
   @doc """
@@ -1654,6 +1846,20 @@ defmodule Kernel do
   """
   defmacro rem(left, right) do
     quote do: __op__ :rem, unquote(left), unquote(right)
+  end
+
+  @doc """
+  Checks if the given argument is nil or not.
+  Allowed in guard clauses.
+
+  ## Examples
+
+      nil? 1    #=> false
+      nil? nil  #=> true
+
+  """
+  defmacro nil?(x) do
+    quote do: unquote(x) == nil
   end
 
   @doc """
@@ -1790,7 +1996,7 @@ defmodule Kernel do
         i -> i * 2
       end
 
-  The example above will return 20, because `i` is assgined to 10
+  The example above will return 20, because `i` is assigned to 10
   and then multiplied by 2. If you desire to match the value of `i`
   against the given condition, you need to use the `^` operator:
 
@@ -1895,7 +2101,7 @@ defmodule Kernel do
 
   ## Catching exits and Erlang errors
 
-  The catch clause works exactly the same as in Erlang. Therefore,
+  The catch clause works exactly the same as in : Therefore,
   one can also handle exits/errors coming from Erlang as below:
 
       try do
@@ -2003,23 +2209,8 @@ defmodule Kernel do
   defmacro @(expr)
 
   @doc """
-  Returns true if the `module` is loaded and contains a
-  public `function` with the given `arity`, otherwise false.
-
-  Notice that this function does not load the module in case
-  it is not loaded. Check `Code.ensure_loaded/1` for more
-  information.
-  """
-  @spec function_exported?(atom, atom, integer), do: boolean
-  defmacro function_exported?(module, function, arity) do
-    quote do
-      :erlang.function_exported(unquote(module), unquote(function), unquote(arity))
-    end
-  end
-
-  @doc """
   Provides an `if` macro. This macro expects the first argument to
-  be a condition and the rest are keywords arguments.
+  be a condition and the rest are keyword arguments.
 
   ## One-liner examples
 
@@ -2053,8 +2244,9 @@ defmodule Kernel do
   If you want to compare more than two clauses, you can use the `cond/1`
   macro.
   """
-  defmacro if(condition, [{:do,do_clause}|tail]) do
-    else_clause = Keyword.get(tail, :else, nil)
+  defmacro if(condition, clauses) do
+    do_clause = Keyword.get(clauses, :do, nil)
+    else_clause = Keyword.get(clauses, :else, nil)
 
     quote do
       case unquote(condition) do
@@ -2081,7 +2273,7 @@ defmodule Kernel do
 
   """
   defmacro cond([do: { :->, _, pairs }]) do
-    [{ [condition], clause }|t] = List.reverse pairs
+    [{ [condition], clause }|t] = :lists.reverse pairs
 
     new_acc =
       case condition do
@@ -2158,9 +2350,96 @@ defmodule Kernel do
   end
 
   @doc """
+  Returns a integer whose text representation is `some_binary`.
+
+  ## Examples
+
+      binary_to_integer "123" #=> 123
+
+  """
+  defmacro binary_to_integer(some_binary) do
+    quote do
+      list_to_integer(binary_to_list(unquote(some_binary)))
+    end
+  end
+
+  @doc """
+  Returns an integer whose text representation in base `base`
+  is `some_binary`.
+
+  ## Examples
+
+      binary_to_integer("3FF", 16) #=> 1023
+
+  """
+  defmacro binary_to_integer(some_binary, base) do
+    quote do
+      list_to_integer(binary_to_list(unquote(some_binary)), unquote(base))
+    end
+  end
+
+  @doc """
+  Returns a float whose text representation is `some_binary`.
+
+  ## Examples
+
+      binary_to_float "2.2017764e+0" #=> 2.2017764
+
+  """
+  defmacro binary_to_float(some_binary) do
+    quote do
+      list_to_float(binary_to_list(unquote(some_binary)))
+    end
+  end
+
+  @doc """
+  Returns a binary which corresponds to the text representation
+  of `some_integer`.
+
+  ## Examples
+
+      integer_to_binary 123 #=> "123"
+
+  """
+  defmacro integer_to_binary(some_integer) do
+    quote do
+      list_to_binary(integer_to_list(unquote(some_integer)))
+    end
+  end
+
+  @doc """
+  Returns a binary which corresponds to the text representation
+  of `some_integer` in base `base`.
+
+  ## Examples
+
+      integer_to_binary 77 #=> "77"
+
+  """
+  defmacro integer_to_binary(some_integer, base) do
+    quote do
+      list_to_binary(integer_to_list(unquote(some_integer), unquote(base)))
+    end
+  end
+
+  @doc """
+  Returns a binary which corresponds to the text representation
+  of `some_float`.
+
+  ## Examples
+
+      float_to_binary 7.0 #=> "7.00000000000000000000e+00"
+
+  """
+  defmacro float_to_binary(some_float) do
+    quote do
+      list_to_binary(float_to_list(unquote(some_float)))
+    end
+  end
+
+  @doc """
   Returns the atom whose text representation is
   `some_binary` in UTF8 encoding.
-  Allowed in guard clauses.
 
   ## Examples
 
@@ -2175,7 +2454,6 @@ defmodule Kernel do
 
   @doc """
   Works like `binary_to_atom` but the atom must exist.
-  Allowed in guard clauses.
 
   ## Examples
 
@@ -2191,7 +2469,7 @@ defmodule Kernel do
 
   @doc """
   Returns a binary which corresponds to the text representation
-  of `some_atom` in UTF8 encoding. Allowed in guard clauses.
+  of `some_atom` in UTF8 encoding.
 
   ## Examples
 
@@ -2205,7 +2483,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Concatenates two binaries. Allowed in guard clauses.
+  Concatenates two binaries.
 
   ## Examples
 
@@ -2405,7 +2683,7 @@ defmodule Kernel do
       end
 
   """
-  @spec raise(term), do: no_return
+  @spec raise(binary | atom | tuple), do: no_return
   def raise(msg) when is_binary(msg) do
     :erlang.error RuntimeError.new(message: msg)
   end
@@ -2431,9 +2709,30 @@ defmodule Kernel do
       raise ArgumentError, message: "Sample"
 
   """
-  @spec raise(term, term), do: no_return
+  @spec raise(tuple | atom, list), do: no_return
   def raise(exception, args) do
     :erlang.error exception.exception(args)
+  end
+
+  @doc """
+  Returns true if the `module` is loaded and contains a
+  public `function` with the given `arity`, otherwise false.
+
+  In case a tuple module is given, the `arity` is automatically
+  increased by one.
+
+  Notice that this function does not load the module in case
+  it is not loaded. Check `Code.ensure_loaded/1` for more
+  information.
+  """
+  @spec function_exported?(atom | tuple, atom, integer), do: boolean
+  def function_exported?(module, function, arity) do
+    case is_tuple(module) do
+      true  ->
+        :erlang.function_exported(:erlang.element(1, module), function, arity + 1)
+      false ->
+        :erlang.function_exported(module, function, arity)
+    end
   end
 
   @doc """
@@ -2442,7 +2741,7 @@ defmodule Kernel do
   are translated to `access(foo, bar)`.
 
   The usage of this protocol is to access a raw value in a
-  keywords list.
+  keyword list.
 
       sample = [a: 1, b: 2, c: 3]
       sample[:b] #=> 2
@@ -2503,25 +2802,37 @@ defmodule Kernel do
     caller = __CALLER__
     atom   = Macro.expand(element, caller)
 
-    case { is_atom(atom), caller.in_match? } do
-      { false, false } ->
-        quote do: Access.access(unquote(element), unquote(args))
-      { false, true } ->
-        raise "invalid usage of access protocol in signature"
-      { true, _ } ->
-        try do
-          atom.__access__(caller, args)
-        rescue
-          UndefinedFunctionError ->
-            # We first try to call __access__ and just then check if
-            # it is loaded so we allow the ParallelCompiler to solve
-            # conflicts.
-            case :code.ensure_loaded(atom) do
-              { :error, _ } ->
-                raise "expected module #{inspect atom} to be loaded and defined"
-              _ ->
-                raise "cannot use module #{inspect atom} in access protocol because it does not export __access__/2"
+    case is_atom(atom) and atom != nil do
+      true ->
+        fields =
+          try do
+            module = caller.module
+
+            # We are using the access protocol in the same
+            # module that defines it. It works, but we need
+            # to read the field values from @__record__.
+            case atom do
+              ^module -> Module.get_attribute(module, :__record__)
+              _ -> atom.__record__(:fields)
             end
+          rescue
+            UndefinedFunctionError ->
+              # We first try to call __access__ and just then check if
+              # it is loaded so we allow the ParallelCompiler to solve
+              # conflicts.
+              case :code.ensure_loaded(atom) do
+                { :error, _ } ->
+                  raise "expected module #{inspect atom} to be loaded and defined"
+                _ ->
+                  raise "cannot use module #{inspect atom} in access protocol because it does not export __record__/1"
+              end
+          end
+
+        Record.access(caller, atom, fields, args)
+      false ->
+        case caller.in_match? do
+          true  -> raise "invalid usage of access protocol in signature"
+          false -> quote do: Access.access(unquote(element), unquote(args))
         end
     end
   end
@@ -2549,19 +2860,19 @@ defmodule Kernel do
   * `:append_first` - If true, when delegated, first argument
     passed to the delegate will be relocated to the end of the
     arguments when dispatched to the target. The motivation behind
-    this is a disparity between conventions used in Elixir and Erlang.
+    this is a disparity between conventions used in Elixir and :
     Elixir's convention is to pass the "handle" as a first argument,
     while in Erlang the convention is to pass it as the last argument
 
   ## Examples
 
       defmodule MyList do
-        defdelegate reverse(list), to: Erlang.lists
-        defdelegate [reverse(list), map(callback, list)], to: Erlang.lists
-        defdelegate other_reverse(list), to: Erlang.lists, as: :reverse
+        defdelegate reverse(list), to: :lists
+        defdelegate [reverse(list), map(callback, list)], to: :lists
+        defdelegate other_reverse(list), to: :lists, as: :reverse
       end
 
-      MyList.reverse([1,2,3])
+      My:lists.reverse([1,2,3])
       #=> [3,2,1]
 
       MyList.other_reverse([1,2,3])
@@ -2577,29 +2888,13 @@ defmodule Kernel do
   end
 
   defp do_delegate(funs, opts) do
-    case :lists.any(match?({ n, a } when is_atom(n) and is_integer(a), &1), funs) do
-      true ->
-        IO.puts "Passing a pair fun/arity to defdelegate is deprecated. Please pass the function signature instead"
-      _ ->
-        :ok
-    end
-
     target = Keyword.get(opts, :to) ||
-      raise(ArgumentError, message: "Expected to: be given as argument")
+      raise(ArgumentError, message: "Expected to: to be given as argument")
 
     append_first = Keyword.get(opts, :append_first, false)
 
     lc fun inlist funs do
-      { name, args } =
-        case fun do
-          { name, arity } when is_atom(name) and is_integer(arity) ->
-            args = lc i inlist :lists.seq(1, arity) do
-              { binary_to_atom(<<?x, i + 64>>, :utf8), 0, :quoted }
-            end
-            { name, args }
-          _ ->
-            Erlang.elixir_clauses.extract_args(fun)
-        end
+      { name, args } = :elixir_clauses.extract_args(fun)
 
       actual_args =
         case append_first and args != [] do
@@ -2642,11 +2937,11 @@ defmodule Kernel do
 
   """
   defmacro __b__({ :<<>>, line, pieces }, []) do
-    { :<<>>, line, Binary.unescape_tokens(pieces) }
+    { :<<>>, line, Macro.unescape_tokens(pieces) }
   end
 
   @doc """
-  Handles the sigil %C. It simples returns a char list
+  Handles the sigil %C. It simply returns a char list
   without escaping characters and without interpolations.
 
   ## Examples
@@ -2673,11 +2968,11 @@ defmodule Kernel do
   # We can skip the runtime conversion if we are
   # creating a binary made solely of series of chars.
   defmacro __c__({ :<<>>, _line, [string] }, []) when is_binary(string) do
-    binary_to_list(Binary.unescape(string))
+    binary_to_list(Macro.unescape_binary(string))
   end
 
   defmacro __c__({ :<<>>, line, pieces }, []) do
-    binary = { :<<>>, line, Binary.unescape_tokens(pieces) }
+    binary = { :<<>>, line, Macro.unescape_tokens(pieces) }
     quote do: binary_to_list(unquote(binary))
   end
 
@@ -2691,19 +2986,19 @@ defmodule Kernel do
   """
 
   defmacro __r__({ :<<>>, _line, [string] }, options) when is_binary(string) do
-    binary = Binary.unescape(string, Regex.unescape_map(&1))
+    binary = Macro.unescape_binary(string, Regex.unescape_map(&1))
     regex  = Regex.compile!(binary, options)
     Macro.escape(regex)
   end
 
   defmacro __r__({ :<<>>, line, pieces }, options) do
-    binary = { :<<>>, line, Binary.unescape_tokens(pieces, Regex.unescape_map(&1)) }
+    binary = { :<<>>, line, Macro.unescape_tokens(pieces, Regex.unescape_map(&1)) }
     quote do: Regex.compile!(unquote(binary), unquote(options))
   end
 
   @doc """
   Handles the sigil %R. It returns a Regex pattern without escaping
-  nor interpreating interpolations.
+  nor interpreting interpolations.
 
   ## Examples
 
@@ -2734,7 +3029,7 @@ defmodule Kernel do
   end
 
   defp wrap_concatenation(other) do
-    { :|, 0, [other, :binary] }
+    { :::, 0, [other, { :binary, 0, nil }] }
   end
 
   # Builds cond clauses by nesting them recursively.

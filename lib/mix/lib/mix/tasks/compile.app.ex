@@ -13,7 +13,7 @@ defmodule Mix.Tasks.Compile.App do
   and "elixir" as application dependencies.
 
   You can optionally define an `application/0` function inside your
-  `Mix.Project` that returns a keywords list to further configure
+  `Mix.Project` that returns a keyword list to further configure
   your application according to OTP design principles:
 
   http://www.erlang.org/doc/design_principles/applications.html
@@ -31,7 +31,7 @@ defmodule Mix.Tasks.Compile.App do
   def run(args) do
     { opts, _ } = OptionParser.parse(args, flags: [:force])
 
-    project = Mix.Project.current
+    project = Mix.Project.get!
     config  = Mix.project
 
     app     = Keyword.get!(config, :app)
@@ -59,6 +59,8 @@ defmodule Mix.Tasks.Compile.App do
         best_guess
       end
 
+      properties = ensure_correct_properties(app, properties)
+
       contents = { :application, app, properties }
 
       File.mkdir_p!(File.dirname(target))
@@ -81,5 +83,12 @@ defmodule Mix.Tasks.Compile.App do
 
   defp modules_from(beams) do
     Enum.map beams, &1 /> File.basename /> File.rootname('.beam') /> list_to_atom
+  end
+
+  defp ensure_correct_properties(app, properties) do
+    properties = Keyword.from_enum(properties)
+    properties = Keyword.put properties, :description, 
+                             to_char_list(properties[:description] || app)
+    Keyword.put properties, :registered, (properties[:registered] || [])
   end
 end

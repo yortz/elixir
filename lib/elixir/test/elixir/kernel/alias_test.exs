@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Kernel.AliasTest.Nested do
   def value, do: 1
@@ -10,7 +10,7 @@ defmodule Kernel.AliasTest do
   use ExUnit.Case, async: true
 
   test :alias_erlang do
-    alias Erlang.lists, as: MyList
+    alias :lists, as: MyList
     assert MyList.flatten([1,[2],3]) == [1,2,3]
     assert Elixir.MyList.Bar == :"Elixir-MyList-Bar"
     assert MyList.Bar == :"Elixir-lists-Bar"

@@ -1,7 +1,14 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Mix.CLITest do
   use MixTest.Case
+
+  test "env" do
+    in_fixture "custom_mixfile", fn ->
+      env = System.cmd %b(MIX_ENV=prod #{elixir_executable} #{mix_executable} run "IO.puts Mix.env")
+      assert env =~ %r"prod"
+    end
+  end
 
   test "default task" do
     in_fixture "custom_mixfile", fn ->
@@ -34,6 +41,9 @@ defmodule Mix.CLITest do
       output = mix "test"
       assert File.regular?("ebin/Elixir-A.beam")
       assert output =~ %r"1 tests, 0 failures"
+
+      output = mix "test test/hidden.ex"
+      assert output =~ %r"1 tests, 1 failures"
     end
   end
 

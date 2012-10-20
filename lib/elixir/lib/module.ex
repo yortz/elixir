@@ -1,5 +1,5 @@
 defmodule Module do
-  require Erlang.ets, as: ETS
+  require :ets, as: ETS
 
   @moduledoc """
   This module provides many functions to deal with modules during
@@ -11,6 +11,15 @@ defmodule Module do
   to inspect runtime data. Most of the runtime data can be inspected
   via the `__info__(attr)` function attached to each compiled module.
   """
+
+  @doc """
+  Check if a module is open, i.e. it is currently being defined
+  and its attributes and functions can be modified.
+  """
+  def open?(module) do
+    table = data_table_for(module)
+    table == ETS.info(table, :name)
+  end
 
   @doc """
   Evalutes the quotes contents in the given module context.
@@ -36,7 +45,8 @@ defmodule Module do
       Foo.sum(1, 2) #=> 3
 
   This function also accepts a `Macro.Env` as first argument. This
-  is useful to evalute the quoted contents inside an existing environment:
+  is useful to evalute the quoted contents inside an existing
+  environment (considering the environemnt module, line and file):
 
       defmodule Foo do
         contents = quote do: (def sum(a, b), do: a + b)
@@ -54,15 +64,48 @@ defmodule Module do
 
   def eval_quoted(module, quoted, binding, opts) do
     assert_not_compiled!(:eval_quoted, module)
+    :elixir_module.eval_quoted(module, quoted, binding, opts)
+  end
 
-    binding = Erlang.elixir_module.binding_for_eval(module, binding)
-    scope   = Erlang.elixir_module.scope_for_eval(module, opts)
+  @doc """
+  Creates a module with the given name and given by
+  the given quoted expressions. The line where the module
+  is defined and its file can be given as options.
 
-    Erlang.elixir_def.reset_last(module)
+  ## Examples
 
-    line = Keyword.get opts, :line, 1
-    { value, binding, _scope } = Erlang.elixir.eval_quoted([quoted], binding, line, scope)
-    { value, binding }
+      contents =
+        quote do
+          def world, do: true
+        end
+
+      Module.create(Hello, contents, __ENV__)
+
+      Hello.world #=> true
+
+  ## Differences with `defmodule`
+
+  `Module.create` works similarly to `defmodule` and
+  return the same results. While one could also use
+  `defmodule` to define modules dynamically, this
+  function is preferred when the module body is given
+  by a quoted expression.
+
+  Another important distinction is that `defmodule`
+  blends into the scope it is invoked, allowing you
+  to access all variables, imports and requires from
+  the module. `Module.create`, on the other hand, creates
+  a new scope so imports, requires, etc are not inherited.
+  """
+  def create(module, quoted, opts // [])
+
+  def create(module, quoted, Macro.Env[] = env) do
+    create(module, quoted, env.location)
+  end
+
+  def create(module, quoted, opts) when is_atom(module) do
+    line = opts[:line] || 1
+    :elixir_module.compile(line, module, quoted, [], :elixir.scope_for_eval(opts))
   end
 
   @doc """
@@ -77,7 +120,7 @@ defmodule Module do
 
   """
   def concat(list) when is_list(list) do
-    Erlang.elixir_aliases.concat(list)
+    :elixir_aliases.concat(list)
   end
 
   @doc """
@@ -92,7 +135,7 @@ defmodule Module do
 
   """
   def concat(left, right) do
-    Erlang.elixir_aliases.concat([left, right])
+    :elixir_aliases.concat([left, right])
   end
 
   @doc """
@@ -111,7 +154,7 @@ defmodule Module do
 
   """
   def safe_concat(list) when is_list(list) do
-    Erlang.elixir_aliases.safe_concat(list)
+    :elixir_aliases.safe_concat(list)
   end
 
   @doc """
@@ -130,7 +173,7 @@ defmodule Module do
 
   """
   def safe_concat(left, right) do
-    Erlang.elixir_aliases.safe_concat([left, right])
+    :elixir_aliases.safe_concat([left, right])
   end
 
   @doc """
@@ -153,7 +196,7 @@ defmodule Module do
   end
 
   def add_doc(module, line, kind, tuple, signature, doc) when
-      is_binary(doc) or is_boolean(doc) or doc == nil do
+      kind in [:def, :defmacro, :defcallback] and (is_binary(doc) or is_boolean(doc) or doc == nil) do
     assert_not_compiled!(:add_doc, module)
     table = docs_table_for(module)
 
@@ -161,12 +204,18 @@ defmodule Module do
       { simplify_signature(x, line, acc), acc + 1 }
     end
 
-    case { ETS.lookup(table, tuple), doc } do
-      { [], _ } ->
+    case ETS.lookup(table, tuple) do
+      [] ->
         ETS.insert(table, { tuple, line, kind, signature, doc })
         :ok
-      { [{ tuple, line, kind, old, doc }], nil } ->
-        ETS.insert(table, { tuple, line, kind, merge_signatures(old, signature, 1), doc })
+      [{ tuple, line, old_kind, old_sign, old_doc }] when old_doc == nil or doc == nil or old_doc == doc ->
+        ETS.insert(table, {
+          tuple,
+          line,
+          merge_kind(old_kind, kind),
+          merge_signatures(old_sign, signature, 1),
+          doc || old_doc
+        })
         :ok
       _ ->
         { :error, :existing_doc }
@@ -198,7 +247,11 @@ defmodule Module do
   defp simplify_signature(other, line, i) when is_binary(other),  do: { :"binary#{i}", line, :guess }
   defp simplify_signature(_, line, i), do: { :"arg#{i}", line, :guess }
 
-  # Merge signatures
+  # Merge
+
+  defp merge_kind(:defcallback, new), do: new
+  defp merge_kind(old, :defcallback), do: old
+  defp merge_kind(_old, new),         do: new
 
   defp merge_signatures([h1|t1], [h2|t2], i) do
     [merge_signature(h1, h2, i)|merge_signatures(t1, t2, i + 1)]
@@ -268,30 +321,6 @@ defmodule Module do
     end
   end
 
-  @doc false
-  def function_defined?(module, tuple) do
-    IO.puts "Module.function_defined? is deprecated in favor of Module.defines?"
-    defines?(module, tuple)
-  end
-
-  @doc false
-  def function_defined?(module, tuple, kind) do
-    IO.puts "Module.function_defined? is deprecated in favor of Module.defines?"
-    defines?(module, tuple, kind)
-  end
-
-  @doc false
-  def defined_functions(module) do
-    IO.puts "Module.defined_functions is deprecated in favor of Module.definitions_in"
-    definitions_in(module)
-  end
-
-  @doc false
-  def defined_functions(module, kind) do
-    IO.puts "Module.defined_functions is deprecated in favor of Module.definitions_in"
-    definitions_in(module, kind)
-  end
-
   @doc """
   Return all functions defined in the given module.
 
@@ -341,11 +370,11 @@ defmodule Module do
         [clause] ->
           ETS.delete(table, tuple)
 
-          old    = Module.read_attribute(module, :__overridable)
+          old    = get_attribute(module, :__overridable)
           new    = [ { tuple, { 1, [clause] } } ]
           merged = :orddict.merge(fn(_k, { count, v1 }, _v2) -> { count + 1, [clause|v1] } end, old, new)
 
-          Module.add_attribute(module, :__overridable, merged)
+          put_attribute(module, :__overridable, merged)
         _ ->
           { name, arity } = tuple
           raise "Cannot make function #{name}/#{arity} overridable because it was not defined"
@@ -353,27 +382,28 @@ defmodule Module do
     end
   end
 
-  def add_compile_callback(module, target, fun // :__compiling__) do
-    IO.puts "Module.add_compile_callback(module, target, fun) is deprecated in favor of " <>
-      "Module.add_attribute(module, :before_compile, { target, fun })"
-    assert_not_compiled!(:add_compile_callback, module)
-    add_attribute(module, :before_compile, { target, fun })
+  @doc """
+  Returns true if the given tuple in module is marked as overridable.
+  """
+  def overridable?(module, tuple) do
+    key = List.keyfind(get_attribute(module, :__overridable), tuple, 0)
+    match? { _, { _, [_|_] } }, key
   end
 
   @doc """
-  Adds an Erlang attribute to the given module with the given
-  key and value. The semantics of adding the attribute depends
+  Puts an Erlang attribute to the given module with the given
+  key and value. The semantics of putting the attribute depends
   if the attribute was registered or not via `register_attribute/2`.
 
   ## Examples
 
       defmodule MyModule do
-        Module.add_attribute __MODULE__, :custom_threshold_for_lib, 10
+        Module.put_attribute __MODULE__, :custom_threshold_for_lib, 10
       end
 
   """
-  def add_attribute(module, key, value) when is_atom(key) do
-    assert_not_compiled!(:add_attribute, module)
+  def put_attribute(module, key, value) when is_atom(key) do
+    assert_not_compiled!(:put_attribute, module)
     table = data_table_for(module)
     value = normalize_attribute(key, value)
     acc   = ETS.lookup_element(table, :__acc_attributes, 2)
@@ -391,25 +421,31 @@ defmodule Module do
     ETS.insert(table, { key, new })
   end
 
+  @doc false
+  def add_attribute(module, key, value) when is_atom(key) do
+    IO.write "[WARNING] Module.add_attribute is deprecated, please use Module.put_attribute instead\n#{Exception.formatted_stacktrace}"
+    put_attribute(module, key, value)
+  end
+
   @doc """
-  Reads the given attribute from a module. If the attribute
+  Gets the given attribute from a module. If the attribute
   was marked as accumulate with `Module.register_attribute`,
   a list is always returned.
 
   ## Examples
 
       defmodule Foo do
-        Module.add_attribute __MODULE__, :value, 1
-        Module.read_attribute __MODULE__, :value #=> 1
+        Module.put_attribute __MODULE__, :value, 1
+        Module.get_attribute __MODULE__, :value #=> 1
 
         Module.register_attribute __MODULE__, :value, accumulate: true
-        Module.add_attribute __MODULE__, :value, 1
-        Module.read_attribute __MODULE__, :value #=> [1]
+        Module.put_attribute __MODULE__, :value, 1
+        Module.get_attribute __MODULE__, :value #=> [1]
       end
 
   """
-  def read_attribute(module, key) when is_atom(key) do
-    assert_not_compiled!(:read_attribute, module)
+  def get_attribute(module, key) when is_atom(key) do
+    assert_not_compiled!(:get_attribute, module)
     table = data_table_for(module)
 
     case ETS.lookup(table, key) do
@@ -420,13 +456,19 @@ defmodule Module do
     end
   end
 
+  @doc false
+  def read_attribute(module, key) when is_atom(key) do
+    IO.write "[WARNING] Module.read_attribute is deprecated, please use Module.get_attribute instead\n#{Exception.formatted_stacktrace}"
+    get_attribute(module, key)
+  end
+
   @doc """
   Deletes all attributes that matches the given key.
 
   ## Examples
 
       defmodule MyModule do
-        Module.add_attribute __MODULE__, :custom_threshold_for_lib, 10
+        Module.put_attribute __MODULE__, :custom_threshold_for_lib, 10
         Module.delete_attribute __MODULE__, :custom_threshold_for_lib
       end
 
@@ -454,7 +496,7 @@ defmodule Module do
 
   By default, both options are true. Which means that registering
   an attribute without passing any options will revert the attribute
-  behavior to exactly the same expected in Erlang.
+  behavior to exactly the same expected in :
 
   ## Examples
 
@@ -484,21 +526,47 @@ defmodule Module do
     end
   end
 
+  @doc """
+  Split the given module name into binary parts.
+
+  ## Examples
+
+      Module.split Very.Long.Module.Name.And.Even.Longer
+      #=> ["Very", "Long", "Module", "Name", "And", "Even", "Longer"]
+
+  """
+  def split(module) do
+    tl(String.split(to_binary(module), "-"))
+  end
+
   @doc false
   # Used internally to compile documentation. This function
   # is private and must be used only internally.
-  def compile_doc(module, line, kind, pair, signature) do
-    doc = read_attribute(module, :doc)
-    result = add_doc(module, line, kind, pair, signature, doc)
+  def compile_doc(env, kind, name, args, _guards, body) do
+    module = env.module
+    line   = env.line
+    arity  = length(args)
+    pair   = { name, arity }
+    doc    = get_attribute(module, :doc)
+    kind   = if kind == :def and body == nil and module != Kernel, do: :defcallback, else: kind
+
+    case add_doc(module, line, kind, pair, args, doc) do
+      :ok ->
+        :ok
+      { :error, :private_doc } ->
+        IO.puts "#{env.file}:#{line} function #{name}/#{arity} is private, @doc's are always discarded for private functions"
+      { :error, :existing_doc } ->
+        IO.puts "#{env.file}:#{line} @doc's for function #{name}/#{arity} have been given more than once, the first version is being kept"
+    end
+
     delete_attribute(module, :doc)
-    result
   end
 
   @doc false
   # Used internally to compile types. This function
   # is private and must be used only internally.
   def compile_type(module, key, value) when is_atom(key) do
-    assert_not_compiled!(:add_attribute, module)
+    assert_not_compiled!(:put_attribute, module)
     table = data_table_for(module)
 
     new =
@@ -525,8 +593,9 @@ defmodule Module do
   defp normalize_attribute(:file, { binary, line }) when is_binary(binary), do: { binary_to_list(binary), line }
   defp normalize_attribute(:file, other) when not is_tuple(other),          do: normalize_attribute(:file, { other, 1 })
 
-  defp normalize_attribute(key, atom) when key in [:before_compile, :after_compile] and is_atom(atom) do
-    { atom, key }
+  defp normalize_attribute(key, atom) when is_atom(atom) and
+      key in [:before_compile, :after_compile, :on_definition] do
+    { atom, :"__#{key}__" }
   end
 
   defp normalize_attribute(key, _value) when key in [:type, :typep, :export_type, :opaque, :callback] do
@@ -538,25 +607,20 @@ defmodule Module do
     value
   end
 
-  defp compiled?(module) do
-    table = data_table_for(module)
-    table == ETS.info(table, :name)
-  end
-
   defp data_table_for(module) do
-    list_to_atom Erlang.lists.concat([:d, module])
+    module
   end
 
   defp function_table_for(module) do
-    list_to_atom Erlang.lists.concat([:f, module])
+    list_to_atom :lists.concat([:f, module])
   end
 
   defp docs_table_for(module) do
-    list_to_atom Erlang.lists.concat([:o, module])
+    list_to_atom :lists.concat([:o, module])
   end
 
   defp assert_not_compiled!(fun, module) do
-    compiled?(module) ||
+    open?(module) ||
       raise ArgumentError,
         message: "could not call #{fun} on module #{inspect module} because it was already compiled"
   end

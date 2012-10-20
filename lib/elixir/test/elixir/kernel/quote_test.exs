@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Kernel.QuoteTest.Hygiene do
   defmacro no_interference do
@@ -69,8 +69,33 @@ defmodule Kernel.QuoteTest do
       67,
       [
         [file: __FILE__],
-        [do: { :bar, 67, [1,2,3] }]
+        { :bar, 67, [1,2,3] }
       ]
     }
+  end
+
+  test :quote_line_var do
+    ## DO NOT MOVE THIS LINE
+    line = __ENV__.line
+    assert quote(line: line, do: bar(1,2,3)) == { :bar, 79, [1,2,3] }
+  end
+
+  test :unquote_call do
+    assert quote(do: foo(bar)[:baz])
+    assert quote(do: unquote(:bar)()) == quote(do: bar())
+    assert quote(do: unquote(:bar)(1) do 2 + 3 end) == quote(do: bar(1) do 2 + 3 end)
+    assert quote(do: foo.unquote(:bar)) == quote(do: foo.bar)
+    assert quote(do: foo.unquote(:bar)(1)) == quote(do: foo.bar(1))
+    assert quote(do: foo.unquote(:bar)(1) do 2 + 3 end) == quote(do: foo.bar(1) do 2 + 3 end)
+  end
+
+  test :splice_on_root do
+    contents = [1, 2, 3]
+    assert quote(do: unquote_splicing(contents)) == quote do: (1; 2; 3)
+  end
+
+  test :splice_on_pipe do
+    contents = [1, 2, 3]
+    assert quote(do: [unquote_splicing(contents)|[1,2,3]]) == [1,2,3,1,2,3]
   end
 end

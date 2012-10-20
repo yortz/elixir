@@ -5,6 +5,7 @@ defmodule Mix.Task do
   A simple module that provides conveniences for creating tasks.
   """
 
+  @doc false
   def behaviour_info(:callbacks) do
     [run: 1]
   end
@@ -15,7 +16,7 @@ defmodule Mix.Task do
       Module.register_attribute __CALLER__.module, &1, accumulate: false
 
     quote do
-      @behavior Mix.Task
+      @behaviour Mix.Task
     end
   end
 
@@ -60,7 +61,7 @@ defmodule Mix.Task do
   Returns the shortdoc or `nil`.
   """
   def shortdoc(module) when is_atom(module) do
-    case List.keyfind module.__info__(:attributes), :shortdoc, 1 do
+    case List.keyfind module.__info__(:attributes), :shortdoc, 0 do
       { :shortdoc, [shortdoc] } -> shortdoc
       _ -> nil
     end
@@ -70,7 +71,7 @@ defmodule Mix.Task do
   Checks if the task is hidden or not. Returns a boolean.
   """
   def hidden?(module) when is_atom(module) do
-    case List.keyfind module.__info__(:attributes), :hidden, 1 do
+    case List.keyfind module.__info__(:attributes), :hidden, 0 do
       { :hidden, [bool] } -> bool
       _ -> false
     end

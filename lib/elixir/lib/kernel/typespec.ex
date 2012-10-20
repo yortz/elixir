@@ -29,7 +29,7 @@ defmodule Kernel.Typespec do
   to get such information.
   """
   def get_types(module) do
-    Module.read_attribute(module, :type) ++ Module.read_attribute(module, :opaque)
+    Module.get_attribute(module, :type) ++ Module.get_attribute(module, :opaque)
   end
 
   @doc """
@@ -48,7 +48,7 @@ defmodule Kernel.Typespec do
 
   # Handle unions
   defp typespec({ :|, line, [_,_] } = exprs, vars, caller) do
-    exprs = List.reverse(collect_union(exprs))
+    exprs = Enum.reverse(collect_union(exprs))
     union = lc e inlist exprs, do: typespec(e, vars, caller)
     { :type, line, :union, union }
   end
@@ -79,7 +79,7 @@ defmodule Kernel.Typespec do
 
   # Handle type operator
   defp typespec({:"::", line, [var, expr] }, vars, caller) do
-    left  = typespec(var, [elem(var,1)|vars], caller)
+    left  = typespec(var, [elem(var, 0)|vars], caller)
     right = typespec(expr, vars, caller)
     { :ann_type, line, [left, right] }
   end
@@ -113,8 +113,8 @@ defmodule Kernel.Typespec do
   # Handle funs
   defp typespec({:fun, line, arguments}, vars, caller) when is_list(arguments) do
     args =
-      case List.reverse(arguments) do
-        [[{:do,h}]|t] -> fn_args(line, List.reverse(t), h, vars, caller)
+      case Enum.reverse(arguments) do
+        [[{:do,h}]|t] -> fn_args(line, Enum.reverse(t), h, vars, caller)
         [] -> []
         _  -> [fn_args(line, arguments, vars, caller)]
       end
@@ -220,6 +220,7 @@ defmodule Kernel.Typespec do
   end
 
   defp _defspec(type, caller, {name, line, args},[{:do,return}]) do
+    if is_atom(args), do: args = []
     spec  = { :type, line, :fun, fn_args(line, args, return, [], caller) }
     code  = Macro.escape { {type, { name, length(args) }}, [spec] }
     table = spec_table_for(caller.module)
@@ -232,7 +233,7 @@ defmodule Kernel.Typespec do
   end
 
   defp spec_table_for(module) do
-    table = list_to_atom Erlang.lists.concat([:s, module])
+    table = list_to_atom :lists.concat([:s, module])
     unless table == :ets.info(table, :name), do:
       raise(ArgumentError, message: "cannot manage specs for #{inspect module} because it was already compiled")
     table

@@ -1,38 +1,7 @@
-defmodule Range do
-  def __access__(caller, arg), do: Record.access(caller, __MODULE__, __record__(:fields), arg)
-  def __record__(kind, _),     do: __record__(kind)
-  def __record__(:name),       do: __MODULE__
-  def __record__(:fields),     do: [{:first,nil},{:last,nil}]
-
-  @doc """
-  Returns a new range based on the given options.
-
-  ## Examples
-
-      Range.new first: 1, last: 10
-
+defrecord Range, [:first, :last] do
+  @moduledoc """
+  Defines a Range.
   """
-  def new(options) do
-    {
-      __MODULE__,
-      Keyword.get!(options, :first),
-      Keyword.get!(options, :last)
-    }
-  end
-
-  @doc """
-  Returns the first item of the range.
-  """
-  def first(range) do
-    elem(range, 2)
-  end
-
-  @doc """
-  Returns the last item of the range.
-  """
-  def last(range) do
-    elem(range, 3)
-  end
 end
 
 defprotocol Range.Iterator do
@@ -62,16 +31,13 @@ defimpl Enum.Iterator, for: Range do
   end
 end
 
-defimpl Enum.OrdIterator, for: Range do
-  def iterator(range) do
-    Enum.Iterator.Range.iterator(range)
+defimpl Range.Iterator, for: Number do
+  def iterator(first, Range[first: f, last: last]) when is_integer(first) and is_integer(last) and last < f do
+    fn(current) ->
+      if current < last, do: :stop, else: { current, current - 1 }
+    end
   end
 
-  def to_list({ h, next }, iterator), do: [h|to_list(iterator.(next), iterator)]
-  def to_list(:stop, _),              do: []
-end
-
-defimpl Range.Iterator, for: Number do
   def iterator(first, Range[last: last]) when is_integer(first) and is_integer(last) do
     fn(current) ->
       if current > last, do: :stop, else: { current, current + 1 }

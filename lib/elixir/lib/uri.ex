@@ -19,35 +19,45 @@ defmodule URI do
   that implements the Binary.Chars protocol (i.e. can be converted
   to binary).
   """
-  def encode_query(l), do: Enum.join(Enum.map(l, pair(&1)), "&")
+  def encode_query(l), do: Enum.map_join(l, "&", pair(&1))
 
   @doc """
   Given a query string of the form "key1=value1&key=value2...", produces an
   orddict with one entry for each key-value pair. Each key and value will be a
   binary. It also does percent-unescaping of both keys and values.
 
-  Returns nil if the query string is malformed.
+  Use decoder/1 if you want to customize or iterate each value manually.
   """
-  def decode_query(q, dict // Orddict.new) do
-    if Regex.match?(%r/^\s*$/, q) do
-      dict
-    else
-      parts = Regex.split %r/&/, to_binary(q)
-      impl  = Dict.__impl_for__!(dict)
+  def decode_query(q, dict // OrdDict.new) do
+    Enum.reduce query_decoder(q), dict, fn({ k, v }, acc) -> Dict.put(acc, k, v) end
+  end
 
-      try do
-        List.foldl parts, dict, fn kvstr, acc ->
-          case Regex.split(%r/=/, kvstr) do
-            [ key, value ] when key != "" ->
-              impl.put acc, decode(key), decode(value)
-            _ ->
-              throw :malformed_query_string
-          end
-        end
-      catch
-        :malformed_query_string -> nil
+  @doc """
+  Returns an iterator function over the query string that decodes
+  the query string in steps.
+  """
+  def query_decoder(q) do
+    fn -> { do_decoder(&1), do_decoder(to_binary(q)) } end
+  end
+
+  defp do_decoder("") do
+    :stop
+  end
+
+  defp do_decoder(q) do
+    next =
+      case :binary.split(q, "&") do
+        [first, rest] -> rest
+        [first]       -> ""
       end
-    end
+
+    current =
+      case :binary.split(first, "=") do
+        [ key, value ] -> { decode(key), decode(value) }
+        [ key ]        -> { decode(key), nil }
+      end
+
+    { current, next }
   end
 
   defp pair({k, v}) do
@@ -57,17 +67,17 @@ defmodule URI do
   @doc """
   Percent (URL) encodes a URI.
   """
-  def encode(s), do: bc <<c>> inbits s, do: <<percent(c)|:binary>>
+  def encode(s), do: bc <<c>> inbits s, do: <<percent(c) :: binary>>
 
   defp percent(32), do: <<?+>>
   defp percent(?-), do: <<?->>
   defp percent(?_), do: <<?_>>
   defp percent(?.), do: <<?.>>
 
-  defp percent(c) when
-    c >= ?0 and c <= ?9 when
-    c >= ?a and c <= ?z when
-    c >= ?A and c <= ?Z do
+  defp percent(c)
+      when c >= ?0 and c <= ?9
+      when c >= ?a and c <= ?z
+      when c >= ?A and c <= ?Z do
     <<c>>
   end
 
@@ -84,11 +94,11 @@ defmodule URI do
   @doc """
   Unpercent (URL) decodes a URI.
   """
-  def decode(<<?%, hex1, hex2, tail |:binary >>) do
+  def decode(<<?%, hex1, hex2, tail :: binary >>) do
     << bsl(hex2dec(hex1), 4) + hex2dec(hex2) >> <> decode(tail)
   end
 
-  def decode(<<head, tail |:binary >>) do
+  def decode(<<head, tail :: binary >>) do
     <<check_plus(head)>> <> decode(tail)
   end
 
@@ -98,7 +108,7 @@ defmodule URI do
   defp hex2dec(n) when n in ?0..?9, do: n - ?0
 
   defp check_plus(?+), do: 32
-  defp check_plus(c), do: c
+  defp check_plus(c),  do: c
 
   @doc """
   Parses a URI into components.
@@ -121,7 +131,7 @@ defmodule URI do
   def parse(s) do
     # From http://tools.ietf.org/html/rfc3986#appendix-B
     regex = %r/^(([^:\/?#]+):)?(\/\/([^\/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?/
-    parts = nillify(Regex.run(regex, s))
+    parts = nillify(Regex.run(regex, to_binary(s)))
 
     destructure [_, _, scheme, _, authority, path, _, query, _, fragment], parts
     { userinfo, host, port } = split_authority(authority)

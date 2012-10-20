@@ -1,4 +1,4 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule CodeTest do
   use ExUnit.Case, async: true
@@ -29,8 +29,22 @@ defmodule CodeTest do
   end
 
   test :require do
-    Code.require_file fixture_path("code_sample"), __FILE__
+    Code.require_file fixture_path("code_sample.exs")
     assert fixture_path("code_sample.exs") in Code.loaded_files
+    assert Code.require_file(fixture_path("code_sample.exs")) == nil
+
+    Code.unload_files [fixture_path("code_sample.exs")]
+    refute fixture_path("code_sample.exs") in Code.loaded_files
+    assert Code.require_file(fixture_path("code_sample.exs")) != nil
+  end
+
+  test :path_manipulation do
+    path = File.expand_path("../binary", __FILE__)
+    Code.prepend_path path
+    assert binary_to_list(path) in :code.get_path
+
+    Code.delete_path path
+    refute binary_to_list(path) in :code.get_path
   end
 
   test :file do
@@ -40,6 +54,11 @@ defmodule CodeTest do
   test :string_to_ast do
     assert { :ok, quote line: 1, do: 1 + 2 } = Code.string_to_ast("1 + 2")
     assert { :error, _ } = Code.string_to_ast("a.1")
+  end
+
+  test :string_to_ast_existing_atoms_only do
+    assert :badarg = catch_error(Code.string_to_ast(":thereisnosuchatom", existing_atoms_only: true))
+    assert :badarg = catch_error(Code.string_to_ast!(":thereisnosuchatom", existing_atoms_only: true))
   end
 
   test :string_to_ast! do
@@ -71,5 +90,15 @@ defmodule CodeTest do
   test :compile_info_returned_with_source_accessible_through_keyword_module do
     compile = __MODULE__.__info__(:compile)
     assert Keyword.get(compile, :source) != nil
+  end
+
+  test :ensure_loaded? do
+    assert Code.ensure_loaded?(__MODULE__)
+    refute Code.ensure_loaded?(Unknown.Module)
+  end
+
+  test :ensure_compiled? do
+    assert Code.ensure_compiled?(__MODULE__)
+    refute Code.ensure_compiled?(Unknown.Module)
   end
 end

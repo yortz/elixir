@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule Kernel.Overridable do
   def sample do
@@ -17,13 +17,21 @@ defmodule Kernel.Overridable do
     { super?, 2 }
   end
 
+  false = Module.overridable? __MODULE__, { :explicit_nested_super, 0 }
+
   defoverridable [sample: 0, with_super: 0, without_super: 0, explicit_nested_super: 0]
+
+  true = Module.overridable? __MODULE__, { :explicit_nested_super, 0 }
 
   def explicit_nested_super do
     { super, super?, 1 }
   end
 
+  false = Module.overridable? __MODULE__, { :explicit_nested_super, 0 }
+
   defoverridable [explicit_nested_super: 0]
+
+  true = Module.overridable? __MODULE__, { :explicit_nested_super, 0 }
 
   def implicit_nested_super do
     { super?, 1 }
@@ -134,12 +142,12 @@ defmodule Kernel.OverridableTest do
   end
 
   test "overridable definitions are private" do
-    refute {:"OVERRIDABLE-0-with_super",0} in Overridable.__info__(:exports)
+    refute {:"with_super (overridable 0)",0} in Overridable.__info__(:exports)
   end
 
   test "invalid super call" do
     try do
-      Erlang.elixir.eval 'defmodule Foo.Forwarding do\ndef bar, do: 1\ndefoverridable [bar: 0]\ndef foo, do: super\nend', []
+      :elixir.eval 'defmodule Foo.Forwarding do\ndef bar, do: 1\ndefoverridable [bar: 0]\ndef foo, do: super\nend', []
       flunk "expected eval to fail"
     rescue
       error ->

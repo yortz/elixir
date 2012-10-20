@@ -18,10 +18,38 @@ defmodule Mix.Tasks.Compile do
 
       [compilers: [:elixir, :mycompiler, :app]]
 
+  ## Common configuration
+
+  The following options are usually shared by different compilers:
+
+  * `:source_paths` - directories to find source files.
+    Defaults to `["lib"]`, can be configured as:
+
+        [source_paths: ["lib", "other"]]
+
+  * `:compile_path` - directory to output compiled files.
+    Defaults to `"ebin"`, can be configured as:
+
+        [compile_path: "ebin"]
+
+  * `:compile_first` - which files need to be compiled first.
+    They need to be a subset of the files found in `source_paths`.
+
+        [compile_first: ["lib/foo.ex", "lib/bar.ex"]]
+
+  * `:watch_exts` - extensions to watch in order to trigger
+     a compilation:
+
+        [watch_exts: [:ex, :eex]]
+
+  * `:compile_exts` - extensions to compile whenever there
+    is a change:
+
+        [compile_exts: [:ex]]
+
   ## Command line options
 
-  * `--list`     - List all enabled compilers.
-  * `--no-check` - Skip dependencies check before compilation.
+  * `--list` - List all enabled compilers.
 
   """
   def run(["--list"]) do
@@ -31,9 +59,9 @@ defmodule Mix.Tasks.Compile do
     modules = Mix.Task.all_modules
 
     docs = lc module inlist modules,
-             task = Mix.Task.task_name(module),
-             match?("compile." <> _, task),
-             doc = Mix.Task.shortdoc(module) do
+              task = Mix.Task.task_name(module),
+              match?("compile." <> _, task),
+              doc = Mix.Task.shortdoc(module) do
       { task, doc }
     end
 
@@ -51,17 +79,23 @@ defmodule Mix.Tasks.Compile do
   end
 
   def run(args) do
-    Mix.Task.run "deps.loadpaths", args
+    Mix.Task.run "loadpaths", args
 
-    Enum.each get_compilers, fn(compiler) ->
-      Mix.Task.run "compile.#{compiler}", args
+    changed = Enum.reduce get_compilers, false, fn(compiler, acc) ->
+      res = Mix.Task.run "compile.#{compiler}", args
+      acc or res != :noop
     end
 
-    Mix.Task.run "loadpaths"
+    # If any of the tasks above returns something different
+    # than :noop, it means they produced something, so we
+    # touch the common target `compile_path`. Notice that
+    # we choose :noop since it is also the value returned
+    # by a task that we already invoked.
+    if changed, do: File.touch Mix.project[:compile_path]
   end
 
   defp get_compilers do
-    Mix.project[:compilers] || if Mix.Project.defined? do
+    Mix.project[:compilers] || if Mix.Project.get do
       [:elixir, :app]
     else
       [:elixir]

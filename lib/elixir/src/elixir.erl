@@ -1,11 +1,12 @@
 -module(elixir).
 -behaviour(application).
--export([start_cli/0, start_app/0,
+-export([main/1, start_cli/0, start_app/0,
   scope_for_eval/1, eval/2, eval/3, eval/4,
   eval_quoted/2, eval_quoted/3, eval_quoted/4,
   eval_forms/3]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
+
 
 % OTP APPLICATION API
 
@@ -22,6 +23,12 @@ stop(_S) ->
 
 config_change(_Changed, _New, _Remove) ->
   ok.
+
+%% escript entry point
+
+main(Args) ->
+  start_app(),
+  'Elixir.Kernel.CLI':process_argv(Args).
 
 %% ELIXIR ENTRY POINTS
 
@@ -43,14 +50,14 @@ start_cli() ->
 %% EVAL HOOKS
 
 scope_for_eval(Opts) ->
-  File = case orddict:find(file, Opts) of
-    { ok, F } -> to_binary(F);
-    error -> <<"nofile">>
+  File = case lists:keyfind(file, 1, Opts) of
+    { file, F } -> to_binary(F);
+    false -> <<"nofile">>
   end,
 
-  Local = case orddict:find(delegate_locals_to, Opts) of
-    { ok, L } -> L;
-    error -> nil
+  Local = case lists:keyfind(delegate_locals_to, 1, Opts) of
+    { delegate_locals_to, L } -> L;
+    false -> nil
   end,
 
   #elixir_scope{file=File,local=Local}.
@@ -60,15 +67,15 @@ scope_for_eval(Opts) ->
 eval(String, Binding) -> eval(String, Binding, []).
 
 eval(String, Binding, Opts) ->
-  case orddict:find(line, Opts) of
-    { ok, Line } -> [];
-    error -> Line = 1
+  case lists:keyfind(line, 1, Opts) of
+    false -> Line = 1;
+    { line, Line } -> []
   end,
   eval(String, Binding, Line, scope_for_eval(Opts)).
 
 eval(String, Binding, Line, #elixir_scope{file=File} = S) when
     is_list(String), is_list(Binding), is_integer(Line), is_binary(File) ->
-  Forms = elixir_translator:forms(String, Line, File),
+  Forms = elixir_translator:'forms!'(String, Line, File, []),
   eval_forms(Forms, Binding, S).
 
 %% Quoted evaluation
@@ -76,9 +83,9 @@ eval(String, Binding, Line, #elixir_scope{file=File} = S) when
 eval_quoted(Tree, Binding) -> eval_quoted(Tree, Binding, []).
 
 eval_quoted(Tree, Binding, Opts) ->
-  case orddict:find(line, Opts) of
-    { ok, Line } -> [];
-    error -> Line = 1
+  case lists:keyfind(line, 1, Opts) of
+    { line, Line } -> [];
+    false -> Line = 1
   end,
   eval_quoted(Tree, Binding, Line, scope_for_eval(Opts)).
 
@@ -89,7 +96,13 @@ eval_quoted(Tree, Binding, Line, #elixir_scope{} = S) ->
 %% internal API not meant for external usage.
 
 eval_forms(Tree, Binding, RawScope) ->
-  Scope = RawScope#elixir_scope{vars=binding_dict(Binding)},
+  Scope = RawScope#elixir_scope{
+    vars=binding_dict(Binding),
+    temp_vars=[],
+    quote_vars=[],
+    clause_vars=[],
+    counter=0
+  },
   { ParseTree, NewScope } = elixir_translator:translate(Tree, Scope),
   case ParseTree of
     [] -> { nil, Binding, NewScope };
@@ -103,8 +116,8 @@ eval_forms(Tree, Binding, RawScope) ->
 to_binary(Bin)  when is_binary(Bin) -> Bin;
 to_binary(List) when is_list(List) -> list_to_binary(List).
 
-binding_dict(List) -> binding_dict(List, dict:new()).
-binding_dict([{H,_}|T], Dict) -> binding_dict(T, dict:store(H, H, Dict));
+binding_dict(List) -> binding_dict(List, orddict:new()).
+binding_dict([{H,_}|T], Dict) -> binding_dict(T, orddict:store(H, H, Dict));
 binding_dict([], Dict) -> Dict.
 
 final_binding(Binding, Vars) -> final_binding(Binding, [], Binding, Vars).
@@ -112,7 +125,7 @@ final_binding([{Var,_}|T], Acc, Binding, Vars) ->
   case atom_to_list(Var) of
     "_@" ++ _ -> final_binding(T, Acc, Binding, Vars);
     _ ->
-      RealName = dict:fetch(Var, Vars),
+      RealName = orddict:fetch(Var, Vars),
       RealValue = proplists:get_value(RealName, Binding, nil),
       final_binding(T, [{Var, RealValue}|Acc], Binding, Vars)
   end;

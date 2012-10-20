@@ -1,27 +1,27 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule ModuleTest.ToBeUsed do
   def value, do: 1
 
   defmacro __using__(_) do
     target = __CALLER__.module
-    Module.add_attribute target, :has_callback, false
-    Module.add_attribute(target, :before_compile, __MODULE__)
-    Module.add_attribute(target, :after_compile, __MODULE__)
-    Module.add_attribute(target, :before_compile, { __MODULE__, :callback })
+    Module.put_attribute target, :has_callback, false
+    Module.put_attribute(target, :before_compile, __MODULE__)
+    Module.put_attribute(target, :after_compile, __MODULE__)
+    Module.put_attribute(target, :before_compile, { __MODULE__, :callback })
     quote do: (def line, do: __ENV__.line)
   end
 
-  defmacro before_compile(_) do
+  defmacro __before_compile__(_) do
     quote do: (def before_compile, do: true)
   end
 
-  defmacro after_compile(ModuleTest.ToUse, bin) when is_binary(bin) do
+  defmacro __after_compile__(ModuleTest.ToUse, bin) when is_binary(bin) do
     # IO.puts "HELLO"
   end
 
   defmacro callback(target) do
-    value = Module.read_attribute(target, :has_callback)
+    value = Module.get_attribute(target, :has_callback)
     quote do
       name  = :original_value
       args  = [1]
@@ -78,9 +78,9 @@ defmodule ModuleTest do
   false = Module.defines? __MODULE__, { :eval_quoted_info, 0 }, :defp
   false = Module.defines? __MODULE__, { :eval_quoted_info, 0 }, :defmacro
 
-  Module.add_attribute __MODULE__, :value, 1
-  Module.add_attribute __MODULE__, :other_value, 1
-  Module.add_attribute __MODULE__, :other_value, 2
+  Module.put_attribute __MODULE__, :value, 1
+  Module.put_attribute __MODULE__, :other_value, 1
+  Module.put_attribute __MODULE__, :other_value, 2
 
   nil = __ENV__.function
 
@@ -106,7 +106,7 @@ defmodule ModuleTest do
   end
 
   test :reserved_attributes do
-    assert List.keyfind(ExUnit.Server.__info__(:attributes), :behavior, 1) == {:behavior,[:gen_server]}
+    assert List.keyfind(ExUnit.Server.__info__(:attributes), :behavior, 0) == {:behavior,[:gen_server]}
   end
 
   test :persisted_attributes do
@@ -128,7 +128,7 @@ defmodule ModuleTest do
   end
 
   test :apply do
-    assert apply(List, :reverse, [[1|[2,3]]]) == [3,2,1]
+    assert apply(Enum, :reverse, [[1|[2,3]]]) == [3,2,1]
     assert apply(fn x -> x * 2 end, [2]) == 4
   end
 
@@ -150,10 +150,55 @@ defmodule ModuleTest do
 
   test :definitions_in do
     attrs  = ModuleTest.DefinedFunctions.__info__(:attributes)
-    finder = List.keyfind(attrs, &1, 1)
+    finder = List.keyfind(attrs, &1, 0)
 
     assert finder.(:definitions_in) == {:definitions_in,[{:foo, 3}]}
     assert finder.(:defined_def) == {:defined_def,[{:foo, 3}]}
     assert finder.(:defined_defp) == {:defined_defp,[]}
+  end
+
+  test :split do
+    module = Very.Long.Module.Name.And.Even.Longer
+    assert Module.split(module) == ["Very", "Long", "Module", "Name", "And", "Even", "Longer"]
+    assert Module.split("Elixir-Very-Long") == ["Very", "Long"]
+    assert Module.concat(Module.split(module)) == module
+  end
+
+  test :defmodule do
+    assert match?({ :module, LOL, binary, 3 } when is_binary(binary), defmodule LOL do
+      1 + 2
+    end)
+  end
+
+  test :on_definition do
+    defmodule OnDefinition do
+      @on_definition ModuleTest
+
+      def hello(foo, bar) do
+        foo + bar
+      end
+    end
+
+    assert Process.get(ModuleTest.OnDefinition) == :called
+  end
+
+  def __on_definition__(env, kind, name, args, guards, expr) do
+    Process.put(env.module, :called)
+    assert env.module == ModuleTest.OnDefinition
+    assert kind == :def
+    assert name == :hello
+    assert [{ :foo, _, _ }, { :bar, _ ,_ }] = args
+    assert [] = guards
+    assert [do: { :+, _, [{ :foo, _, _ }, { :bar, _, _ }] }] = expr
+  end
+
+  test :create do
+    contents =
+      quote do
+        def world, do: true
+      end
+    { :module, ModuleCreateSample, _, _ } =
+      Module.create(ModuleCreateSample, contents, __ENV__)
+    assert ModuleCreateSample.world
   end
 end

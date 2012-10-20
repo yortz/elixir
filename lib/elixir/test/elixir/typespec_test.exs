@@ -1,4 +1,4 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule Typespec.Test.Type do
   use ExUnit.Case, async: true
@@ -8,7 +8,7 @@ defmodule Typespec.Test.Type do
   # module
   defmacro test_module([{:do, block}]) do
     quote do
-      result = defmodule T do
+      { :module, T, _binary, result } = defmodule T do
         unquote(block)
       end
       :code.delete(T)
@@ -155,7 +155,8 @@ defmodule Typespec.Test.Type do
 
   test "@type with a union" do
     spec = test_module do
-      @type mytype :: integer | string | atom
+      @type mytype :: integer | string
+                    | atom
     end
     assert {:type,{:mytype,{:type,_,:union, [{:type, _, :integer, []},
                          {:type, _, :string, []},

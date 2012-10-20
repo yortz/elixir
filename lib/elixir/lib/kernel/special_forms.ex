@@ -118,30 +118,38 @@ defmodule Kernel.SpecialForms do
 
   ## Examples
 
-  If you want to use the `values` function from `Keyword` several times
-  in your module and you don't want to always type `Keyword.values`,
-  you can simply import it:
+  If you are using several functions from a given module, you can
+  import those functions and reference them as local functions,
+  for example:
 
-      defmodule Math do
-        import Keyword, only: [values: 1]
+      import List
+      flatten([1,[2],3]) #=> [1,2,3]
 
-        def some_function do
-          # call values(orddict)
-        end
-      end
+  ## Selector
 
-  In this case, we are importing only the function `values` (with arity 1)
-  from `Keyword`. Although `only` is optional, its usage is recommended.
-  `except` could also be given as an option. If no option is given, all
-  functions and macros are imported.
+  By default, Elixir imports functions and macros from the given
+  module, except the ones starting with underscore (which are
+  usually callbacks):
 
-  In case you want to import only functions or macros, you can pass a
-  first argument selecting the scope:
+      import List
 
-      import :macros, MyMacros
+  A developer can change this behavior to include all macros and
+  functions, regardless if it starts with underscore, by passing
+  `:all` as first argument:
 
-  And you can then use `only` or `except` to filter the macros being
-  included.
+      import :all, List
+
+  It can also be customized to import only functions or only
+  macros:
+
+      import :functions, List
+      import :macros, List
+
+  Alternatively, Elixir allows a developer to specify `:only`
+  or `:except` as a fine grained control on what to import (or
+  not):
+
+      import List, only: [flatten: 1]
 
   ## Lexical scope
 
@@ -161,10 +169,10 @@ defmodule Kernel.SpecialForms do
         end
       end
 
-  In the example above, we imported macros from `MyMacros`, replacing
-  the original `if/2` implementation by our own during that
-  specific function. All other functions in that module will still
-  be able to use the original one.
+  In the example above, we imported macros from `MyMacros`,
+  replacing the original `if/2` implementation by our own
+  during that specific function. All other functions in that
+  module will still be able to use the original one.
 
   ## Alias/Require shortcut
 
@@ -298,13 +306,13 @@ defmodule Kernel.SpecialForms do
   is defining new functions. Consider this example:
 
       defmodule MyServer do
-        use GenServer.Behavior
+        use GenServer.Behaviour
       end
 
-  `GenServer.Behavior` defines new functions in our `MyServer` module.
+  `GenServer.Behaviour` defines new functions in our `MyServer` module.
   However, if there is an exception in any of these functions, we want
-  the stacktrace to point to the `GenServer.Behavior` and not the line
-  that calls `use GenServer.Behavior`. For this reason, there is an
+  the stacktrace to point to the `GenServer.Behaviour` and not the line
+  that calls `use GenServer.Behaviour`. For this reason, there is an
   option called `:location` that when set to `:keep` keeps these proper
   semantics:
 
@@ -315,9 +323,9 @@ defmodule Kernel.SpecialForms do
       end
 
   It is important to warn though that `location: :keep` evaluates the
-  code as if it was defined inside `GenServer.Behavior` file, in
+  code as if it was defined inside `GenServer.Behaviour` file, in
   particular, the macro `__FILE__` will always point to
-  `GenServer.Behavior` file.
+  `GenServer.Behaviour` file.
   """
   defmacro quote(opts, do: contents)
 
@@ -432,7 +440,7 @@ defmodule Kernel.SpecialForms do
   it belonged to another file.
 
       quote location: :keep, do: 1
-      #=> { :__scope__, 1,[[file: "iex"],[do: 1]] }
+      #=> { :__scope__, 1,[[file: "iex"], 1] }
 
   Check `quote/1` for more information.
   """

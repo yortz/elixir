@@ -6,7 +6,7 @@
   dispatch_require/6, dispatch_import/5,
   require_function/5, import_function/4,
   expand_import/8, expand_require/8,
-  format_error/1]).
+  format_error/1, in_erlang_functions/0, in_erlang_macros/0]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
@@ -58,7 +58,7 @@ dispatch_import(Line, Name, Args, S, Callback) ->
           Callback();
         { error, internal } ->
           elixir_import:record(import, Tuple, ?BUILTIN, Module),
-          elixir_macros:translate_macro({ Name, Line, Args }, S);
+          elixir_macros:translate({ Name, Line, Args }, S);
         { ok, Receiver, Tree } ->
           translate_expansion(Line, Tree, Receiver, Name, Arity, S)
       end;
@@ -85,7 +85,7 @@ dispatch_require(Line, Receiver, Name, Args, S, Callback) ->
         { error, noexpansion } ->
           Callback();
         { error, internal } ->
-          elixir_macros:translate_macro({ Name, Line, Args }, S);
+          elixir_macros:translate({ Name, Line, Args }, S);
         { ok, Tree } ->
           translate_expansion(Line, Tree, Receiver, Name, Arity, S)
       end
@@ -105,9 +105,9 @@ expand_import(Line, { Name, Arity } = Tuple, Args, Module, Function, Requires, M
           { ok, Module, expand_macro_fun(Line, Fun, Module, Name, Args, Module, Requires, SEnv) }
       end;
     ?BUILTIN ->
-      case is_element(Tuple, in_elixir_macros()) of
-        false -> { error, internal };
-        true  ->
+      case is_element(Tuple, in_erlang_macros()) of
+        true  -> { error, internal };
+        false ->
           elixir_import:record(import, Tuple, ?BUILTIN, Module),
           { ok, ?BUILTIN, expand_macro_named(Line, ?BUILTIN, Name, Arity, Args, Module, Requires, SEnv) }
       end;
@@ -276,6 +276,7 @@ in_erlang_functions() ->
     { integer_to_list, 2 },
     { iolist_size, 1 },
     { iolist_to_binary, 1 },
+    { is_alive, 0 },
     { is_atom, 1 },
     { is_binary, 1 },
     { is_bitstring, 1 },

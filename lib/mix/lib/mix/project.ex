@@ -7,7 +7,7 @@ defmodule Mix.Project do
 
   In order to configure Mix, a developer needs to use
   `Mix.Project` in a module and define a function named
-  `project` that returns a keywords list with configuration.
+  `project` that returns a keyword list with configuration.
 
       defmodule MyApp do
         use Mix.Project
@@ -26,79 +26,115 @@ defmodule Mix.Project do
   even without a project.
 
   In case the developer needs a project or want to access a special
-  function in the project, he can access `Mix.Project.current/0`
+  function in the project, he can access `Mix.Project.get!/0`
   which fails with `Mix.NoProjectError` in case a project is not
   defined.
   """
 
+  @doc false
   def behaviour_info(:callbacks) do
     [project: 0]
   end
 
   @doc false
   defmacro __using__(_) do
-    Mix.Project.push __CALLER__.module
     quote do
-      @behavior Mix.Project
+      @after_compile Mix.Project
+      @behaviour Mix.Project
     end
+  end
+
+  # Invoked after each Mix.Project is compiled.
+  @doc false
+  def __after_compile__(module, _binary) do
+    push module
   end
 
   # Push a project into the project stack. Only
   # the top of the stack can be accessed.
   @doc false
   def push(atom) when is_atom(atom) do
-    Mix.Server.cast({ :push_project, atom })
+    config = Keyword.merge default_config, get_project_config(atom)
+    Mix.Server.cast({ :push_project, atom, config })
   end
 
   # Pops a project from the stack.
   @doc false
   def pop do
-    Mix.Server.cast(:pop_project)
+    Mix.Server.call(:pop_project)
   end
 
-  # Loads the mix.exs file in the current directory
-  # and executes the given function. The project and
-  # tasks stack are properly manipulated, no side-effects
-  # should remain.
+  @doc """
+  Refresh the project configuration. Usually required
+  when the environment changes during a task.
+  """
+  def refresh do
+    push pop
+  end
+
+  @doc """
+  Retrieves the current project.
+
+  This is usually called by tasks that needs additional
+  functions on the project to be defined. Since such
+  tasks usually depends on a project to be defined, this
+  function raises `Mix.NoProjectError` in case no project
+  is available.
+
+  Returns nil if no project./
+  """
+  def get do
+    case Mix.Server.call(:projects) do
+      [{ h, _ }|_] -> h
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Same as `get/0` but raises an exception if no project.
+  """
+  def get! do
+    get || raise Mix.NoProjectError
+  end
+
+  @doc """
+  Returns the project configuration already
+  considering the current environment.
+  """
+  def config do
+    case Mix.Server.call(:projects) do
+      [{ h, config }|_] when h != nil -> config
+      _ -> default_config
+    end
+  end
+
+  # Registers post config.
   @doc false
-  def in_subproject(function) do
-    current = Mix.Project.current
-    tasks   = Mix.Task.clear
-
-    if File.regular?("mix.exs") do
-      Code.load_file "mix.exs"
-    end
-
-    if current == Mix.Project.current do
-      Mix.Project.push nil
-    end
-
-    try do
-      function.()
-    after
-      Mix.Project.pop
-      Mix.Task.set_tasks(tasks)
-    end
+  def post_config(config) do
+    Mix.Server.cast({ :post_config, config })
   end
 
-  @doc """
-  Retrieves the current project, raises an error
-  if there is no project set.
-  """
-  def current do
-    case Mix.Server.call(:projects) do
-      [h|_] when h != nil -> h
-      _ -> raise Mix.NoProjectError
-    end
+  defp default_config do
+    [ compile_path: "ebin",
+      compile_first: [],
+      compile_exts: [:ex],
+      watch_exts: [:ex, :eex],
+      default_env: [test: :test],
+      default_task: "test",
+      deps_path: "deps",
+      lockfile: "mix.lock",
+      prepare_task: "compile",
+      source_paths: ["lib"] ]
   end
 
-  @doc """
-  Returns true if a current project is defined.
-  """
-  def defined? do
-    case Mix.Server.call(:projects) do
-      [h|_] when h != nil -> true
-      _ -> false
+  defp get_project_config(nil), do: []
+
+  defp get_project_config(atom) do
+    config = atom.project
+    if env = config[:env][Mix.env] do
+      config /> Keyword.delete(:env) /> Keyword.merge(env)
+    else
+      config
     end
   end
 end

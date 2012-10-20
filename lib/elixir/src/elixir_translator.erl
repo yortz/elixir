@@ -1,7 +1,9 @@
 %% Main entry point for translations. Are macros that cannot be
 %% overriden are defined in this file.
 -module(elixir_translator).
--export([translate/2, translate_each/2, translate_args/2, translate_apply/7, translate_fn/3, raw_forms/3, forms/3]).
+-export([forms/4, 'forms!'/4]).
+-export([translate/2, translate_each/2, translate_arg/2,
+         translate_args/2, translate_apply/7, translate_fn/3]).
 -import(elixir_scope, [umergev/2, umergec/2]).
 -import(elixir_errors, [syntax_error/3, syntax_error/4, parse_error/4,
   assert_function_scope/3, assert_module_scope/3, assert_no_guard_scope/3,
@@ -9,8 +11,8 @@
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
-raw_forms(String, StartLine, File) ->
-  try elixir_tokenizer:tokenize(String, StartLine, File) of
+forms(String, StartLine, File, Opts) ->
+  try elixir_tokenizer:tokenize(String, StartLine, [{ file, File }|Opts]) of
     { ok, Tokens } ->
       case elixir_parser:parse(Tokens) of
         { ok, Forms } -> { ok, Forms };
@@ -21,8 +23,8 @@ raw_forms(String, StartLine, File) ->
     { interpolation_error, { _, _, _ } = Tuple} -> { error, Tuple }
   end.
 
-forms(String, StartLine, File) ->
-  case raw_forms(String, StartLine, File) of
+'forms!'(String, StartLine, File, Opts) ->
+  case forms(String, StartLine, File, Opts) of
     { ok, Forms } -> Forms;
     { error, { Line, Error, Token } } -> parse_error(Line, File, Error, Token)
   end.
@@ -42,6 +44,11 @@ translate_each({'=', Line, [Left, Right]}, S) ->
   { TLeft, SL } = elixir_clauses:assigns(fun translate_each/2, Left, SR),
   { { match, Line, TLeft, TRight }, SL };
 
+%% Containers
+
+translate_each({ C, _, _ } = Original, S) when C == '[]'; C == '{}'; C == '<<>>' ->
+  elixir_literal:translate(Original, S);
+
 %% Blocks and scope rewriters
 
 translate_each({ '__block__', Line, [] }, S) ->
@@ -54,7 +61,7 @@ translate_each({ '__block__', Line, Args }, S) when is_list(Args) ->
   { TArgs, NS } = translate(Args, S),
   { { block, Line, TArgs }, NS };
 
-translate_each({ '__scope__', _Line, [[{file,File}],[{do,Expr}]] }, S) ->
+translate_each({ '__scope__', _Line, [[{file,File}],Expr] }, S) ->
   Old = S#elixir_scope.file,
   { TExpr, TS } = translate_each(Expr, S#elixir_scope{file=File}),
   { TExpr, TS#elixir_scope{file=Old} };
@@ -72,7 +79,7 @@ translate_each({ '__op__', Line, [Op, Left, Right] }, S) when is_atom(Op) ->
 translate_each({ '__ambiguousop__', Line, [Var, H|T] }, S) ->
   { Name, _, _ } = Var,
 
-  case dict:find(Name, S#elixir_scope.vars) of
+  case orddict:find(Name, S#elixir_scope.vars) of
     error -> translate_each({ Name, Line, [H|T] }, S);
     _ ->
       case T of
@@ -81,45 +88,25 @@ translate_each({ '__ambiguousop__', Line, [Var, H|T] }, S) ->
       end
   end;
 
-%% Containers
-
-translate_each({ '<<>>', Line, Args }, S) when is_list(Args) ->
-  case S#elixir_scope.context of
-    assign ->
-      elixir_tree_helpers:build_bitstr(fun translate_each/2, Args, Line, S);
-    _ ->
-      { TArgs, { SC, SV } } = elixir_tree_helpers:build_bitstr(fun translate_arg/2, Args, Line, { S, S }),
-      { TArgs, umergec(SV, SC) }
-  end;
-
-translate_each({ '{}', Line, Args }, S) when is_list(Args) ->
-  { TArgs, SE } = translate_args(Args, S),
-  { {tuple, Line, TArgs}, SE };
-
-translate_each({ '[]', _Line, Args }, S) when is_list(Args) ->
-  translate_each(Args, S);
-
 %% Lexical
-
-translate_each({ refer, Line, Args }, S) ->
-  elixir_errors:deprecation(Line, S#elixir_scope.file, "refer is deprecated, please use alias instead"),
-  translate_each({ alias, Line, Args }, S);
 
 translate_each({ alias, Line, [Ref] }, S) ->
   translate_each({ alias, Line, [Ref,[]] }, S);
 
 translate_each({ alias, Line, [Ref, KV] }, S) ->
   assert_no_assign_or_guard_scope(Line, alias, S),
+  validate_opts(Line, alias, [as], KV, S),
+
   { TRef, SR } = translate_each(Ref, S),
 
   case TRef of
     { atom, _, Old } ->
-      { New, SF } = case orddict:find(as, KV) of
-        { ok, false } ->
+      { New, SF } = case lists:keyfind(as, 1, KV) of
+        Opt when Opt == { as, true }; Opt == false ->
+          { elixir_aliases:last(Old), SR };        
+        { as, false } ->
           { Old, SR };
-        Opt when Opt == { ok, true }; Opt == error ->
-          { elixir_aliases:last(Old), SR };
-        { ok, Other } ->
+        { as, Other } ->
           { TOther, SA } = translate_each(Other, SR#elixir_scope{aliases=[]}),
           case TOther of
             { atom, _, Atom } -> { Atom, SA };
@@ -152,11 +139,13 @@ translate_each({ require, Line, [Ref] }, S) ->
 
 translate_each({ require, Line, [Ref, KV] }, S) ->
   assert_no_assign_or_guard_scope(Line, 'require', S),
+  validate_opts(Line, require, [as], KV, S),
+
   { TRef, SR } = translate_each(Ref, S),
 
-  As = case orddict:find(as, KV) of
-    { ok, Value } -> Value;
-    error -> false
+  As = case lists:keyfind(as, 1, KV) of
+    false -> false;
+    { as, Value } -> Value
   end,
 
   case TRef of
@@ -176,7 +165,7 @@ translate_each({ import, Line, [Left] }, S) ->
   translate_each({ import, Line, [Left, []]}, S);
 
 translate_each({ import, Line, [Left,Opts] }, S) when is_list(Opts) ->
-  translate_each({ import, Line, [all, Left, Opts]}, S);
+  translate_each({ import, Line, [default, Left, Opts]}, S);
 
 translate_each({ import, Line, [Selector, Left] }, S) ->
   translate_each({ import, Line, [Selector, Left, []]}, S);
@@ -188,22 +177,19 @@ translate_each({ import, Line, [Left, Right, Opts] }, S) ->
 
   Selector = case TSelector of
     { atom, _,  SelectorAtom } -> SelectorAtom;
-    _ -> syntax_error(Line, S#elixir_scope.file, "invalid selector for import")
+    _ -> syntax_error(Line, S#elixir_scope.file, "invalid selector for import, expected an atom")
   end,
 
   Ref = case TRef of
     { atom, _, RefAtom } -> RefAtom;
-    _ -> syntax_error(Line, S#elixir_scope.file, "invalid name for import")
+    _ -> syntax_error(Line, S#elixir_scope.file, "invalid name for import, expected an atom or alias")
   end,
 
-  case is_list(Opts) of
-    true -> [];
-    _ -> syntax_error(Line, S#elixir_scope.file, "invalid options for import")
-  end,
+  validate_opts(Line, import, [as, only, except], Opts, S),
 
-  As = case orddict:find(as, Opts) of
-    { ok, Value } -> Value;
-    error -> false
+  As = case lists:keyfind(as, 1, Opts) of
+    false -> false;
+    { as, Value } -> Value
   end,
 
   elixir_aliases:ensure_loaded(Line, Ref, SR),
@@ -223,21 +209,6 @@ translate_each({ '__ENV__', Line, Atom }, S) when is_atom(Atom) ->
 
 translate_each({ '__CALLER__', Line, Atom }, S) when is_atom(Atom) ->
   { { var, Line, '__CALLER__' }, S#elixir_scope{caller=true} };
-
-%% Arg-less deprecated macros
-
-translate_each({'__FUNCTION__', Line, Atom}, S) when is_atom(Atom) ->
-  elixir_errors:deprecation(Line, S#elixir_scope.file, "__FUNCTION__ is deprecated, use __ENV__.function instead"),
-  case S#elixir_scope.function of
-    nil ->
-      { { atom, Line, nil }, S };
-    { Name, Arity } ->
-      { { tuple, Line, [ { atom, Line, Name }, { integer, Line, Arity } ] }, S }
-  end;
-
-translate_each({'__LINE__', Line, Atom}, S) when is_atom(Atom) ->
-  elixir_errors:deprecation(Line, S#elixir_scope.file, "__LINE__ is deprecated, use __ENV__.line instead"),
-  { { integer, Line, Line }, S };
 
 %% Aliases
 
@@ -267,75 +238,89 @@ translate_each({ '__aliases__', Line, [H|T] }, S) ->
 
 %% Quoting
 
+translate_each({ Unquote, Line, _Args }, S) when Unquote == unquote; Unquote == unquote_splicing ->
+  syntax_error(Line, S#elixir_scope.file, "~p called outside quote", [Unquote]);
+
 translate_each({ quote, Line, [Left, Right] }, S) ->
   translate_each({ quote, Line, [orddict:from_list(Left ++ Right)] }, S);
 
-translate_each({ quote, GivenLine, [[{do,Exprs}|T]] }, S) ->
-  Marker = case orddict:find(hygiene, T) of
-    { ok, false } -> nil;
+translate_each({ quote, GivenLine, [T] }, S) when is_list(T) ->
+  Exprs =
+  case lists:keyfind(do, 1, T) of
+    {do, E} -> E;
+    false ->
+      syntax_error(GivenLine, S#elixir_scope.file, "invalid args for quote")
+  end,
+
+  Marker = case lists:keyfind(hygiene, 1, T) of
+    { hygiene, false } -> nil;
     _ -> quoted
   end,
 
-  { DefaultLine, WrappedExprs } = case orddict:find(location, T) of
-    { ok, keep } ->
-      Scoped = { '__scope__', GivenLine, [[{file,S#elixir_scope.file}],[{do,Exprs}]] },
+  { DefaultLine, WrappedExprs } = case lists:keyfind(location, 1, T) of
+    { location, keep } ->
+      Scoped = { '__scope__', GivenLine, [[{file,S#elixir_scope.file}],Exprs] },
       { keep, Scoped };
     _ ->
       { 0, Exprs}
   end,
 
-  Line = case orddict:find(line, T) of
-    { ok, keep } -> keep;
-    { ok, Value } when is_integer(Value) -> Value;
-    { ok, _ } -> syntax_error(GivenLine, S#elixir_scope.file,
-                   "invalid args for quote. expected line to be the atom :keep or an integer");
+  Line = case lists:keyfind(line, 1, T) of
+    { line, Value } -> Value;
     _ -> DefaultLine
   end,
 
-  Unquote = case orddict:find(unquote, T) of
-    { ok, false } -> false;
+  { TLine, SL } = case Line of
+    keep -> { keep, S };
+    _    -> translate_each(Line, S)
+  end,
+
+  Unquote = case lists:keyfind(unquote, 1, T) of
+    { unquote, false } -> false;
     _ -> true
   end,
 
-  elixir_quote:quote(WrappedExprs, #elixir_quote{marker=Marker, line=Line, unquote=Unquote}, S);
+  elixir_quote:quote(WrappedExprs, #elixir_quote{marker=Marker, line=TLine, unquote=Unquote}, SL);
 
-translate_each({ quote, Line, [_] }, S) ->
-  syntax_error(Line, S#elixir_scope.file, "invalid args for quote");
-
-translate_each({ in_guard, Line, [[{do,Guard},{else,Else}]] }, S) ->
-  elixir_errors:deprecation(Line, S#elixir_scope.file, "in_guard is deprecated, check __CALLER__.in_guard? instead"),
-  case S#elixir_scope.context of
-    guard -> translate_each(Guard, S);
-    _ -> translate_each(Else, S)
-  end;
-
+translate_each({ quote, GivenLine, [_] }, S) ->
+  syntax_error(GivenLine, S#elixir_scope.file, "invalid args for quote");
+  
 %% Functions
 
 translate_each({ fn, Line, [[{do, { '->', _, Pairs }}]] }, S) ->
   assert_no_assign_or_guard_scope(Line, 'fn', S),
   translate_fn(Line, Pairs, S);
 
-%% Super
+%% Comprehensions
 
-translate_each({ super, Line, Args }, #elixir_scope{file=File} = S) ->
-  assert_no_assign_or_guard_scope(Line, 'super', S),
-  Module = assert_module_scope(Line, super, S),
-  Function = assert_function_scope(Line, super, S),
-  elixir_def_overridable:ensure_defined(Line, Module, Function, S),
+translate_each({ Kind, Line, Args }, S) when is_list(Args), (Kind == lc) orelse (Kind == bc) ->
+  translate_comprehension(Line, Kind, Args, S);
 
-  { _, Arity } = Function,
+%% Super (exceptionally supports partial application)
 
-  { TArgs, TS } = if
-    is_atom(Args) ->
-      elixir_def_overridable:retrieve_args(Line, Arity, S);
-    length(Args) == Arity ->
-      translate_args(Args, S);
-    true ->
-      syntax_error(Line, File, "super must be called with the same number of arguments as the current function")
-  end,
+translate_each({ super, Line, Args } = Original, S) ->
+  case elixir_partials:handle(Original, S) of
+    error ->
+      assert_no_assign_or_guard_scope(Line, super, S),
+      Module = assert_module_scope(Line, super, S),
+      Function = assert_function_scope(Line, super, S),
+      elixir_def_overridable:ensure_defined(Line, Module, Function, S),
 
-  Super = elixir_def_overridable:name(Module, Function),
-  { { call, Line, { atom, Line, Super }, TArgs }, TS#elixir_scope{super=true} };
+      { _, Arity } = Function,
+
+      { TArgs, TS } = if
+        is_atom(Args) ->
+          elixir_def_overridable:retrieve_args(Line, Arity, S);
+        length(Args) == Arity ->
+          translate_args(Args, S);
+        true ->
+          syntax_error(Line, S#elixir_scope.file, "super must be called with the same number of arguments as the current function")
+      end,
+
+      Super = elixir_def_overridable:name(Module, Function),
+      { { call, Line, { atom, Line, Super }, TArgs }, TS#elixir_scope{super=true} };
+    Else -> Else
+  end;
 
 translate_each({ 'super?', Line, [] }, S) ->
   Module = assert_module_scope(Line, 'super?', S),
@@ -343,25 +328,23 @@ translate_each({ 'super?', Line, [] }, S) ->
   Bool = elixir_def_overridable:is_defined(Module, Function),
   { { atom, Line, Bool }, S };
 
-%% Comprehensions
-
-translate_each({ Kind, Line, Args }, S) when is_list(Args), (Kind == lc) orelse (Kind == bc) ->
-  translate_comprehension(Line, Kind, Args, S);
-
 %% Variables
 
 translate_each({ '^', Line, [ { Name, _, Args } ] }, S) ->
-  Result = case is_atom(Args) of
-    true ->
-      case S#elixir_scope.context of
-        assign ->
-          case dict:find(Name, S#elixir_scope.vars) of
-            error -> "unbound variable ^~s";
-            { ok, Value } -> { {var, Line, Value}, S }
-          end;
-        _ -> "cannot access variable ^~s outside of assignment"
+  Dict = case Args of
+    nil    -> S#elixir_scope.vars;
+    quoted -> S#elixir_scope.quote_vars;
+    _ ->
+      syntax_error(Line, S#elixir_scope.file, "cannot use ^ with expression at ^~s, ^ must be used only with variables", [Name])
+  end,
+
+  Result = case S#elixir_scope.context of
+    assign ->
+      case orddict:find(Name, Dict) of
+        error -> "unbound variable ^~s";
+        { ok, Value } -> { {var, Line, Value}, S }
       end;
-    false -> "cannot use ^ with expression at ^~s, ^ must be used only with variables"
+    _ -> "cannot access variable ^~s outside of assignment"
   end,
 
   case is_list(Result) of
@@ -373,7 +356,7 @@ translate_each({ '^', Line, [ { Name, _, Args } ] }, S) ->
 
 translate_each({ Name, Line, quoted }, S) when is_atom(Name) ->
   NewS = S#elixir_scope{vars=S#elixir_scope.quote_vars,noname=true},
-  { TVar, VS } = elixir_scope:translate_var(Line, Name, NewS),
+  { TVar, VS } = elixir_scope:translate_var(Line, Name, quoted, NewS),
   { TVar, VS#elixir_scope{
     quote_vars=VS#elixir_scope.vars,
     noname=S#elixir_scope.noname,
@@ -381,20 +364,25 @@ translate_each({ Name, Line, quoted }, S) when is_atom(Name) ->
   } };
 
 translate_each({ Name, Line, nil }, S) when is_atom(Name) ->
-  elixir_scope:translate_var(Line, Name, S);
+  elixir_scope:translate_var(Line, Name, nil, S);
 
 %% Local calls
 
 translate_each({ Atom, Line, Args } = Original, S) when is_atom(Atom) ->
-  case sequential_partials(Args, 1) andalso
+  case elixir_partials:is_sequential(Args) andalso
        elixir_dispatch:import_function(Line, Atom, length(Args), S) of
     false ->
-      case handle_partials(Line, Original, S) of
+      case elixir_partials:handle(Original, S) of
         error ->
           Callback = fun() ->
             case S#elixir_scope.context of
-              guard -> syntax_error(Line, S#elixir_scope.file,
-                "cannot invoke local ~s/~B inside guard", [Atom, length(Args)]);
+              guard ->
+                Arity = length(Args),
+                File  = S#elixir_scope.file,
+                case Arity of
+                  0 -> syntax_error(Line, File, "unknown variable ~s or cannot invoke local ~s/~B inside guard", [Atom, Atom, Arity]);
+                  _ -> syntax_error(Line, File, "cannot invoke local ~s/~B inside guard", [Atom, Arity])
+                end;
               _ -> translate_local(Line, Atom, Args, S)
             end
           end,
@@ -404,23 +392,24 @@ translate_each({ Atom, Line, Args } = Original, S) when is_atom(Atom) ->
     Else -> Else
   end;
 
-%% Dot calls
+%% Remote calls
 
 translate_each({ { '.', _, [Left, Right] }, Line, Args } = Original, S) when is_atom(Right) ->
   { TLeft,  SL } = translate_each(Left, S),
 
-  Fun = (element(1, TLeft) == atom) andalso sequential_partials(Args, 1) andalso
+  Fun = (element(1, TLeft) == atom) andalso elixir_partials:is_sequential(Args) andalso
     elixir_dispatch:require_function(Line, element(3, TLeft), Right, length(Args), SL),
 
   case Fun of
     false ->
-      case handle_partials(Line, Original, S) of
+      case elixir_partials:handle(Original, S) of
         error ->
           { TRight, SR } = translate_each(Right, umergec(S, SL)),
           Callback = fun() -> translate_apply(Line, TLeft, TRight, Args, S, SL, SR) end,
 
           case TLeft of
             { atom, _, 'Elixir.Erlang' } ->
+              elixir_errors:deprecation(Line, S#elixir_scope.file, "Erlang. syntax is deprecated"),
               case Args of
                 [] -> { { atom, Line, Right }, S };
                 _ ->
@@ -445,7 +434,7 @@ translate_each({ { '.', _, [Expr] }, Line, Args } = Original, S) ->
     { atom, _, Atom } ->
       translate_each({ Atom, Line, Args }, S);
     _ ->
-      case handle_partials(Line, Original, S) of
+      case elixir_partials:handle(Original, S) of
         error ->
           { TArgs, SA } = translate_args(Args, umergec(S, SE)),
           { {call, Line, TExpr, TArgs}, umergev(SE, SA) };
@@ -453,53 +442,26 @@ translate_each({ { '.', _, [Expr] }, Line, Args } = Original, S) ->
       end
   end;
 
+%% Invalid calls
+
+translate_each({ Invalid, Line, _Args }, S) ->
+  syntax_error(Line, S#elixir_scope.file, "unexpected parenthesis after ~ts",
+    ['Elixir.Macro':to_binary(Invalid)]);
+
 %% Literals
 
-translate_each({ Left, Right }, S) ->
-  translate_each({ '{}', 0, [Left, Right]}, S);
-
-translate_each([], S) ->
-  { { nil, 0 }, S };
-
-translate_each(Args, S) when is_list(Args) ->
-  [RTail|RArgs] = lists:reverse(Args),
-
-  case RTail of
-    {'|',_,[Left,Right]} ->
-      Exprs = [Left|RArgs],
-      { Tail, ST } = translate_each(Right, S),
-      ListS = umergec(S, ST);
-    _ ->
-      Exprs = [RTail|RArgs],
-      Tail = { nil, 0 },
-      ST = S,
-      ListS = S
-  end,
-
-  { FExprs, FS } = case S#elixir_scope.context of
-    assign ->
-      elixir_tree_helpers:build_reverse_list(fun translate_each/2, Exprs, 0, ListS, Tail);
-    _ ->
-      { TArgs, { SC, SV } } =
-        elixir_tree_helpers:build_reverse_list(fun translate_arg/2, Exprs, 0, { ListS, ListS }, Tail),
-      { TArgs, umergec(SV, SC) }
-  end,
-
-  { FExprs, umergev(ST, FS) };
-
-translate_each(Number, S) when is_integer(Number) ->
-  { { integer, 0, Number }, S };
-
-translate_each(Number, S) when is_float(Number) ->
-  { { float, 0, Number }, S };
-
-translate_each(Atom, S) when is_atom(Atom) ->
-  { { atom, 0, Atom }, S };
-
-translate_each(Bitstring, S) when is_bitstring(Bitstring) ->
-  { elixir_tree_helpers:abstract_syntax(Bitstring), S }.
+translate_each(Literal, S) ->
+  elixir_literal:translate(Literal, S).
 
 %% Helpers
+
+validate_opts(Line, Kind, Allowed, Opts, S) when is_list(Opts) ->
+  [begin
+    syntax_error(Line, S#elixir_scope.file, "unsupported option ~s given to ~s", [Key, Kind])
+  end || { Key, _ } <- Opts, not lists:member(Key, Allowed)];
+
+validate_opts(Line, Kind, _Allowed, _Opts, S) ->
+  syntax_error(Line, S#elixir_scope.file, "invalid options for ~s, expected a keyword list", [Kind]).
 
 translate_fn(Line, Clauses, S) ->
   Transformer = fun({ ArgsWithGuards, Expr }, Acc) ->
@@ -522,20 +484,23 @@ translate_local(Line, Name, Args, S) ->
   },
   { { call, Line, Remote, TArgs }, NS }.
 
-% Variables in arguments are not propagated from one
-% argument to the other. For instance:
-%
-%   x = 1
-%   foo(x = x + 2, x)
-%   x
-%
-% Should be the same as:
-%
-%   foo(3, 1)
-%   3
-%
-% However, notice that if we are doing an assignment,
-% it behaves the same as translate.
+%% Translate args
+
+%% Variables in arguments are not propagated from one
+%% argument to the other. For instance:
+%%
+%%   x = 1
+%%   foo(x = x + 2, x)
+%%   x
+%%
+%% Should be the same as:
+%%
+%%   foo(3, 1)
+%%   3
+%%
+%% However, notice that if we are doing an assignment,
+%% it behaves the same as translate.
+
 translate_arg(Arg, { Acc, S }) ->
   { TArg, TAcc } = translate_each(Arg, Acc),
   { TArg, { umergec(S, TAcc), umergev(S, TAcc) } }.
@@ -547,8 +512,9 @@ translate_args(Args, S) ->
   { TArgs, { SC, SV } } = lists:mapfoldl(fun translate_arg/2, {S, S}, Args),
   { TArgs, umergec(SV, SC) }.
 
-% Translate apply. Used by both apply and
-% external function invocation macros.
+%% Translate apply
+%% Used by both apply and external function invocation macros.
+
 translate_apply(Line, TLeft, TRight, Args, S, SL, SR) ->
   Optimize = case (Args == []) orelse lists:last(Args) of
     { '|', _, _ } -> false;
@@ -572,62 +538,7 @@ translate_apply(Line, TLeft, TRight, Args, S, SL, SR) ->
       { ?ELIXIR_WRAP_CALL(Line, erlang, apply, [TLeft, TRight, TArgs]), FS }
   end.
 
-%% Handle partials by automatically wrapping them in a function.
-%% It also checks if we are in an assignment scope and does not
-%% apply the function if this is the case.
-handle_partials(_Line, _Original, #elixir_scope{context=assign}) ->
-  error;
-
-handle_partials(Line, Original, S) ->
-  case convert_partials(Line, element(3, Original), S) of
-    { Call, Def, SC } when Def /= [] ->
-      Final = validate_partials(Line, Def, SC),
-      Block = setelement(3, Original, Call),
-      translate_fn(Line, [{ Final, Block }], SC);
-    _ -> error
-  end.
-
-validate_partials(Line, Def, S) ->
-  validate_partials(Line, lists:sort(Def), 1, S).
-
-validate_partials(Line, [{ Pos, Item }|T], Pos, S) ->
-  [Item|validate_partials(Line, T, Pos + 1, S)];
-
-validate_partials(Line, [{ Pos, _ }|_], Expected, S) ->
-  syntax_error(Line, S#elixir_scope.file, "partial variable &~w cannot be defined without &~w", [Pos, Expected]);
-
-validate_partials(_Line, [], _Pos, _S) ->
-  [].
-
-%% This function receives arguments and then checks
-%% the args for partial application. It returns a tuple
-%% with three elements where the first element is the list
-%% of call args, the second the list of def args for the
-%% function definition and the third one is the new scope.
-convert_partials(Line, List, S) -> convert_partials(Line, List, S, [], []).
-
-convert_partials(Line, [{'&', _, [Pos]}|T], S, CallAcc, DefAcc) ->
-  case lists:keyfind(Pos, 1, DefAcc) of
-    false ->
-      { Var, SC } = elixir_scope:build_ex_var(Line, S),
-      convert_partials(Line, T, SC, [Var|CallAcc], [{Pos,Var}|DefAcc]);
-    {Pos,Var} ->
-      convert_partials(Line, T, S, [Var|CallAcc], DefAcc)
-  end;
-
-convert_partials(Line, [H|T], S, CallAcc, DefAcc) ->
-  convert_partials(Line, T, S, [H|CallAcc], DefAcc);
-
-convert_partials(_Line, [], S, CallAcc, DefAcc) ->
-  { lists:reverse(CallAcc), lists:reverse(DefAcc), S }.
-
-sequential_partials([{ '&', _, [Int] }|T], Int) ->
-  sequential_partials(T, Int + 1);
-
-sequential_partials([], Int) when Int > 1 -> true;
-sequential_partials(_, _Int) -> false.
-
-%% Convert operators
+%% __op__ helpers
 
 convert_op('and')  -> 'andalso';
 convert_op('or')   -> 'orelse';

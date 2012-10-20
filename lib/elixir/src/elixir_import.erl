@@ -35,22 +35,24 @@ recorded_locals(Module) ->
 %% based on the given options and selector.
 
 import(Line, Ref, Opts, Selector, S) ->
-  SF = case (Selector == all) or (Selector == functions) of
+  IncludeAll = (Selector == all) or (Selector == default),
+
+  SF = case IncludeAll or (Selector == functions) of
     false -> S;
     true  ->
-      FunctionsFun = fun() -> get_functions(Ref) end,
+      FunctionsFun = fun() -> remove_underscored(Selector, get_functions(Ref)) end,
       Functions = calculate(Line, Ref, Opts,
         S#elixir_scope.functions, FunctionsFun, S),
       S#elixir_scope{functions=Functions}
   end,
 
-  SM = case (Selector == all) or (Selector == macros) of
+  SM = case IncludeAll or (Selector == macros) of
     false -> SF;
     true  ->
       MacrosFun = fun() ->
-        case Selector of
-          all -> get_optional_macros(Ref);
-          _ -> get_macros(Line, Ref, SF)
+        case IncludeAll of
+          true  -> remove_underscored(Selector, get_optional_macros(Ref));
+          false -> get_macros(Line, Ref, SF)
         end
       end,
       Macros = calculate(Line, Ref, Opts,
@@ -68,27 +70,31 @@ calculate(Line, Key, Opts, Old, AvailableFun, S) ->
   File = S#elixir_scope.file,
   All = keydelete(Key, Old),
 
-  New = case orddict:find(only, Opts) of
-    { ok, Only } ->
+  New = case keyfind(only, Opts) of
+    { only, RawOnly } ->
+      Only = expand_fun_arity(Line, only, RawOnly, S),
       case Only -- get_exports(Key) of
         [{Name,Arity}|_] ->
           Tuple = { invalid_import, { Key, Name, Arity } },
           elixir_errors:form_error(Line, File, ?MODULE, Tuple);
         _ -> intersection(Only, AvailableFun())
       end;
-    error ->
-      case orddict:find(except, Opts) of
-        { ok, Except } ->
+    false ->
+      case keyfind(except, Opts) of
+        false -> AvailableFun()   ;     
+        { except, [] } -> AvailableFun();
+        { except, RawExcept } ->
+          Except = expand_fun_arity(Line, except, RawExcept, S),
           case keyfind(Key, Old) of
             false -> AvailableFun() -- Except;
             {Key,ToRemove} -> ToRemove -- Except
-          end;
-        error -> AvailableFun()
+          end
       end
   end,
 
   %% Normalize the data before storing it
-  Final = ordsets:from_list(New -- internal_funs()),
+  Set     = ordsets:from_list(New),
+  Final   = remove_internals(Set),
 
   case Final of
     [] -> All;
@@ -98,6 +104,29 @@ calculate(Line, Key, Opts, Old, AvailableFun, S) ->
       ensure_no_in_erlang_macro_conflict(Line, File, Key, Final, internal_conflict),
       [{ Key, Final }|All]
   end.
+
+%% Ensure we are expanding macros and stuff
+
+expand_fun_arity(Line, Kind, Value, S) ->
+  { TValue, _S } = elixir_translator:translate_each(Value, S),
+  cons_to_keywords(Line, Kind, TValue, S).
+
+cons_to_keywords(Line, Kind, { cons, _, Left, { nil, _ } }, S) ->
+  [tuple_to_fun_arity(Line, Kind, Left, S)];
+
+cons_to_keywords(Line, Kind, { cons, _, Left, Right }, S) ->
+  [tuple_to_fun_arity(Line, Kind, Left, S)|cons_to_keywords(Line, Kind, Right, S)];
+
+cons_to_keywords(Line, Kind, _, S) ->
+  elixir_errors:syntax_error(Line, S#elixir_scope.file,
+    "invalid value for :~s, expected a list with functions and arities", [Kind]).
+
+tuple_to_fun_arity(_Line, _Kind, { tuple, _, [{ atom, _, Atom }, { integer, _, Integer }] }, _S) ->
+  { Atom, Integer };
+
+tuple_to_fun_arity(Line, Kind, _, S) ->
+  elixir_errors:syntax_error(Line, S#elixir_scope.file,
+    "invalid value for :~s, expected a list with functions and arities", [Kind]).
 
 %% Retrieve functions and macros from modules
 
@@ -236,13 +265,22 @@ intersection([], _All) -> [].
 
 %% Internal funs that are never imported etc.
 
-internal_funs() ->
-  [
-    { module_info, 0 },
-    { module_info, 1 },
-    { '__info__', 1 },
-    { '__using__', 1 }
-  ].
+remove_underscored(default, List) -> remove_underscored(List);
+remove_underscored(_, List)       -> List.
+
+remove_underscored([{ Name, _ } = H|T]) when Name < a  ->
+  case atom_to_list(Name) of
+    [$_, $_, _, $_, $_] -> [H|remove_underscored(T)];
+    "_" ++ _            -> remove_underscored(T);
+    _                   -> [H|remove_underscored(T)]
+  end;
+
+remove_underscored(T) ->
+  T.
+
+remove_internals(Set) ->
+  ordsets:del_element({ module_info, 1 },
+    ordsets:del_element({ module_info, 0 }, Set)).
 
 %% Macros implemented in Erlang that are not overridable.
 

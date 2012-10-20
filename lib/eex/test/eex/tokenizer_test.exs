@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper", __FILE__
+Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule EEx.TokenizerTest do
   use ExUnit.Case, async: true
@@ -39,6 +39,30 @@ baz %>
       {:expr, 4, [], ' foo '},
       {:text, 4, "\n"}
     ] 
+  end
+
+  test "quotation" do
+    assert T.tokenize('foo <%% true %>', 1) == [
+      { :text, 1, "foo <% true %>" }
+    ]
+  end
+
+  test "quotation with do/end" do
+    assert T.tokenize('foo <%% true do %>bar<%% end %>', 1) == [
+      { :text, 1, "foo <% true do %>bar<% end %>" }
+    ]
+  end
+
+  test "comments" do
+    assert T.tokenize('foo <%# true %>', 1) == [
+      { :text, 1, "foo " }
+    ]
+  end
+
+  test "comments with do/end" do
+    assert T.tokenize('foo <%# true do %>bar<%# end %>', 1) == [
+      { :text, 1, "foo bar" }
+    ]
   end
 
   test "strings with embedded do end" do

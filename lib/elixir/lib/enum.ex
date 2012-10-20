@@ -52,45 +52,8 @@ defprotocol Enum.Iterator do
   def count(collection)
 end
 
-defprotocol Enum.OrdIterator do
-  @moduledoc """
-  This protocol is invoked by some functions in Enum which
-  requires an ordered collection to function correctly. For
-  instance, `Enum.split_with/2`, `Enum.take_while` all rely
-  on this protocol.
-
-  An ordered collection does not mean the items are ordered
-  according to the Elixir ordering but simply that any two
-  distinct instances of the same collection with exactly
-  the same items always yield the same order when iterated.
-  """
-
-  @only [List, Record]
-
-  @doc """
-  Must return a tuple under the same conditions as
-  `Enum.Iterator.iterator`.
-  """
-  def iterator(collection)
-
-  @doc """
-  On each step, the iterator function returned by `iterator/1`
-  returns a tuple with two elements. This function receives
-  those two elements as a tuple and must return a list back.
-
-  This is used in order to quicky return a list from any point
-  during iteration. For example, consider the function `Enum.drop`.
-  `Enum.drop collection, 3` should drop 3 items and return a list
-  back. While we could loop over the remaining items to get a list
-  back, this function is invoked allowing us to get a result
-  back without a need to loop the remaining items.
-  """
-  def to_list({ current, next }, iterator)
-end
-
 defmodule Enum do
-  require Enum.Iterator, as: I
-  require Enum.OrdIterator, as: O
+  alias Enum.Iterator, as: I
 
   @moduledoc """
   Provides a set of algorithms that enumerate over collections according to the
@@ -175,6 +138,33 @@ defmodule Enum do
   end
 
   @doc """
+  Finds the element at the given index (zero-based).
+  Raises out of bounds error in case the given position
+  is outside the range of the collection.
+
+  Expects an ordered collection.
+
+    ## Examples
+
+        Enum.at! [2,4,6], 0 #=> 2
+        Enum.at! [2,4,6], 2 #=> 6
+        Enum.at! [2,4,6], 4 #=> raises Enum.OutOfBoundsError
+
+  """
+  def at!(collection, n) when is_list(collection) and n >= 0 do
+    do_at!(collection, n)
+  end
+
+  def at!(collection, n) when n >= 0 do
+    case I.iterator(collection) do
+      { iterator, pointer } ->
+        do_at!(pointer, iterator, n)
+      list when is_list(list) ->
+        do_at!(list, n)
+    end
+  end
+
+  @doc """
   Returns the collection size.
 
   ## Examples
@@ -184,6 +174,22 @@ defmodule Enum do
   """
   def count(collection) do
     I.count(collection)
+  end
+
+  @doc """
+  Counts for how many items the function returns true.
+  """
+  def count(collection, fun) when is_list(collection) do
+    do_count(collection, fun)
+  end
+
+  def count(collection, fun) do
+    case I.iterator(collection) do
+      { iterator, pointer } ->
+        do_count(pointer, iterator, fun)
+      list when is_list(list) ->
+        do_count(list, fun)
+    end
   end
 
   @doc """
@@ -198,7 +204,7 @@ defmodule Enum do
 
   """
   def drop(collection, count) do
-    elem split(collection, count), 2
+    elem split(collection, count), 1
   end
 
   @doc """
@@ -215,10 +221,9 @@ defmodule Enum do
   end
 
   def drop_while(collection, fun) do
-    case O.iterator(collection) do
+    case I.iterator(collection) do
       { iterator, pointer } ->
-        module = O.__impl_for__!(collection)
-        do_drop_while(pointer, iterator, fun, module)
+        do_drop_while(pointer, iterator, fun)
       list when is_list(list) ->
         do_drop_while(list, fun)
     end
@@ -263,7 +268,7 @@ defmodule Enum do
 
   def empty?(collection) do
     case I.iterator(collection) do
-      { _iterator, pointer }  -> pointer === :stop
+      { _iterator, pointer }  -> pointer == :stop
       list when is_list(list) -> list == []
     end
   end
@@ -348,13 +353,13 @@ defmodule Enum do
   Similar to find, but returns the value of the function
   invocation instead of the element itself.
 
-    ## Examples
+  ## Examples
 
-        Enum.find_value [2,4,6], fn(x) -> rem(x, 2) == 1 end
-        #=> nil
+      Enum.find_value [2,4,6], fn(x) -> rem(x, 2) == 1 end
+      #=> nil
 
-        Enum.find_value [2,3,4], fn(x) -> rem(x, 2) == 1 end
-        #=> true
+      Enum.find_value [2,3,4], fn(x) -> rem(x, 2) == 1 end
+      #=> true
 
   """
   def find_value(collection, ifnone // nil, fun)
@@ -373,30 +378,30 @@ defmodule Enum do
   end
 
   @doc """
-  Similar to find, but returns the index (count starts with 1)
+  Similar to find, but returns the index (count starts with 0)
   of the item instead of the element itself.
 
   Expects an ordered collection.
 
-    ## Examples
+  ## Examples
 
-        Enum.find_index [2,4,6], fn(x) -> rem(x, 2) == 1 end
-        #=> nil
+      Enum.find_index [2,4,6], fn(x) -> rem(x, 2) == 1 end
+      #=> nil
 
-        Enum.find_index [2,3,4], fn(x) -> rem(x, 2) == 1 end
-        #=> 2
+      Enum.find_index [2,3,4], fn(x) -> rem(x, 2) == 1 end
+      #=> 2
 
   """
   def find_index(collection, fun) when is_list(collection) do
-    do_find_index(collection, 1, fun)
+    do_find_index(collection, 0, fun)
   end
 
   def find_index(collection, fun) do
-    case O.iterator(collection) do
+    case I.iterator(collection) do
       { iterator, pointer } ->
-        do_find_index(pointer, iterator, 1, fun)
+        do_find_index(pointer, iterator, 0, fun)
       list when is_list(list) ->
-        do_find_index(list, 1, fun)
+        do_find_index(list, 0, fun)
     end
   end
 
@@ -413,7 +418,7 @@ defmodule Enum do
   def first([h|_]), do: h
 
   def first(collection) do
-    case O.iterator(collection) do
+    case I.iterator(collection) do
       { _iterator, { h, _ } } -> h
       { _iterator, :stop }    -> nil
       list when is_list(list) -> first(list)
@@ -548,32 +553,6 @@ defmodule Enum do
   end
 
   @doc """
-  Finds the element at the nth index. Returns nil in case
-  the given index is outside the range of the collection.
-
-  Expects an ordered collection.
-
-    ## Examples
-
-        Enum.nth! [2,4,6], 1 #=> 2
-        Enum.nth! [2,4,6], 3 #=> 6
-        Enum.nth! [2,4,6], 5 #=> raises Enum.OutOfBoundsError
-
-  """
-  def nth!(collection, n) when is_list(collection) and n > 0 do
-    do_nth!(collection, n)
-  end
-
-  def nth!(collection, n) when n > 0 do
-    case O.iterator(collection) do
-      { iterator, pointer } ->
-        do_nth!(pointer, iterator, n)
-      list when is_list(list) ->
-        do_nth!(list, n)
-    end
-  end
-
-  @doc """
   Partitions `collection` into two where the first one contains elements
   for which `fun` returns a truthy value, and the second one -- for which `fun`
   returns false or nil.
@@ -598,8 +577,8 @@ defmodule Enum do
   end
 
   @doc """
-  Invokes `fun` for each element in the collection passing the accumulator
-  `acc` and the element as arguments. The return value is stored in `acc`.
+  Invokes `fun` for each element in the collection passing that element and the
+  accumulator `acc` as arguments. `fun`'s return value is stored in `acc`.
   Returns the accumulator.
 
   ## Examples
@@ -618,6 +597,28 @@ defmodule Enum do
         do_reduce(pointer, iterator, acc, fun)
       list when is_list(list) ->
         reduce(list, acc, fun)
+    end
+  end
+
+  @doc """
+  Reverses the collection.
+
+  Expects an ordered collection.
+
+  ## Examples
+
+      Enum.reverse [1, 2, 3]
+      #=> [3, 2, 1]
+
+  """
+  def reverse(collection) when is_list(collection) do
+    :lists.reverse(collection)
+  end
+
+  def reverse(collection) do
+    case I.iterator(collection) do
+      { iterator, pointer }   -> do_reverse(pointer, iterator, [])
+      list when is_list(list) -> reverse(list)
     end
   end
 
@@ -644,13 +645,18 @@ defmodule Enum do
 
   @doc """
   Splits the enumerable into two collections, leaving `count` elements in the
-  first one. Expects an ordered collection.
+  first one. If `count` is a negative number, it starts couting from the back
+  to the beginning of the collection. Be aware that a negative `count`
+  implies in an iteration through the whole collection.
+  Expects an ordered collection.
 
   ## Examples
 
       Enum.split [1,2,3], 2  #=> { [1,2], [3] }
       Enum.split [1,2,3], 10 #=> { [1,2,3], [] }
       Enum.split [1,2,3], 0  #=> { [], [1,2,3] }
+      Enum.split [1,2,3], -1 #=> { [1,2], [3] }
+      Enum.split [1,2,3], -5 #=> { [], [1,2,3] }
 
   """
   def split(collection, count) when is_list(collection) and count >= 0 do
@@ -658,13 +664,25 @@ defmodule Enum do
   end
 
   def split(collection, count) when count >= 0 do
-    case O.iterator(collection) do
+    case I.iterator(collection) do
       { iterator, pointer } ->
-        module = O.__impl_for__!(collection)
-        do_split(pointer, iterator, count, [], module)
+        do_split(pointer, iterator, count, [])
       list when is_list(list) ->
         do_split(list, count, [])
     end
+  end
+
+  def split(collection, count) when count < 0 do
+    reducer = fn(x, acc) -> {x, acc + 1} end
+    { list , total_items } = Enum.map_reduce(collection, 0, reducer)
+    real_count = max(0, total_items - abs(count))
+    split(list, real_count)
+  end
+
+  @doc false
+  def split_with(collection, fun) do
+    IO.write "[WARNING] Enum.split_with is deprecated, please use split_while instead\n#{Exception.formatted_stacktrace}"
+    split_while(collection, fun)
   end
 
   @doc """
@@ -673,20 +691,19 @@ defmodule Enum do
 
   ## Examples
 
-      Enum.split_with [1,2,3,4], fn x -> x == 2 end
+      Enum.split_while [1,2,3,4], fn x -> x == 2 end
       #=> { [1], [2, 3, 4] }
   """
-  def split_with(collection, fun) when is_list(collection) do
-    do_split_with(collection, fun, [])
+  def split_while(collection, fun) when is_list(collection) do
+    do_split_while(collection, fun, [])
   end
 
-  def split_with(collection, fun) do
-    case O.iterator(collection) do
+  def split_while(collection, fun) do
+    case I.iterator(collection) do
       { iterator, pointer } ->
-        module = O.__impl_for__!(collection)
-        do_split_with(pointer, iterator, fun, [], module)
+        do_split_while(pointer, iterator, fun, [])
       list when is_list(list) ->
-        do_split_with(list, fun, [])
+        do_split_while(list, fun, [])
     end
   end
 
@@ -702,7 +719,7 @@ defmodule Enum do
 
   """
   def take(collection, count) do
-    elem split(collection, count), 1
+    elem split(collection, count), 0
   end
 
   @doc """
@@ -720,7 +737,7 @@ defmodule Enum do
   end
 
   def take_while(collection, fun) do
-    case O.iterator(collection) do
+    case I.iterator(collection) do
       { iterator, pointer } ->
         do_take_while(pointer, iterator, fun)
       list when is_list(list) ->
@@ -729,15 +746,15 @@ defmodule Enum do
   end
 
   @doc """
-  Iterates the given function n times, passing values from 1
-  to n.
+  Iterates the given function n times, passing values
+  from 0 to n - 1.
 
   ## Examples
 
       Enum.times 3, fn(x) -> IO.inspect x end
+      0
       1
       2
-      3
 
   """
   def times(times, function) when times >= 0 do
@@ -763,6 +780,38 @@ defmodule Enum do
   """
   def times(times, acc, function) when times >= 0 do
     do_times_2(times, 1, function, acc)
+  end
+
+  @doc """
+  Zips corresponding elements from two collections into one list
+  of tuples. The number of elements in the resulting list is
+  dictated by the first enum. In case the second list is shorter,
+  values are filled with nil.
+  """
+  def zip(coll1, coll2) when is_list(coll1) do
+    do_zip(coll1, iterator(coll2))
+  end
+
+  def zip(coll1, coll2) do
+    case I.iterator(coll1) do
+      { iterator, pointer } ->
+        do_zip(pointer, iterator, iterator(coll2))
+      list when is_list(list) ->
+        do_zip(list, iterator(coll2))
+    end
+  end
+
+  ## Helpers
+
+  defp iterator(collection) when is_list(collection), do: collection
+  defp iterator(collection), do: I.iterator(collection)
+
+  defp to_list({ h, next }, iterator) do
+    [h|to_list(iterator.(next), iterator)]
+  end
+
+  defp to_list(:stop, _) do
+    []
   end
 
   ## Implementations
@@ -819,6 +868,42 @@ defmodule Enum do
     false
   end
 
+  ## at!
+
+  defp do_at!([h|_], 0), do: h
+  defp do_at!([_|t], n), do: do_at!(t, n - 1)
+  defp do_at!([], _),    do: raise Enum.OutOfBoundsError
+
+  defp do_at!({ h, _next }, _iterator, 0), do: h
+  defp do_at!({ _, next }, iterator, n),   do: do_at!(iterator.(next), iterator, n - 1)
+  defp do_at!(:stop, _iterator, _),        do: raise Enum.OutOfBoundsError
+
+  ## count
+
+  defp do_count([h|t], fun) do
+    if fun.(h) do
+      1 + do_count(t, fun)
+    else
+      do_count(t, fun)
+    end
+  end
+
+  defp do_count([], _) do
+    0
+  end
+
+  defp do_count({ h, next }, iterator, fun) do
+    if fun.(h) do
+      1 + do_count(iterator.(next), iterator, fun)
+    else
+      do_count(iterator.(next), iterator, fun)
+    end
+  end
+
+  defp do_count(:stop, _, _) do
+    0
+  end
+
   ## drop_while
 
   defp do_drop_while([h|t], fun) do
@@ -833,15 +918,15 @@ defmodule Enum do
     []
   end
 
-  defp do_drop_while({ h, next } = extra, iterator, fun, module) do
+  defp do_drop_while({ h, next } = extra, iterator, fun) do
     if fun.(h) do
-      do_drop_while(iterator.(next), iterator, fun, module)
+      do_drop_while(iterator.(next), iterator, fun)
     else
-      module.to_list(extra, iterator)
+      to_list(extra, iterator)
     end
   end
 
-  defp do_drop_while(:stop, _, _, _) do
+  defp do_drop_while(:stop, _, _) do
     []
   end
 
@@ -954,16 +1039,6 @@ defmodule Enum do
     []
   end
 
-  ## nth
-
-  defp do_nth!([h|_], 1), do: h
-  defp do_nth!([_|t], n), do: do_nth!(t, n - 1)
-  defp do_nth!([], _),    do: raise Enum.OutOfBoundsError
-
-  defp do_nth!({ h, _next }, _iterator, 1), do: h
-  defp do_nth!({ _, next }, iterator, n),   do: do_nth!(iterator.(next), iterator, n - 1)
-  defp do_nth!(:stop, _iterator, _),        do: raise Enum.OutOfBoundsError
-
   ## reduce
 
   defp do_reduce({ h, next }, iterator, acc, fun) do
@@ -974,30 +1049,30 @@ defmodule Enum do
     acc
   end
 
-  ## split_with
+  ## split_while
 
-  defp do_split_with([h|t], fun, acc) do
+  defp do_split_while([h|t], fun, acc) do
     if fun.(h) do
-      do_split_with(t, fun, [h|acc])
+      do_split_while(t, fun, [h|acc])
     else
-      { List.reverse(acc), [h|t] }
+      { :lists.reverse(acc), [h|t] }
     end
   end
 
-  defp do_split_with([], _, acc) do
-    { List.reverse(acc), [] }
+  defp do_split_while([], _, acc) do
+    { :lists.reverse(acc), [] }
   end
 
-  defp do_split_with({ h, next } = extra, iterator, fun, acc, module) do
+  defp do_split_while({ h, next } = extra, iterator, fun, acc) do
     if fun.(h) do
-      do_split_with(iterator.(next), iterator, fun, [h|acc], module)
+      do_split_while(iterator.(next), iterator, fun, [h|acc])
     else
-      { List.reverse(acc), module.to_list(extra, iterator) }
+      { :lists.reverse(acc), to_list(extra, iterator) }
     end
   end
 
-  defp do_split_with(:stop, _, _, acc, _module) do
-    { List.reverse(acc), [] }
+  defp do_split_while(:stop, _, _, acc) do
+    { :lists.reverse(acc), [] }
   end
 
   ## join
@@ -1007,7 +1082,7 @@ defmodule Enum do
   end
 
   defp do_join([h|t], joiner, acc) do
-    acc = << acc | :binary, joiner | :binary, to_binary(h) | :binary >>
+    acc = << acc :: binary, joiner :: binary, to_binary(h) :: binary >>
     do_join(t, joiner, acc)
   end
 
@@ -1020,7 +1095,7 @@ defmodule Enum do
   end
 
   defp do_join({ h, next }, iterator, joiner, acc) do
-    acc = << acc | :binary, joiner | :binary, to_binary(h) | :binary >>
+    acc = << acc :: binary, joiner :: binary, to_binary(h) :: binary >>
     do_join(iterator.(next), iterator, joiner, acc)
   end
 
@@ -1035,7 +1110,7 @@ defmodule Enum do
   end
 
   defp do_map_join([h|t], mapper, joiner, acc) do
-    acc = << acc | :binary, joiner | :binary, to_binary(mapper.(h)) | :binary >>
+    acc = << acc :: binary, joiner :: binary, to_binary(mapper.(h)) :: binary >>
     do_map_join(t, mapper, joiner, acc)
   end
 
@@ -1048,7 +1123,7 @@ defmodule Enum do
   end
 
   defp do_map_join({ h, next }, iterator, mapper, joiner, acc) do
-    acc = << acc | :binary, joiner | :binary, to_binary(mapper.(h)) | :binary >>
+    acc = << acc :: binary, joiner :: binary, to_binary(mapper.(h)) :: binary >>
     do_map_join(iterator.(next), iterator, mapper, joiner, acc)
   end
 
@@ -1074,7 +1149,7 @@ defmodule Enum do
   end
 
   defp do_map_reduce(:stop, _, list_acc, acc, _f) do
-    { List.reverse(list_acc), acc }
+    { :lists.reverse(list_acc), acc }
   end
 
   ## partition
@@ -1088,7 +1163,7 @@ defmodule Enum do
   end
 
   defp do_partition([], _, acc1, acc2) do
-    { List.reverse(acc1), List.reverse(acc2) }
+    { :lists.reverse(acc1), :lists.reverse(acc2) }
   end
 
   defp do_partition({ h, next }, iterator, fun, acc1, acc2) do
@@ -1100,7 +1175,17 @@ defmodule Enum do
   end
 
   defp do_partition(:stop, _, _, acc1, acc2) do
-    { List.reverse(acc1), List.reverse(acc2) }
+    { :lists.reverse(acc1), :lists.reverse(acc2) }
+  end
+
+  ## reverse
+
+  defp do_reverse({ h, next }, iterator, acc) do
+    do_reverse(iterator.(next), iterator, [h|acc])
+  end
+
+  defp do_reverse(:stop, _, acc) do
+    acc
   end
 
   ## qsort (lists)
@@ -1160,23 +1245,23 @@ defmodule Enum do
   end
 
   defp do_split(list, 0, acc) do
-    { List.reverse(acc), list }
+    { :lists.reverse(acc), list }
   end
 
   defp do_split([], _, acc) do
-    { List.reverse(acc), [] }
+    { :lists.reverse(acc), [] }
   end
 
-  defp do_split({ h, next }, iterator, counter, acc, module) when counter > 0 do
-    do_split(iterator.(next), iterator, counter - 1, [h|acc], module)
+  defp do_split({ h, next }, iterator, counter, acc) when counter > 0 do
+    do_split(iterator.(next), iterator, counter - 1, [h|acc])
   end
 
-  defp do_split(extra, iterator, 0, acc, module) do
-    { List.reverse(acc), module.to_list(extra, iterator) }
+  defp do_split(extra, iterator, 0, acc) do
+    { :lists.reverse(acc), to_list(extra, iterator) }
   end
 
-  defp do_split(:stop, _, _, acc, _module) do
-    { List.reverse(acc), [] }
+  defp do_split(:stop, _, _, acc) do
+    { :lists.reverse(acc), [] }
   end
 
   ## take_while
@@ -1207,7 +1292,7 @@ defmodule Enum do
 
   ## times
 
-  defp do_times_0(limit, counter, _function) when counter > limit do
+  defp do_times_0(limit, counter, _function) when counter >= limit do
   end
 
   defp do_times_0(limit, counter, function) do
@@ -1215,7 +1300,7 @@ defmodule Enum do
     do_times_0(limit, 1 + counter, function)
   end
 
-  defp do_times_1(limit, counter, _function) when counter > limit do
+  defp do_times_1(limit, counter, _function) when counter >= limit do
   end
 
   defp do_times_1(limit, counter, function) do
@@ -1223,7 +1308,7 @@ defmodule Enum do
     do_times_1(limit, 1 + counter, function)
   end
 
-  defp do_times_2(limit, counter, _function, acc) when counter > limit do
+  defp do_times_2(limit, counter, _function, acc) when counter >= limit do
     acc
   end
 
@@ -1231,25 +1316,52 @@ defmodule Enum do
     new_acc = function.(counter, acc)
     do_times_2(limit, 1 + counter, function, new_acc)
   end
+
+  ## zip
+
+  defp do_zip([h1|next1], other) do
+    { h2, next2 } = do_zip_next(other)
+    [{ h1, h2 }|do_zip(next1, next2)]
+  end
+
+  defp do_zip([], _) do
+    []
+  end
+
+  defp do_zip({ h1, next1 }, iterator, other) do
+    { h2, next2 } = do_zip_next(other)
+    [{ h1, h2 }|do_zip(iterator.(next1), iterator, next2)]
+  end
+
+  defp do_zip(:stop, _, _) do
+    []
+  end
+
+  defp do_zip_next([h|t]), do: { h, t }
+  defp do_zip_next([]),    do: { nil, [] }
+
+  defp do_zip_next({ iterator, { h, next } }) do
+    { h, { iterator, iterator.(next) } }
+  end
+
+  defp do_zip_next({ _iterator, :stop } = i) do
+    { nil, i }
+  end
 end
 
 defimpl Enum.Iterator, for: List do
-  def iterator(list),  do: list
-  def count(list),     do: length(list)
-end
-
-defimpl Enum.OrdIterator, for: List do
-  def iterator(list),          do: list
-  def to_list({ h, next }, _), do: [h|next]
+  def iterator(list),               do: list
+  def count(list),                  do: length(list)
 end
 
 defimpl Enum.Iterator, for: Function do
   def iterator(function) do
-    { function, function.(:start) }
+    function.()
   end
 
   def count(function) do
-    do_count(function.(:start), function, 0)
+    { function, first } = function.()
+    do_count(first, function, 0)
   end
 
   defp do_count({ _, next }, function, acc) do
@@ -1258,19 +1370,5 @@ defimpl Enum.Iterator, for: Function do
 
   defp do_count(:stop, _, acc) do
     acc
-  end
-end
-
-defimpl Enum.OrdIterator, for: Function do
-  def iterator(function) do
-    { function, function.(:start) }
-  end
-
-  def to_list({ h, next }, function) do
-    [h|to_list(function.(next), function)]
-  end
-
-  def to_list(:stop, _function) do
-    []
   end
 end

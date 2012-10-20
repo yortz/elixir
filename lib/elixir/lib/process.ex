@@ -28,7 +28,7 @@ defmodule Process do
   @doc """
   Returns all key-values in the dictionary
   with no specific ordering (i.e. they are
-  not a keywords list).
+  not a keyword list).
   """
   def get do
     :erlang.get()
@@ -224,7 +224,7 @@ defmodule Process do
 
   See http://www.erlang.org/doc/man/erlang.html#register-2 for more info.
   """
-  def register(name, pid) do
+  def register(pid, name) do
     :erlang.register(name, pid)
   end
 
@@ -244,7 +244,22 @@ defmodule Process do
   See http://www.erlang.org/doc/man/erlang.html#whereis-1 for more info.
   """
   def whereis(name) do
-    :erlang.whereis(name)
+    nillify :erlang.whereis(name)
+  end
+
+  @doc """
+  Returns the pid of the group leader for the process which evaluates the function.
+  """
+  def group_leader do
+    :erlang.group_leader
+  end
+
+  @doc """
+  Sets the group leader of Pid to GroupLeader. Typically, this is used when a processes
+  started from a certain shell should have another group leader than `:init`.
+  """
+  def group_leader(leader, pid) do
+    :erlang.group_leader(leader, pid)
   end
 
   @doc """
@@ -273,6 +288,16 @@ defmodule Process do
   """
   def flag(pid, flag, value) do
     :erlang.process_flag(pid, flag, value)
+  end
+
+  @doc """
+  Returns information about the process identified by pid.
+  Use this only for debugging information.
+
+  See http://www.erlang.org/doc/man/erlang.html#process_info-1 for more info.
+  """
+  def info(pid) do
+    :erlang.process_info(pid)
   end
 
   @doc """

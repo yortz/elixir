@@ -1,10 +1,23 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule ListTest do
   use ExUnit.Case, async: true
 
   test :brackets_function do
     assert :[].(1,2,3) == [1,2,3]
+  end
+
+  test :optional_comma do
+    assert :[].(1,) == [ 1, ]
+    assert :[].(1,2,3,) == [1,2,3,]
+  end
+
+  test :partial_application do
+    assert ([&1, 2]).(1) == [1,2]
+    assert ([&1, &2]).(1, 2) == [1,2]
+    assert ([&2, &1]).(2, 1) == [1,2]
+    assert ([&1|&2]).(1, 2) == [1|2]
+    assert ([&1, &2|&3]).(1,2,3) == [1,2|3]
   end
 
   test :wrap do
@@ -79,7 +92,7 @@ defmodule ListTest do
   end
 
   test :reverse do
-    assert List.reverse([1,2,3]) == [3,2,1]
+    assert Enum.reverse([1,2,3]) == [3,2,1]
   end
 
   test :uniq do
@@ -98,21 +111,6 @@ defmodule ListTest do
   end
 
   test :zip do
-    assert List.zip([:a, :b], [1, 2]) == [{:a, 1}, {:b, 2}]
-    assert List.zip([:a, :b], [1, 2, 3, 4]) == [{:a, 1}, {:b, 2}]
-    assert List.zip([:a, :b, :c, :d], [1, 2]) == [{:a, 1}, {:b, 2}]
-    assert List.zip([], [1]) == []
-    assert List.zip([1], []) == []
-    assert List.zip([], []) == []
-  end
-
-  test :zip_tuples do
-    assert List.zip({:a, :b}, {1, 2}) == [{:a, 1}, {:b, 2}]
-    assert List.zip([:a, :b], {1, 2}) == [{:a, 1}, {:b, 2}]
-    assert List.zip({:a, :b}, [1, 2]) == [{:a, 1}, {:b, 2}]
-  end
-
-  test :zip_lists do
     assert List.zip([[1, 4], [2, 5], [3, 6]]) == [{1, 2, 3}, {4, 5, 6}]
     assert List.zip([[1, 4], [2, 5, 0], [3, 6]]) == [{1, 2, 3}, {4, 5, 6}]
     assert List.zip([[1], [2, 5], [3, 6]]) == [{1, 2, 3}]
@@ -123,23 +121,34 @@ defmodule ListTest do
     assert List.unzip([{1, 2, 3}, {4, 5, 6}]) == [[1, 4], [2, 5], [3, 6]]
     assert List.unzip([{1, 2, 3}, {4, 5}]) == [[1, 4], [2, 5]]
     assert List.unzip([[1, 2, 3], [4, 5]]) == [[1, 4], [2, 5]]
+    assert List.unzip([]) == []
   end
 
   test :keyfind do
-    assert List.keyfind([a: 1, b: 2], :a, 1) == { :a, 1 }
-    assert List.keyfind([a: 1, b: 2], 2, 2) == { :b, 2 }
-    assert List.keyfind([a: 1, b: 2], :c, 1) == nil
+    assert List.keyfind([a: 1, b: 2], :a, 0) == { :a, 1 }
+    assert List.keyfind([a: 1, b: 2], 2, 1) == { :b, 2 }
+    assert List.keyfind([a: 1, b: 2], :c, 0) == nil
+  end
+
+  test :keyreplace do
+    assert List.keyreplace([a: 1, b: 2], :a, 0, { :a, 3 }) == [a: 3, b: 2]
+    assert List.keyreplace([a: 1], :b, 0, { :b, 2 }) == [a: 1]
+  end
+
+  test :keystore do
+    assert List.keystore([a: 1, b: 2], :a, 0, { :a, 3 }) == [a: 3, b: 2]
+    assert List.keystore([a: 1], :b, 0, { :b, 2 }) == [a: 1, b: 2]
   end
 
   test :keymember? do
-    assert List.keymember?([a: 1, b: 2], :a, 1) == true
-    assert List.keymember?([a: 1, b: 2], 2, 2) == true
-    assert List.keymember?([a: 1, b: 2], :c, 1) == false
+    assert List.keymember?([a: 1, b: 2], :a, 0) == true
+    assert List.keymember?([a: 1, b: 2], 2, 1) == true
+    assert List.keymember?([a: 1, b: 2], :c, 0) == false
   end
 
   test :keydelete do
-    assert List.keydelete([a: 1, b: 2], :a, 1) == [{ :b, 2 }]
-    assert List.keydelete([a: 1, b: 2], 2, 2) == [{ :a, 1 }]
-    assert List.keydelete([a: 1, b: 2], :c, 1) == [{ :a, 1 }, { :b, 2 }]
+    assert List.keydelete([a: 1, b: 2], :a, 0) == [{ :b, 2 }]
+    assert List.keydelete([a: 1, b: 2], 2, 1) == [{ :a, 1 }]
+    assert List.keydelete([a: 1, b: 2], :c, 0) == [{ :a, 1 }, { :b, 2 }]
   end
 end

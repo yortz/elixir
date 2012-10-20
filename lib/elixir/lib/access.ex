@@ -8,7 +8,7 @@ defprotocol Access do
   invokes `Access.access` protocol.
 
   This protocol is limited and is implemented only for the
-  following built-in types: keywords, tuples, atoms and
+  following built-in types: keywords, records, atoms and
   functions.
   """
 
@@ -22,7 +22,7 @@ end
 
 defimpl Access, for: List do
   @doc """
-  Access the given key in a keywords list.
+  Access the given key in a keyword list.
 
   ## Examples
 
@@ -32,13 +32,9 @@ defimpl Access, for: List do
   """
 
   def access(list, atom) when is_atom(atom) do
-    atom_access(list, atom)
+    Keyword.get(list, atom)
   end
 
-  defp atom_access([{k, _}|_], key) when key < k, do: nil
-  defp atom_access([{k, _}|d], key) when key > k, do: atom_access(d, key)
-  defp atom_access([{_k, value}|_], _key),        do: value
-  defp atom_access([], _),                        do: nil
 end
 
 defimpl Access, for: Atom do
@@ -47,6 +43,9 @@ defimpl Access, for: Atom do
   at compilation time. If we reach this, we should raise
   an exception.
   """
+  def access(nil, _) do
+    nil
+  end
   def access(atom, _) do
     raise "The access protocol can only be invoked for atoms at " <>
       "compilation time, tried to invoke it for #{inspect atom}"

@@ -11,9 +11,9 @@
 get_opt(Key) -> get_opt(Key, get_opts()).
 
 get_opt(Key, Dict) ->
-  case orddict:find(Key, Dict) of
-    { ok, Value } -> Value;
-    error -> false
+  case lists:keyfind(Key, 1, Dict) of
+    false -> false;
+    { Key, Value } -> Value
   end.
 
 get_opts() ->
@@ -26,7 +26,7 @@ string(Contents, File) when is_list(Contents), is_binary(File) ->
 
   try
     put(elixir_compiled, []),
-    Forms = elixir_translator:forms(Contents, 1, File),
+    Forms = elixir_translator:'forms!'(Contents, 1, File, []),
     eval_forms(Forms, 1, File, [], #elixir_scope{file=File}),
     lists:reverse(get(elixir_compiled))
   after
@@ -37,12 +37,8 @@ string(Contents, File) when is_list(Contents), is_binary(File) ->
 
 file(Relative) when is_binary(Relative) ->
   File = filename:absname(Relative),
-  case file:read_file(File) of
-    {ok, Bin} ->
-      string(unicode:characters_to_list(Bin), File);
-    Error ->
-      erlang:error(Error)
-  end.
+  { ok, Bin } = file:read_file(File),
+  string(unicode:characters_to_list(Bin), File).
 
 %% Compiles a file to the given path (directory).
 
@@ -192,9 +188,14 @@ core_file(File) ->
 
 core_list() ->
   [
+    "lib/elixir/lib/range.ex",
+    "lib/elixir/lib/behaviour.ex",
     "lib/elixir/lib/uri/parser.ex",
     "lib/elixir/lib/elixir/formatter.ex",
     "lib/elixir/lib/dict.ex",
+    "lib/elixir/lib/dict/common.ex",
+    "lib/elixir/lib/access.ex",
+    "lib/elixir/lib/range.ex",
     "lib/elixir/lib/*/*.ex",
     "lib/elixir/lib/*.ex"
   ].
@@ -202,20 +203,20 @@ core_list() ->
 core_main() ->
   [
     "lib/elixir/lib/kernel.ex",
-    "lib/elixir/lib/macro/env.ex",
-    "lib/elixir/lib/macro.ex",
     "lib/elixir/lib/keyword.ex",
     "lib/elixir/lib/record.ex",
+    "lib/elixir/lib/macro.ex",
+    "lib/elixir/lib/macro/env.ex",
     "lib/elixir/lib/module.ex",
     "lib/elixir/lib/list.ex",
+    "lib/elixir/lib/code.ex",
     "lib/elixir/lib/protocol.ex",
     "lib/elixir/lib/enum.ex",
     "lib/elixir/lib/exception.ex",
     "lib/elixir/lib/binary/inspect.ex",
     "lib/elixir/lib/binary/chars.ex",
     "lib/elixir/lib/list/chars.ex",
-    "lib/elixir/lib/gen_server/behavior.ex",
-    "lib/elixir/lib/code.ex"
+    "lib/elixir/lib/gen_server/behaviour.ex"
   ].
 
 %% ERROR HANDLING

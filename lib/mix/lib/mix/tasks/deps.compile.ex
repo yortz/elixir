@@ -29,24 +29,19 @@ defmodule Mix.Tasks.Deps.Compile do
   which mix will use to shell out.
   """
 
-  import Mix.Deps, only: [all: 0, all: 1, by_name: 1, format_dep: 1, deps_path: 1, deps_path: 0]
+  import Mix.Deps, only: [all: 0, available?: 1, by_name!: 1, format_dep: 1, deps_path: 1]
 
   def run(args) do
     case OptionParser.parse(args) do
       { _, [] } ->
-        deps = all -- all(:unavailable)
-        do_compile(deps)
+        do_compile Enum.filter(all, available?(&1))
       { _, tail } ->
-        do_compile(by_name(tail))
+        do_compile by_name!(tail)
     end
   end
 
   defp do_compile(deps) do
     shell = Mix.shell
-
-    # Load available paths but still allow it to be called down the road
-    Mix.Task.run "deps.loadpaths", ["--no-check"]
-    Mix.Task.reenable "deps.loadpaths"
 
     Enum.each deps, fn(dep) ->
       Mix.Dep[app: app, status: status, opts: opts] = dep
@@ -54,18 +49,23 @@ defmodule Mix.Tasks.Deps.Compile do
       check_unavailable!(app, status)
       shell.info "* Compiling #{app}"
 
-      root_path = File.expand_path(deps_path)
-
-      compile_path = deps_path(dep)
-      ebin = File.join(compile_path, "ebin") /> binary_to_list
+      deps_path = deps_path(dep)
+      ebin = File.join(deps_path, "ebin") /> binary_to_list
 
       # Avoid compilation conflicts
       :code.del_path(ebin /> File.expand_path)
 
-      File.cd! compile_path, fn ->
+      root_path = File.expand_path(Mix.project[:deps_path])
+
+      config = [
+        deps_path: root_path,
+        lockfile:  File.expand_path(Mix.project[:lockfile])
+      ]
+
+      File.cd! deps_path, fn ->
         cond do
           opts[:compile] -> do_command(opts[:compile], app)
-          mix?           -> Mix.Project.in_subproject fn -> Mix.Task.run "compile", ["--no-check"] end
+          mix?           -> do_mix(dep, config)
           rebar?         -> shell.info System.cmd("rebar compile deps_dir=#{inspect root_path}")
           make?          -> shell.info System.cmd("make")
           true           -> shell.error "Could not compile #{app}, no mix.exs, rebar.config or Makefile " <>
@@ -90,12 +90,29 @@ defmodule Mix.Tasks.Deps.Compile do
     :ok
   end
 
+  defp do_mix(Mix.Dep[opts: opts, project: project], config) do
+    env       = opts[:env] || :prod
+    old_env   = Mix.env
+    old_tasks = Mix.Task.clear
+
+    try do
+      Mix.env(env)
+      Mix.Project.post_config(config)
+      Mix.Project.push project
+      Mix.Task.run "compile", ["--no-deps"]
+    after
+      Mix.env(old_env)
+      Mix.Project.pop
+      Mix.Task.set_tasks(old_tasks)
+    end
+  end
+
   defp do_command(:noop, _) do
     :ok
   end
 
   defp do_command(atom, app) when is_atom(atom) do
-    apply Mix.Project.current, atom, [app]
+    apply Mix.Project.get!, atom, [app]
   end
 
   defp do_command(command, _) do

@@ -28,6 +28,7 @@ defmodule Regex do
   * firstline (f) - forces the unanchored pattern to match before or at the first
     newline, though the matched text may continue over the newline
   * ungreedy (r) - invert the "greediness" of the regexp
+  * groups (g) - compile with info about groups available
 
   The options not available are:
 
@@ -53,10 +54,12 @@ defmodule Regex do
   def compile(source, options // "") do
     source  = to_binary(source)
     options = to_binary(options)
-    re_opts = translate_options(options)
-    case Erlang.re.compile(source, re_opts) do
+    opts    = translate_options(options)
+    re_opts = opts -- [:groups]
+    groups  = if opts != re_opts, do: parse_groups(source)
+    case :re.compile(source, re_opts) do
       { :ok, compiled } ->
-        { :ok, { Regex, compiled, source, options } }
+        { :ok, { Regex, compiled, source, options, groups } }
       error ->
         error
     end
@@ -84,8 +87,8 @@ defmodule Regex do
       Regex.index %r/e/, "abcd"     #=> nil
 
   """
-  def index({ Regex, compiled, _, _ }, string) do
-    case Erlang.re.run(string, compiled, [{ :capture, :first, :index }]) do
+  def index({ Regex, compiled, _, _, _ }, string) do
+    case :re.run(string, compiled, [{ :capture, :first, :index }]) do
       :nomatch -> nil
       { :match, [{index,_}] } -> index
     end
@@ -100,8 +103,8 @@ defmodule Regex do
       Regex.match? %r/foo/, "bar" #=> false
 
   """
-  def match?({ Regex, compiled, _, _ }, string) do
-    :nomatch != Erlang.re.run(string, compiled)
+  def match?({ Regex, compiled, _, _, _ }, string) do
+    :re.run(string, compiled, [{ :capture, :none }]) == :match
   end
 
   @doc """
@@ -114,13 +117,41 @@ defmodule Regex do
       Regex.run %r/e/, "abcd"     #=> nil
 
   """
-  def run({ Regex, compiled, _, _ }, string) do
-    case Erlang.re.run(string, compiled, [{ :capture, :all, return_for(string) }]) do
-      :nomatch ->
-        nil
-      { :match, results } ->
-        results
+  def run(regex, string, options // [])
+  def run({ Regex, compiled, _, _, groups }, string, options) do
+    return = Keyword.get(options, :return, return_for(string))
+
+    captures =
+      case Keyword.get(options, :capture, :all) do
+        :groups -> groups || raise "Regex was not compiled with g"
+        others  -> others
+      end
+
+    case :re.run(string, compiled, [{ :capture, captures, return }]) do
+      :nomatch -> nil
+      { :match, results } -> results
     end
+  end
+
+  @doc """
+  Returns the given captures as a list of tuples.
+
+  ## Examples
+
+      Regex.captures %r/c(?<foo>d)/g, "abcd"  #=> [{:foo, ["d"]}]
+
+  """
+  def captures({ Regex, _, _, _, groups } = regex, string, options // []) do
+    unless captures = Keyword.get(options, :capture) do
+      captures = if groups do
+        List.sort(groups)
+      else
+        raise "Regex was not compiled with g"
+      end
+      options  = Keyword.put(options, :capture, captures)
+    end
+    results = run(regex, string, options)
+    if results, do: Enum.zip captures, results
   end
 
   @doc """
@@ -135,19 +166,18 @@ defmodule Regex do
       Regex.indexes %r/e/, "abcd"     #=> nil
 
   """
-  def indexes({ Regex, compiled, _, _ }, string) do
-    case Erlang.re.run(string, compiled, [{ :capture, :all, :index }]) do
-      :nomatch ->
-        nil
-      { :match, results } ->
-        results
+  def indexes({ Regex, compiled, _, _, _ }, string) do
+    IO.write "[WARNING] Regex.indexes is deprecated, please use Regex.run with return: :index as option instead\n#{Exception.formatted_stacktrace}"
+    case :re.run(string, compiled, [{ :capture, :all, :index }]) do
+      :nomatch -> nil
+      { :match, results } -> results
     end
   end
 
   @doc """
   Returns the underlying re_pattern in the regular expression.
   """
-  def re_pattern({ Regex, compiled, _, _ }) do
+  def re_pattern({ Regex, compiled, _, _, _ }) do
     compiled
   end
 
@@ -159,7 +189,7 @@ defmodule Regex do
       Regex.source %r(foo) #=> "foo"
 
   """
-  def source({ Regex, _, source, _ }) do
+  def source({ Regex, _, source, _, _ }) do
     source
   end
 
@@ -171,8 +201,20 @@ defmodule Regex do
       Regex.opts %r(foo)m #=> 'm'
 
   """
-  def opts({ Regex, _, _, opts }) do
+  def opts({ Regex, _, _, opts, _ }) do
     opts
+  end
+
+  @doc """
+  Returns list of named groups in regex.
+
+  ## Examples
+
+      Regex.groups %r/(?<foo>foo)/g #=> ["foo"]
+
+  """
+  def groups({ Regex, _, _, _, groups }) do
+    groups
   end
 
   @doc """
@@ -188,35 +230,49 @@ defmodule Regex do
       Regex.scan %r/e/, "abcd"             #=> []
 
   """
-  def scan({ Regex, compiled, _, _ }, string) do
-    options = [{ :capture, :all, return_for(string) }, :global, { :offset, 0 }]
-    case Erlang.re.run(string, compiled, options) do
+  def scan(regex, string, options // [])
+  def scan({ Regex, compiled, _, _, _ }, string, options) do
+    return = options[:return] || return_for(string)
+    options = [{ :capture, :all, return }, :global]
+    case :re.run(string, compiled, options) do
       :nomatch -> []
-      { :match, results } ->
-        lc result inlist results do
-          case result do
-            [t] -> t
-            [h|t] -> t
-          end
-        end
+      { :match, results } -> flatten_result(results)
     end
   end
 
   @doc """
-  Split the given target in the number of parts specified. If no ammount
-  of parts is given, it defaults to :infinity.
+  Split the given target in the number of parts specified.
+  If no ammount of parts is given, it defaults to :infinity.
   """
-  def split({ Regex, compiled, _, _ }, string, parts // :infinity) do
-    options = [{ :return, return_for(string) }, :trim, { :parts, parts }]
-    Erlang.re.split(string, compiled, options)
+
+  def split(regex, string, options // [])
+
+  def split(regex, string, options) when is_integer(options) or is_atom(options) do
+    IO.write "[WARNING] Passing an integer or atom to Regex.split/3 is deprecated, pass a :parts option instead\n#{Exception.formatted_stacktrace}"
+    split(regex, string, parts: options)
+  end
+
+  def split({ Regex, compiled, _, _, _ }, string, options) do
+    parts =
+      cond do
+        options[:global] == false -> 2
+        p = options[:parts]       -> p
+        true                      -> :infinity
+      end
+
+    return = options[:return] || return_for(string)
+    opts   = [{ :return, return }, { :parts, parts }]
+    :re.split(string, compiled, opts)
   end
 
   @doc %B"""
-  Receives a string and a replacement and returns a string where the
-  first match of the regular expressions is replaced by replacement.
-  Inside the replacement, you can either give "&" to access the whole
-  regular expression or \N, where N is in integer to access an specific
-  matching parens.
+  Receives a regex, a binary and a replacement and returns a new
+  binary where the all matches are replaced by replacement.
+
+  Inside the replacement, you can either give "&" to access the
+  whole regular expression or \N, where N is in integer to access
+  a specific matching parens. You can also set global to false
+  if you want to replace just the first occurrence.
 
   ## Examples
 
@@ -227,23 +283,23 @@ defmodule Regex do
       Regex.replace(%r/(b)/, "abc", "[\\1]") #=> "a[b]c"
 
   """
-  def replace({ Regex, compiled, _, _ }, string, replacement) do
-    Erlang.re.replace(string, compiled, replacement, [{ :return, return_for(string) }])
+  def replace({ Regex, compiled, _, _, _ }, string, replacement, options // []) do
+    opts   = if options[:global] != false, do: [:global], else: []
+    return = options[:return] || return_for(string)
+    opts   = [{ :return, return }|opts]
+    :re.replace(string, compiled, replacement, opts)
   end
 
-  @doc """
-  The same as replace, but replaces all parts where the regular
-  expressions matches in the string. Please read `replace/3` for
-  documentation and examples.
-  """
-  def replace_all({ Regex, compiled, _, _ }, string, replacement) do
-    Erlang.re.replace(string, compiled, replacement, [{ :return, return_for(string) }, :global])
+  @doc false
+  def replace_all({ Regex, compiled, _, _, _ }, string, replacement) do
+    IO.write "[WARNING] Regex.replace_all is deprecated, simply use Regex.replace instead\n#{Exception.formatted_stacktrace}"
+    :re.replace(string, compiled, replacement, [{ :return, return_for(string) }, :global])
   end
 
   # Helpers
 
   @doc false
-  # Unescape map function used by Binary.unescape.
+  # Unescape map function used by Macro.unescape_binary.
   def unescape_map(?f), do: ?\f
   def unescape_map(?n), do: ?\n
   def unescape_map(?r), do: ?\r
@@ -256,12 +312,32 @@ defmodule Regex do
   defp return_for(element) when is_binary(element), do: :binary
   defp return_for(element) when is_list(element),   do: :list
 
-  defp translate_options(<<?u, t|:binary>>), do: [:unicode|translate_options(t)]
-  defp translate_options(<<?i, t|:binary>>), do: [:caseless|translate_options(t)]
-  defp translate_options(<<?x, t|:binary>>), do: [:extended|translate_options(t)]
-  defp translate_options(<<?f, t|:binary>>), do: [:firstline|translate_options(t)]
-  defp translate_options(<<?r, t|:binary>>), do: [:ungreedy|translate_options(t)]
-  defp translate_options(<<?s, t|:binary>>), do: [:dotall,{:newline,:anycrlf}|translate_options(t)]
-  defp translate_options(<<?m, t|:binary>>), do: [:multiline|translate_options(t)]
+  defp translate_options(<<?u, t :: binary>>), do: [:unicode|translate_options(t)]
+  defp translate_options(<<?i, t :: binary>>), do: [:caseless|translate_options(t)]
+  defp translate_options(<<?x, t :: binary>>), do: [:extended|translate_options(t)]
+  defp translate_options(<<?f, t :: binary>>), do: [:firstline|translate_options(t)]
+  defp translate_options(<<?r, t :: binary>>), do: [:ungreedy|translate_options(t)]
+  defp translate_options(<<?s, t :: binary>>), do: [:dotall,{:newline,:anycrlf}|translate_options(t)]
+  defp translate_options(<<?m, t :: binary>>), do: [:multiline|translate_options(t)]
+  defp translate_options(<<?g, t :: binary>>), do: [:groups|translate_options(t)]
   defp translate_options(<<>>), do: []
+
+  defp flatten_result(results) do
+    lc result inlist results do
+      case result do
+        [t] -> t
+        [h|t] -> t
+      end
+    end
+  end
+
+  defp parse_groups(source) do
+    options = [:global, {:capture, ['G'], :binary}]
+    {:ok, pattern} = :re.compile(%B"\(\?<(?<G>[^>]*)>")
+    case :re.run(source, pattern, options) do
+      :nomatch -> []
+      { :match, results } ->
+        lc [group] inlist results, do: binary_to_atom(group)
+    end
+  end
 end

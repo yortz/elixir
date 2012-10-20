@@ -1,13 +1,15 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
-require Erlang.os, as: OS
+require :os, as: OS
 
 defmodule SystemTest do
   use ExUnit.Case, async: true
   import PathHelpers
 
   test :build_info do
-    assert { _, _, _ } = System.build_info
+    assert not nil?(System.build_info[:version])
+    assert not nil?(System.build_info[:tag])
+    assert not nil?(System.build_info[:date])
   end
 
   test :argv do

@@ -1,4 +1,4 @@
-Code.require_file "../test_helper", __FILE__
+Code.require_file "../test_helper.exs", __FILE__
 
 defmodule RangeTest do
   use ExUnit.Case, async: true
@@ -22,5 +22,15 @@ defmodule RangeTest do
     assert 2 in 1..3, "raw range assertion"
     assert 3 in 1..3, "raw range assertion"
     refute 4 in 1..3, "raw range assertion"
+    assert -3 in -1..-3, "raw range assertion"
+  end
+
+  test :is_range do
+    assert is_range(1..3)
+    refute is_range(not_range)
+  end
+
+  defp not_range do
+    1
   end
 end

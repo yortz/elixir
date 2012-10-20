@@ -18,8 +18,8 @@ defmodule Mix.Utils do
   Gets the user home attempting to consider OS system diferences.
   """
   def user_home do
-    System.get_env("MIXHOME") || System.get_env("HOME") || System.get_env("USERPROFILE") ||
-      raise Mix.Error, message: "Nor MIXHOME, HOME or USERPROFILE env variables were set"
+    System.get_env("MIX_HOME") || System.get_env("HOME") || System.get_env("USERPROFILE") ||
+      raise Mix.Error, message: "Nor MIX_HOME, HOME or USERPROFILE env variables were set"
   end
 
   @doc """
@@ -32,12 +32,12 @@ defmodule Mix.Utils do
     # R15 and before, we need to look for the source first in the
     # options and then into the real source.
     options =
-      case List.keyfind(compile, :options, 1) do
+      case List.keyfind(compile, :options, 0) do
         { :options, opts } -> opts
         _ -> []
       end
 
-    source  = List.keyfind(options, :source, 1)  || List.keyfind(compile, :source, 1)
+    source  = List.keyfind(options, :source, 0)  || List.keyfind(compile, :source, 0)
 
     case source do
       { :source, source } -> list_to_binary(source)
@@ -90,13 +90,50 @@ defmodule Mix.Utils do
 
   defp last_modified(path) do
     case File.stat(path) do
-      { :ok, stat } -> stat.mtime
+      { :ok, File.Stat[mtime: mtime] } -> mtime
       { :error, _ } -> { { 1970, 1, 1 }, { 0, 0, 0 } }
     end
   end
 
   @doc """
-  Merges two configs recursively, merging keywords lists
+  Extract the files from the given paths with
+  the given extension.
+  It ignores files which start with "."
+  """
+  def extract_files(paths, exts) do
+    exts = Enum.join(exts, ",")
+    files = List.concat(lc path inlist paths do
+      File.wildcard("#{path}/**/*.{#{exts}}")
+    end)
+    exclude_files(files)
+  end
+
+  @doc """
+  Extract the files from the given paths with
+  the given extension in case `files` is an empty
+  array. If not, get the common subset between
+  `files` and the extracted files.
+  It ignores files which start with "."
+  """
+  def extract_files(paths, [], exts) do
+    extract_files(paths, exts)
+  end
+
+  def extract_files(paths, files, exts) do
+    paths = extract_files(paths, exts)
+    Enum.filter files, List.member?(paths, &1)
+  end
+
+  @doc """
+  Filtering out files which start with "."
+  """
+  def exclude_files(files) do
+    filter = fn(x) -> not match?("." <> _, File.basename(x)) end
+    Enum.filter files, filter
+  end
+
+  @doc """
+  Merges two configs recursively, merging keyword lists
   and concatenating normal lists.
   """
   def config_merge(old, new) do
@@ -118,11 +155,16 @@ defmodule Mix.Utils do
   end
 
   @doc """
-  Converts the given string to underscore format.
+  Converts the given atom or binary to underscore format.
+
+  If an atom is given, it is assumed to be an Elixir module,
+  so it is converted to a binary and then processed.
 
   ## Examples
 
-      Mix.Utils.underscore "FooBar" #=> "foo_bar"
+      Mix.Utils.underscore "FooBar"  #=> "foo_bar"
+      Mix.Utils.underscore "Foo.Bar" #=> "foo/bar"
+      Mix.Utils.underscore Foo.Bar   #=> "foo/bar"
 
   In general, underscore can be thought as the reverse of
   camelize, however, in some cases formatting may be lost:
@@ -131,23 +173,33 @@ defmodule Mix.Utils do
       Mix.Utils.camelize   "sap_example" #=> "SapExample"
 
   """
-  def underscore(<<h, t | :binary>>) do
+  def underscore(atom) when is_atom(atom) do
+    "Elixir-" <> rest = atom_to_binary(atom)
+    rest = :binary.replace(rest, "-", ".")
+    underscore rest
+  end
+
+  def underscore(<<h, t :: binary>>) do
     <<to_lower_char(h)>> <> do_underscore(t, h)
   end
 
-  defp do_underscore(<<h, t, rest | :binary>>, _) when h in ?A..?Z and not t in ?A..?Z do
+  defp do_underscore(<<h, t, rest :: binary>>, _) when h in ?A..?Z and not t in ?A..?Z do
     <<?_, to_lower_char(h), t>> <> do_underscore(rest, t)
   end
 
-  defp do_underscore(<<h, t | :binary>>, prev) when h in ?A..?Z and not prev in ?A..?Z do
+  defp do_underscore(<<h, t :: binary>>, prev) when h in ?A..?Z and not prev in ?A..?Z do
     <<?_, to_lower_char(h)>> <> do_underscore(t, h)
   end
 
-  defp do_underscore(<<?-, t | :binary>>, _) do
+  defp do_underscore(<<?-, t :: binary>>, _) do
     <<?_>> <> do_underscore(t, ?-)
   end
 
-  defp do_underscore(<<h, t | :binary>>, _) do
+  defp do_underscore(<<?., t :: binary>>, _) do
+    <<?/>> <> underscore(t)
+  end
+
+  defp do_underscore(<<h, t :: binary>>, _) do
     <<to_lower_char(h)>> <> do_underscore(t, h)
   end
 
@@ -163,19 +215,19 @@ defmodule Mix.Utils do
       Mix.Utils.camelize "foo_bar" #=> "FooBar"
 
   """
-  def camelize(<<?_, t | :binary>>) do
+  def camelize(<<?_, t :: binary>>) do
     camelize(t)
   end
 
-  def camelize(<<h, t | :binary>>) do
+  def camelize(<<h, t :: binary>>) do
     <<to_upper_char(h)>> <> do_camelize(t)
   end
 
-  defp do_camelize(<<?_, ?_, t | :binary>>) do
-    do_camelize(<< ?_, t | :binary >>)
+  defp do_camelize(<<?_, ?_, t :: binary>>) do
+    do_camelize(<< ?_, t :: binary >>)
   end
 
-  defp do_camelize(<<?_, h, t | :binary>>) when h in ?a..?z do
+  defp do_camelize(<<?_, h, t :: binary>>) when h in ?a..?z do
     <<to_upper_char(h)>> <> do_camelize(t)
   end
 
@@ -183,7 +235,11 @@ defmodule Mix.Utils do
     <<>>
   end
 
-  defp do_camelize(<<h, t | :binary>>) do
+  defp do_camelize(<<?/, t :: binary>>) do
+    <<?.>> <> camelize(t)
+  end
+
+  defp do_camelize(<<h, t :: binary>>) do
     <<h>> <> do_camelize(t)
   end
 
@@ -231,10 +287,10 @@ defmodule Mix.Utils do
       Enum.join(".")
   end
 
-  defp first_to_upper(<<s, t|:binary>>), do: <<to_upper_char(s)>> <> t
+  defp first_to_upper(<<s, t :: binary>>), do: <<to_upper_char(s)>> <> t
   defp first_to_upper(<<>>), do: <<>>
 
-  defp first_to_lower(<<s, t|:binary>>), do: <<to_lower_char(s)>> <> t
+  defp first_to_lower(<<s, t :: binary>>), do: <<to_lower_char(s)>> <> t
   defp first_to_lower(<<>>), do: <<>>
 
   defp to_upper_char(char) when char in ?a..?z, do: char - 32

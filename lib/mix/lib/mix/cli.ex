@@ -10,10 +10,20 @@ defmodule Mix.CLI do
   """
   def run(args // System.argv) do
     Mix.Local.append_tasks
-    do_run do_load(args)
+
+    args = load_mixfile(args)
+    { task, args } = get_task(args)
+
+    if Mix.Project.get do
+      Mix.Task.run "loadpaths", ["--no-check"]
+      Mix.Task.reenable "loadpaths"
+      Mix.Task.reenable "deps.loadpaths"
+    end
+
+    run_task task, args
   end
 
-  defp do_load(args) do
+  defp load_mixfile(args) do
     file = "mix.exs"
 
     if File.regular?(file) do
@@ -23,21 +33,25 @@ defmodule Mix.CLI do
     args
   end
 
-  defp do_run([h|t]) do
-    do_task h, t
+  defp get_task([h|t]) do
+    { h, t }
   end
 
-  defp do_run([]) do
-    do_task Mix.project[:default] || "test", []
+  defp get_task([]) do
+    { Mix.project[:default] || "test", [] }
   end
 
-  defp do_task(name, args) do
+  defp run_task(name, args) do
     try do
       Mix.Task.run(name, args)
     rescue
       # We only rescue exceptions in the mix namespace, all
       # others pass through and will explode on the users face
-      exception in exceptions -> Mix.shell.error exception.message
+      exception in exceptions ->
+        if msg = exception.message do
+          Mix.shell.error msg
+        end
+        exit(1)
     end
   end  
 end
