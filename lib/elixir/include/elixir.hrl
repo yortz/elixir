@@ -14,23 +14,22 @@
   super=false,                                   %% when true, it means super was invoked
   caller=false,                                  %% when true, it means caller was invoked
   name_args=false,                               %% when true, it means arguments should be named
-  macro=[],                                      %% a stack with macros nesting
   module=nil,                                    %% the current module
   function=nil,                                  %% the current function
   recur=nil,                                     %% the current loop function to be recurred
   vars=[],                                       %% a dict of defined variables and their alias
   temp_vars=[],                                  %% a dict of all variables defined in a particular assign
-  clause_vars=[],                                %% a dict of all variables defined in a particular clause
   quote_vars=[],                                 %% a dict of all quoted variables
+  clause_vars=nil,                               %% a dict of all variables defined in a particular clause
   extra_guards=nil,                              %% extra guards from args expansion
-  counter=0,                                     %% a counter for the variables defined
-  file=(<<"nofile">>),                           %% the current scope filename
+  counter=[],                                    %% a counter for the variables defined
   local=nil,                                     %% the scope to evaluate local functions against
-  aliases=[],                                    %% an orddict with aliases by new -> old names
-  requires=elixir_dispatch:default_requires(),   %% a set with modules required
-  macros=elixir_dispatch:default_macros(),       %% a list with macros imported by module
-  functions=elixir_dispatch:default_functions(), %% a list with functions imported by module
-  scheduled=[]}).                                %% scheduled modules to be loaded
+  scheduled=[],                                  %% scheduled modules to be loaded
+  file,                                          %% the current scope filename
+  aliases,                                       %% an orddict with aliases by new -> old names
+  requires,                                      %% a set with modules required
+  macros,                                        %% a list with macros imported by module
+  functions}).                                   %% a list with functions imported by module
 
 -record(elixir_quote, {
   line=0,

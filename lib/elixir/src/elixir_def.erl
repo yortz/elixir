@@ -6,7 +6,7 @@
   reset_last/1,
   wrap_definition/7,
   store_definition/8,
-  store_each/8,
+  store_each/7,
   unwrap_stored_definitions/1,
   format_error/1]).
 -include("elixir.hrl").
@@ -19,7 +19,7 @@ table(Module) -> ?ELIXIR_ATOM_CONCAT([f, Module]).
 build_table(Module) ->
   FunctionTable = table(Module),
   ets:new(FunctionTable, [set, named_table, public]),
-  ets:insert(FunctionTable, { last, [] }),
+  reset_last(Module),
   FunctionTable.
 
 delete_table(Module) ->
@@ -81,7 +81,6 @@ store_definition(Kind, Line, Module, Name, Args, Guards, Body, RawS) ->
 
   File  = TS#elixir_scope.file,
   Table = table(Module),
-  Stack = TS#elixir_scope.macro,
 
   %% Store function
   if
@@ -90,10 +89,10 @@ store_definition(Kind, Line, Module, Name, Args, Guards, Body, RawS) ->
       compile_super(Module, TS),
       CheckClauses = S#elixir_scope.check_clauses,
       store_each(CheckClauses, Kind, File, Location,
-        Stack, Table, length(Defaults), Function)
+        Table, length(Defaults), Function)
   end,
 
-  [store_each(false, Kind, File, Location, Stack, Table, 0,
+  [store_each(false, Kind, File, Location, Table, 0,
     function_for_default(Kind, Name, Default)) || Default <- Defaults],
 
   { Name, Arity }.
@@ -215,9 +214,10 @@ unwrap_stored_definition([Fun|T], Exports, Private, Def, Defmacro, Defmacrop, Fu
   );
 
 unwrap_stored_definition([Fun|T], Exports, Private, Def, Defmacro, Defmacrop, Functions) when element(2, Fun) == defmacrop ->
+  Tuple = element(1, Fun),
   unwrap_stored_definition(
-    T, Exports, [element(1, Fun)|Private], Def, Defmacro,
-    [{ element(1, Fun), element(3, Fun) }|Defmacrop], Functions
+    T, Exports, [Tuple|Private], Def, Defmacro,
+    [{ Tuple, element(3, Fun), element(5, Fun) }|Defmacrop], Functions
   );
 
 unwrap_stored_definition([], Exports, Private, Def, Defmacro, Defmacrop, {Functions,Tail}) ->
@@ -226,13 +226,13 @@ unwrap_stored_definition([], Exports, Private, Def, Defmacro, Defmacrop, {Functi
 
 %% Helpers
 
-function_for_stored_definition({{Name, Arity}, _, Line, _, [], _, _, Clauses}, {Functions,Tail}) ->
+function_for_stored_definition({{Name, Arity}, _, Line, _, _, [], _, Clauses}, {Functions,Tail}) ->
   {
     [{ function, Line, Name, Arity, lists:reverse(Clauses) }|Functions],
     Tail
   };
 
-function_for_stored_definition({{Name, Arity}, _, Line, _, Location, _, _, Clauses}, {Functions,Tail}) ->
+function_for_stored_definition({{Name, Arity}, _, Line, _, _, Location, _, Clauses}, {Functions,Tail}) ->
   {
     Functions,
     [
@@ -252,22 +252,22 @@ function_for_default(_, Name, { clause, Line, Args, _Guards, _Exprs } = Clause) 
 %% This function also checks and emit warnings in case
 %% the kind, of the visibility of the function changes.
 
-store_each(Check, Kind, File, Location, Stack, Table, Defaults, {function, Line, Name, Arity, Clauses}) ->
+store_each(Check, Kind, File, Location, Table, Defaults, {function, Line, Name, Arity, Clauses}) ->
   case ets:lookup(Table, {Name, Arity}) of
-    [{{Name, Arity}, StoredKind, _, _, StoredLocation, StoredStack, StoredDefaults, StoredClauses}] ->
+    [{{Name, Arity}, StoredKind, _, _, StoredCheck, StoredLocation, StoredDefaults, StoredClauses}] ->
       FinalLocation = StoredLocation,
       FinalDefaults = Defaults + StoredDefaults,
       FinalClauses  = Clauses ++ StoredClauses,
       check_valid_kind(Line, File, Name, Arity, Kind, StoredKind),
       check_valid_defaults(Line, File, Name, Arity, FinalDefaults),
-      Check andalso (Stack == StoredStack) andalso check_valid_clause(Line, File, Name, Arity, Table);
+      (Check and StoredCheck) andalso check_valid_clause(Line, File, Name, Arity, Table);
     [] ->
       FinalLocation = Location,
       FinalDefaults = Defaults,
       FinalClauses  = Clauses,
       Check andalso ets:insert(Table, { last, { Name, Arity } })
   end,
-  ets:insert(Table, {{Name, Arity}, Kind, Line, File, FinalLocation, Stack, FinalDefaults, FinalClauses}).
+  ets:insert(Table, {{Name, Arity}, Kind, Line, File, Check, FinalLocation, FinalDefaults, FinalClauses}).
 
 %% Validations
 

@@ -18,7 +18,7 @@ defmodule Record do
 
   @doc """
   Main entry point for records definition. It defines a module
-  with the given `name` and the fields specified in `modules`.
+  with the given `name` and the fields specified in `values`.
   This is invoked directly by `Kernel.defrecord`, so check it
   for more information and documentation.
   """
@@ -29,22 +29,39 @@ defmodule Record do
     quote do
       defmodule unquote(name) do
         @moduledoc false
-        Record.deffunctions(unquote(values), unquote(opts), __ENV__)
+        import Record.DSL
+
+        values = unquote(values)
+        opts   = unquote(opts)
+        Record.deffunctions(values, opts, __ENV__)
         unquote(block)
+        Record.deftypes(values, @record_type, opts, __ENV__)
       end
     end
   end
 
   @doc """
+  Main entry point for private records definition. It defines
+  a set of macros with the given `name` and the fields specified
+  in `values`. This is invoked directly by `Kernel.defrecordp`,
+  so check it for more information and documentation.
+  """
+  def defrecordp(name, fields) do
+    quote do
+      Record.defmacros(unquote(name), unquote(fields), __ENV__)
+    end
+  end
+
+  @doc """
   Defines record functions skipping the module definition.
-  This is called directly by `defrecord`. It expects the
-  module environment, the module values and a keyword list
-  of options.
+  This is called directly by `defrecord`. It expects the record
+  values, a set of options and the module environment.
 
   ## Examples
 
       defmodule CustomRecord do
         Record.deffunctions [:name, :age], __ENV__
+        Record.deftypes [:name, :age], __ENV__
       end
 
   """
@@ -69,85 +86,83 @@ defmodule Record do
       :elixir_module.eval_quoted(env, contents, [], [])
     else
       contents = [quote(do: @__record__ unquote(escaped))|contents]
-      Module.eval_quoted(env, contents)
+      Module.eval_quoted(env.module, contents, [], env.location)
     end
   end
 
   @doc """
-  Defines three macros for reading and writing records values.
-  These macros are private to the current module and are
-  basically a simple mechanism for manipulating tuples when
-  there isn't an interest in exposing the record as a whole.
-  In some ways, it is similar to Erlang records, since it is
-  only available at compilation time.
+  Defines types and specs for the record.
+  """
+  def deftypes(values, types, opts // [], env) do
+    types  = types || []
+    values = lc value inlist values do
+      { name, default } = convert_value(value)
+      { name, default, find_spec(types, name) }
+    end
+
+    extensions = Keyword.get(opts, :extensions, Record.Extensions)
+
+    contents = [
+      core_specs(values),
+      accessor_specs(values, []),
+      extensions_specs(values, [], extensions)
+    ]
+
+    # Special case for bootstraping purposes
+    if :erlang.function_exported(Module, :eval_quoted, 2) do
+      Module.eval_quoted(env.module, contents, [], env.location)
+    end
+  end
+
+  @doc """
+  Defines macros for manipulating records. This is called
+  directly by `defrecordp`. It expects the macro name, the
+  record values and the environment.
 
   ## Examples
 
-      defmodule CustomModule do
-        Record.defmacros :_user, [:name, :age], __ENV__
-
-        def new(name, age) do
-          _user(name: name, age: age)
-        end
-
-        def name(user, name) do
-          _user(user, name: name)
-        end
-
-        def age(user) do
-          _user(user, :age)
-        end
-
-        def to_keywords(user) do
-          _user(user)
-        end
-
-        def name_and_age(user) do
-         _user(user, [:name, :age])
-        end
-
-        def age_and_name(user) do
-         _user(user, [:age, :name])
-        end
+      defmodule CustomRecord do
+        Record.defmacros :user, [:name, :age], __ENV__
       end
 
   """
   def defmacros(name, values, env) do
-    escaped = lc value inlist values, do: Macro.escape(convert_value(value))
+    escaped = lc value inlist values do
+      { key, value } = convert_value(value)
+      { key, Macro.escape(value) }
+    end
 
     contents = quote do
+      defmacrop unquote(name).() do
+        Record.access(__MODULE__, unquote(escaped), [], __CALLER__)
+      end
+
       defmacrop unquote(name).(record) when is_tuple(record) do
-        Record.to_keywords(__CALLER__, __MODULE__, unquote(escaped), record)
+        Record.to_keywords(__MODULE__, unquote(escaped), record)
       end
 
       defmacrop unquote(name).(args) do
-        Record.access(__CALLER__, __MODULE__, unquote(escaped), args)
+        Record.access(__MODULE__, unquote(escaped), args, __CALLER__)
       end
 
       defmacrop unquote(name).(record, key) when is_atom(key) do
-        Record.get(__CALLER__, __MODULE__, unquote(escaped), record, key)
+        Record.get(__MODULE__, unquote(escaped), record, key)
       end
 
       defmacrop unquote(name).(record, args) do
-        Record.dispatch(__CALLER__, __MODULE__, unquote(escaped), record, args)
+        Record.dispatch(__MODULE__, unquote(escaped), record, args, __CALLER__)
       end
     end
 
-    Module.eval_quoted(env, contents)
+    Module.eval_quoted(env.module, contents, [], env.location)
   end
-
-  defp convert_value(atom) when is_atom(atom) do
-    { atom, nil }
-  end
-
-  defp convert_value(other), do: other
 
   # Implements the access macro used by records.
   # It returns a quoted expression that defines
   # a record or a match in case the record is
   # inside a match.
   @doc false
-  def access(caller, atom, fields, keyword) do
+  def access(atom, fields, keyword, caller) do
     unless is_keyword(keyword) do
       raise "expected contents inside brackets to be a Keyword"
     end
@@ -184,11 +199,11 @@ defmodule Record do
 
   # Dispatch the call to either update or to_list depending on the args given.
   @doc false
-  def dispatch(caller, atom, fields, record, args) do
+  def dispatch(atom, fields, record, args, caller) do
     if is_keyword(args) do
-      update(caller, atom, fields, record, args)
+      update(atom, fields, record, args, caller)
     else
-      to_list(caller, atom, fields, record, args)
+      to_list(atom, fields, record, args)
     end
   end
 
@@ -196,7 +211,7 @@ defmodule Record do
   # It returns a quoted expression that represents
   # the access given by the keywords.
   @doc false
-  defp update(caller, atom, fields, var, keyword) do
+  defp update(atom, fields, var, keyword, caller) do
     unless is_keyword(keyword) do
       raise "expected contents inside brackets to be a Keyword"
     end
@@ -221,7 +236,7 @@ defmodule Record do
   # It returns a quoted expression that represents
   # getting the value of a given field.
   @doc false
-  def get(_caller, atom, fields, var, key) do
+  def get(atom, fields, var, key) do
     index = find_index(fields, key, 0)
     if index do
       quote do
@@ -236,12 +251,12 @@ defmodule Record do
   # It returns a quoted expression that represents
   # converting record to keywords list.
   @doc false
-  def to_keywords(_caller, _atom, fields, record) do
-    Enum.map Keyword.from_enum(fields),
-      fn({key, _default}) ->
+  def to_keywords(_atom, fields, record) do
+    Enum.map fields,
+      fn { key, _default } ->
         index = find_index(fields, key, 0)
         quote do
-          {unquote(key), :erlang.element(unquote(index + 2), unquote(record))}
+          { unquote(key), :erlang.element(unquote(index + 2), unquote(record)) }
         end
       end
   end
@@ -250,7 +265,7 @@ defmodule Record do
   # It returns a quoted expression that represents
   # extracting given fields from record.
   @doc false
-  defp to_list(_caller, atom, fields, record, keys) do
+  defp to_list(atom, fields, record, keys) do
     Enum.map keys,
       fn(key) ->
         index = find_index(fields, key, 0)
@@ -262,11 +277,7 @@ defmodule Record do
       end
   end
 
-  defp is_keyword(list) when is_list(list), do: :lists.all(is_keyword_tuple(&1), list)
-  defp is_keyword(_), do: false
-
-  defp is_keyword_tuple({ x, _ }) when is_atom(x), do: true
-  defp is_keyword_tuple(_), do: false
+  ## Function generation
 
   # Define __record__/1 and __record__/2 as reflection functions
   # that returns the record names and fields.
@@ -378,10 +389,6 @@ defmodule Record do
     end
   end
 
-  defp find_index([{ k, _ }|_], k, i), do: i
-  defp find_index([{ _, _ }|t], k, i), do: find_index(t, k, i + 1)
-  defp find_index([], _k, _i), do: nil
-
   # Implement readers. For a declaration like:
   #
   #     defrecord FileInfo, atime: nil, mtime: nil
@@ -434,18 +441,24 @@ defmodule Record do
 
   defp writers([], _i, acc), do: acc
 
-  # Defines update/2
+  # Define an updater method that receives a
+  # keyword list and updates the record.
   defp updater(values) do
     fields =
       lc {key, _default} inlist values do
+        index = find_index(values, key, 1)
         quote do
-          Keyword.get(keywords,
-                      unquote(key),
-                      elem(record, unquote(find_index(values, key, 1))))
+          Keyword.get(keywords, unquote(key), elem(record, unquote(index)))
         end
       end
-    contents = {:{}, 0, [(quote do: __MODULE__)|fields]}
+
+    contents = { :{}, 0, [(quote do: __MODULE__)|fields] }
+
     quote do
+      def update([], record) do
+        record
+      end
+
       def update(keywords, record) do
         unquote(contents)
       end
@@ -459,106 +472,96 @@ defmodule Record do
   end
 
   defp extensions([], _i, acc, _), do: acc
+
+  ## Types/specs generation
+
+  defp core_specs(values) do
+    types = lc { _, _, spec } inlist values, do: spec
+
+    quote do
+      unless Kernel.Typespec.defines_type?(__MODULE__, :t, 0) do
+        @type t :: { __MODULE__, unquote_splicing(types) }
+      end
+
+      @spec new, do: t
+      @spec new(Keyword.t | tuple), do: t
+      @spec to_keywords(t), do: Keyword.t
+      @spec update(Keyword.t, t), do: t
+      @spec __index__(atom), do: non_neg_integer | nil
+    end
+  end
+
+  defp accessor_specs([{ key, _default, spec }|t], acc) do
+    contents = quote do
+      @spec unquote(key)(t), do: unquote(spec)
+      @spec unquote(key)(unquote(spec), t), do: t
+    end
+    accessor_specs(t, [contents | acc])
+  end
+
+  defp accessor_specs([], acc), do: acc
+
+  defp extensions_specs([{ key, default, spec }|t], acc, extensions) do
+    specs = extensions.specs_for(key, default, spec)
+    extensions_specs(t, [specs | acc], extensions)
+  end
+
+  defp extensions_specs([], acc, _), do: acc
+
+  ## Helpers
+
+  defp is_keyword(list) when is_list(list), do: :lists.all(is_keyword_tuple(&1), list)
+  defp is_keyword(_), do: false
+
+  defp is_keyword_tuple({ x, _ }) when is_atom(x), do: true
+  defp is_keyword_tuple(_), do: false
+
+  defp convert_value(atom) when is_atom(atom), do: { atom, nil }
+  defp convert_value(other), do: other
+
+  defp find_index([{ k, _ }|_], k, i), do: i
+  defp find_index([{ _, _ }|t], k, i), do: find_index(t, k, i + 1)
+  defp find_index([], _k, _i), do: nil
+
+  defp find_spec(types, name) do
+    matches = lc { k, v } inlist types, name == k, do: v
+    case matches do
+      [h|_] -> h
+      _     -> quote do: term
+    end
+  end
 end
 
-defmodule Record.Extractor do
+defmodule Record.DSL do
   @moduledoc false
 
-  # Retrieve a record definition from an Erlang file using
-  # the same lookup as the *include* attribute from Erlang modules.
-  def retrieve(name, from: string) do
-    file = to_char_list(string)
-
-    case :code.where_is_file(file) do
-      :non_existing -> realfile = file
-      realfile -> nil
+  @doc """
+  Defines the type for each field in the record.
+  Expects a keyword list.
+  """
+  defmacro record_type(opts) when is_list(opts) do
+    quote do
+      @record_type quote do: unquote(opts)
     end
-
-    retrieve_record(name, realfile)
-  end
-
-  # Retrieve a record definition from an Erlang file using
-  # the same lookup as the *include_lib* attribute from Erlang modules.
-  def retrieve(name, from_lib: file) do
-    [app|path] = :filename.split(to_char_list(file))
-    case :code.lib_dir(to_char_list(app)) do
-      { :error, _ } ->
-        raise ArgumentError, "Lib file #{to_binary(file)} could not be found"
-      libpath ->
-        retrieve_record name, :filename.join([libpath|path])
-    end
-  end
-
-  # Retrieve the record with the given name from the given file
-  defp retrieve_record(name, file) do
-    records = retrieve_from_file(file)
-    if record = List.keyfind(records, name, 0) do
-      parse_record(record)
-    else
-      raise ArgumentError, "No record #{name} found at #{to_binary(file)}"
-    end
-  end
-
-  # Parse the given file and retrieve all existent records.
-  defp retrieve_from_file(file) do
-    lc { :attribute, _, :record, record } inlist read_file(file), do: record
-  end
-
-  # Read a file and return its abstract syntax form that also
-  # includes record and other preprocessor modules. This is done
-  # by using Erlang's epp_dodger.
-  defp read_file(file) do
-    case :epp_dodger.quick_parse_file(file) do
-      { :ok, form } ->
-        form
-      other ->
-        raise "Error parsing file #{to_binary(file)}, got: #{inspect(other)}"
-    end
-  end
-
-  # Parse a tuple with name and fields and returns a
-  # list of second order tuples where the first element
-  # is the field and the second is its default value.
-  defp parse_record({ _name, fields }) do
-    cons = List.foldr fields, { nil, 0 }, fn f, acc ->
-      { :cons, 0, parse_field(f), acc }
-    end
-    { :value, list, _ } = :erl_eval.expr(cons, [])
-    list
-  end
-
-  defp parse_field({ :typed_record_field, record_field, _type }) do
-    parse_field(record_field)
-  end
-
-  defp parse_field({ :record_field, _, key }) do
-    { :tuple, 0, [key, {:atom, 0, :nil}] }
-  end
-
-  defp parse_field({ :record_field, _, key, value }) do
-    { :tuple, 0, [key, value] }
   end
 end
 
 defmodule Record.Extensions do
   @moduledoc false
 
-  # Main entry point. It defines both default functions
-  # via `default_for` and extensions via `extension_for`.
+  # Function definition
+
   def functions_for(key, default, i) do
     [ default_for(key, default, i),
       extension_for(key, default, i) ]
   end
 
-  # Skip the __exception__ for defexception.
-  def default_for(:__exception__, _default, _i) do
+  defp default_for(:__exception__, _default, _i) do
     nil
   end
 
-  # Define the default functions for each field.
-  def default_for(key, _default, i) do
-    bin_update = "update_" <> atom_to_binary(key)
-    update     = binary_to_atom(bin_update)
+  defp default_for(key, _default, i) do
+    update  = prefix("update_", key)
 
     quote do
       def unquote(update).(function, record) do
@@ -568,11 +571,9 @@ defmodule Record.Extensions do
     end
   end
 
-  # Define extensions based on the default type.
-  def extension_for(key, default, i) when is_list(default) do
-    bin_key = atom_to_binary(key)
-    prepend = :"prepend_#{bin_key}"
-    merge   = :"merge_#{bin_key}"
+  defp extension_for(key, default, i) when is_list(default) do
+    prepend = prefix("prepend_", key)
+    merge   = prefix("merge_", key)
 
     quote do
       def unquote(prepend).(value, record) do
@@ -587,9 +588,8 @@ defmodule Record.Extensions do
     end
   end
 
-  def extension_for(key, default, i) when is_number(default) do
-    bin_key   = atom_to_binary(key)
-    increment = :"increment_#{bin_key}"
+  defp extension_for(key, default, i) when is_number(default) do
+    increment = prefix("increment_", key)
 
     quote do
       def unquote(increment).(value // 1, record) do
@@ -599,9 +599,8 @@ defmodule Record.Extensions do
     end
   end
 
-  def extension_for(key, default, i) when is_boolean(default) do
-    bin_key = atom_to_binary(key)
-    toggle = :"toggle_#{bin_key}"
+  defp extension_for(key, default, i) when is_boolean(default) do
+    toggle = prefix("toggle_", key)
 
     quote do
       def unquote(toggle).(record) do
@@ -611,5 +610,58 @@ defmodule Record.Extensions do
     end
   end
 
-  def extension_for(_, _, _), do: nil
+  defp extension_for(_, _, _), do: nil
+
+  # Specs definition
+
+  def specs_for(key, default, spec) do
+    [ default_specs_for(key, default, spec),
+      extension_specs_for(key, default, spec) ]
+  end
+
+  defp default_specs_for(:__exception__, _default, _spec) do
+    nil
+  end
+
+  defp default_specs_for(key, _default, spec) do
+    update = prefix("update_", key)
+
+    quote do
+      @spec unquote(update)(fun(unquote(spec), do: unquote(spec)), t), do: t
+    end
+  end
+
+  defp extension_specs_for(key, default, _spec) when is_list(default) do
+    prepend = prefix("prepend_", key)
+    merge   = prefix("merge_", key)
+
+    quote do
+      @spec unquote(prepend)(list, t), do: t
+      @spec unquote(merge)(Keyword.t, t), do: t
+    end
+  end
+
+  defp extension_specs_for(key, default, _spec) when is_number(default) do
+    increment = prefix("increment_", key)
+
+    quote do
+      @spec unquote(increment)(number, t), do: t
+    end
+  end
+
+  defp extension_specs_for(key, default, _spec) when is_boolean(default) do
+    toggle = prefix("toggle_", key)
+
+    quote do
+      @spec unquote(toggle)(t), do: t
+    end
+  end
+
+  defp extension_specs_for(_, _, _), do: nil
+
+  # Helpers
+
+  defp prefix(prefix, key) do
+    binary_to_atom prefix <> atom_to_binary(key)
+  end
 end

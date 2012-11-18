@@ -1,21 +1,22 @@
 REBAR:=$(shell echo `pwd`/rebar)
-ELIXIRC:=bin/elixirc --ignore-module-conflict $(ELIXIRC_OPTS)
+ELIXIRC:=bin/elixirc --debug-info --ignore-module-conflict $(ELIXIRC_OPTS)
 ERLC:=erlc -I lib/elixir/include
 ERL:=erl -I lib/elixir/include -noshell -env ERL_LIBS $ERL_LIBS:lib
-FULLFLAG:=.full
-VERSION:=0.7.0
+VERSION:=0.7.1
+RELEASE_FLAG:=.release
 
 .PHONY: 1
 .NOTPARALLEL: compile
 
 #==> Templates
-define TASK_TEMPLATE
+
+define APP_TEMPLATE
 $(1): lib/$(1)/ebin/Elixir-$(2).beam lib/$(1)/ebin/$(1).app
 
 lib/$(1)/ebin/$(1).app:
 	@ cd lib/$(1) && ../../bin/elixir ../../bin/mix compile.app
 
-lib/$(1)/ebin/Elixir-$(2).beam: $(wildcard lib/$(1)/lib/*.ex) $(wildcard lib/$(1)/lib/*/*.ex) $(wildcard lib/$(1)/lib/*/*/*.ex) $$(FORCE)
+lib/$(1)/ebin/Elixir-$(2).beam: $(wildcard lib/$(1)/lib/*.ex) $(wildcard lib/$(1)/lib/*/*.ex) $(wildcard lib/$(1)/lib/*/*/*.ex)
 	@ echo "==> $(1) (compile)"
 	@ $$(ELIXIRC) "lib/$(1)/lib/**/*.ex" -o lib/$(1)/ebin
 
@@ -25,7 +26,11 @@ test_$(1): $(1)
 endef
 
 #==> Compilation tasks
+
 KERNEL:=lib/elixir/ebin/Elixir-Kernel.beam
+UNICODE:=lib/elixir/ebin/Elixir-String-Unicode.beam
+
+default: compile
 
 compile: lib/elixir/src/elixir.app.src erlang elixir
 
@@ -36,46 +41,52 @@ lib/elixir/src/elixir.app.src: src/elixir.app.src
 erlang:
 	@ cd lib/elixir && $(REBAR) compile
 
-# We need to compile only EEx (without the app)
-# file so we can compile Mix
-elixir: kernel lib/eex/ebin/Elixir-EEx.beam mix ex_unit eex iex
+# Since Mix depends on EEx and EEx depends on
+# Mix, we first compile EEx without the .app
+# file, then mix and then compile eex fully
+elixir: kernel unicode lib/eex/ebin/Elixir-EEx.beam mix ex_unit eex iex
 
 kernel: $(KERNEL)
-$(KERNEL): lib/elixir/lib/*.ex lib/elixir/lib/*/*.ex $(FORCE)
-	@ if [ -f $(KERNEL) ]; then                                 \
-		echo "==> kernel (compile)";                            \
-		$(ELIXIRC) "lib/elixir/lib/**/*.ex" -o lib/elixir/ebin; \
-	else                                                        \
-		echo "==> bootstrap (compile)";                         \
-		$(ERL) -s elixir_compiler core -s erlang halt;          \
+$(KERNEL): lib/elixir/lib/*.ex lib/elixir/lib/*/*.ex
+	@ if [ ! -f $(KERNEL) ]; then                       \
+		echo "==> bootstrap (compile)";                 \
+		$(ERL) -s elixir_compiler core -s erlang halt;  \
 	fi
+	@ echo "==> kernel (compile)";
+	@ $(ELIXIRC) "lib/elixir/lib/**/*.ex" -o lib/elixir/ebin;
 	@ rm -rf lib/elixir/ebin/elixir.app
 	@ cd lib/elixir && $(REBAR) compile
 
-$(eval $(call TASK_TEMPLATE,ex_unit,ExUnit))
-$(eval $(call TASK_TEMPLATE,eex,EEx))
-$(eval $(call TASK_TEMPLATE,mix,Mix))
-$(eval $(call TASK_TEMPLATE,iex,IEx))
+unicode: $(UNICODE)
+$(UNICODE): lib/elixir/priv/unicode.ex lib/elixir/priv/UnicodeData.txt lib/elixir/priv/NamedSequences.txt
+	@ echo "==> unicode (compile)";
+	@ echo "This step can take up to a minute to compile in order to embed the Unicode database"
+	@ $(ELIXIRC) lib/elixir/priv/unicode.ex -o lib/elixir/ebin;
+
+$(eval $(call APP_TEMPLATE,ex_unit,ExUnit))
+$(eval $(call APP_TEMPLATE,eex,EEx))
+$(eval $(call APP_TEMPLATE,mix,Mix))
+$(eval $(call APP_TEMPLATE,iex,IEx))
 
 clean:
 	@ cd lib/elixir && $(REBAR) clean
-	rm -rf .full
+	rm -rf $(RELEASE_FLAG)
 	rm -rf ebin
 	rm -rf lib/*/ebin
 	rm -rf lib/*/test/tmp
 	rm -rf lib/mix/test/fixtures/git_repo
 	rm -rf lib/mix/tmp
 
-#==> Release tasks
-$(FULLFLAG): $(wildcard lib/*/ebin/*)
-	make ELIXIRC_OPTS="--debug-info" FORCE=1
-	touch $(FULLFLAG)
+#==> Release tasks (modules compiled with --debug-info and --docs)
 
-zip: $(FULLFLAG)
+$(RELEASE_FLAG): compile
+	touch $(RELEASE_FLAG)
+
+zip: $(RELEASE_FLAG)
 	rm -rf v$(VERSION).zip
 	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel
 
-docs: $(FULLFLAG)
+docs: $(RELEASE_FLAG)
 	mkdir -p ebin
 	rm -rf docs
 	cp -R -f lib/*/ebin/*.beam ./ebin
@@ -87,11 +98,12 @@ release_docs: docs
 	rm -rf ../elixir-lang.github.com/docs/master
 	mv output ../elixir-lang.github.com/docs/master
 
-release_erl: $(FULLFLAG)
+release_erl: $(RELEASE_FLAG)
 	@ rm -rf rel/elixir
 	@ cd rel && ../rebar generate
 
 #==> Tests tasks
+
 test: test_erlang test_elixir
 
 test_erlang: compile
@@ -106,3 +118,15 @@ test_elixir: test_kernel test_mix test_ex_unit test_eex test_iex
 test_kernel: compile
 	@ echo "==> kernel (exunit)"
 	@ cd lib/elixir && time ../../bin/elixir -r "test/elixir/test_helper.exs" -pr "test/elixir/**/*_test.exs";
+
+.dialyzer.base_plt:
+	@ echo "==> Adding Erlang/OTP basic applications to a new base PLT"
+	@ dialyzer --output_plt .dialyzer.base_plt --build_plt --apps erts kernel stdlib compiler syntax_tools inets crypto ssl
+
+dialyze: $(RELEASE_FLAG) .dialyzer.base_plt
+	@ rm -f .dialyzer_plt
+	@ cp .dialyzer.base_plt .dialyzer_plt
+	@ echo "==> Adding Elixir to PLT..."
+	@ dialyzer --plt .dialyzer_plt --add_to_plt -r lib/elixir/ebin lib/ex_unit/ebin lib/mix/ebin lib/iex/ebin lib/eex/ebin
+	@ echo "==> Dialyzing Elixir..."
+	@ dialyzer --plt .dialyzer_plt -r lib/elixir/ebin lib/ex_unit/ebin lib/mix/ebin lib/iex/ebin lib/eex/ebin

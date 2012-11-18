@@ -7,6 +7,9 @@
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
+%% Top level types
+-export_type([char_list/0]).
+-type char_list() :: string().
 
 % OTP APPLICATION API
 
@@ -50,17 +53,40 @@ start_cli() ->
 %% EVAL HOOKS
 
 scope_for_eval(Opts) ->
-  File = case lists:keyfind(file, 1, Opts) of
-    { file, F } -> to_binary(F);
-    false -> <<"nofile">>
+  case lists:keyfind(file, 1, Opts) of
+    { file, RawFile } -> File = to_binary(RawFile);
+    false -> File = <<"nofile">>
   end,
 
-  Local = case lists:keyfind(delegate_locals_to, 1, Opts) of
-    { delegate_locals_to, L } -> L;
-    false -> nil
+  case lists:keyfind(delegate_locals_to, 1, Opts) of
+    { delegate_locals_to, Local } -> Local;
+    false -> Local = nil
   end,
 
-  #elixir_scope{file=File,local=Local}.
+  case lists:keyfind(aliases, 1, Opts) of
+    { aliases, Aliases } -> Aliases;
+    false -> Aliases = []
+  end,
+
+  case lists:keyfind(requires, 1, Opts) of
+    { requires, Requires } -> Requires;
+    false -> Requires = elixir_dispatch:default_requires()
+  end,
+
+  case lists:keyfind(functions, 1, Opts) of
+    { functions, Functions } -> Functions;
+    false -> Functions = elixir_dispatch:default_functions()
+  end,
+
+  case lists:keyfind(macros, 1, Opts) of
+    { macros, Macros } -> Macros;
+    false -> Macros = elixir_dispatch:default_macros()
+  end,
+
+  #elixir_scope{
+    file=File, local=Local,
+    macros=Macros, functions=Functions,
+    requires=Requires, aliases=Aliases }.
 
 %% String evaluation
 
@@ -100,8 +126,8 @@ eval_forms(Tree, Binding, RawScope) ->
     vars=binding_dict(Binding),
     temp_vars=[],
     quote_vars=[],
-    clause_vars=[],
-    counter=0
+    clause_vars=nil,
+    counter=[]
   },
   { ParseTree, NewScope } = elixir_translator:translate(Tree, Scope),
   case ParseTree of
@@ -122,9 +148,10 @@ binding_dict([], Dict) -> Dict.
 
 final_binding(Binding, Vars) -> final_binding(Binding, [], Binding, Vars).
 final_binding([{Var,_}|T], Acc, Binding, Vars) ->
-  case atom_to_list(Var) of
-    "_@" ++ _ -> final_binding(T, Acc, Binding, Vars);
-    _ ->
+  case lists:member($@, atom_to_list(Var)) of
+    true  ->
+      final_binding(T, Acc, Binding, Vars);
+    false ->
       RealName = orddict:fetch(Var, Vars),
       RealValue = proplists:get_value(RealName, Binding, nil),
       final_binding(T, [{Var, RealValue}|Acc], Binding, Vars)

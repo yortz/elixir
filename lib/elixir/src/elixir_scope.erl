@@ -1,11 +1,14 @@
+
 %% Convenience functions used to manipulate scope
 %% and its variables.
 -module(elixir_scope).
 -export([translate_var/4,
   build_erl_var/2, build_ex_var/2,
+  build_erl_var/3, build_ex_var/3,
+  build_erl_var/4, build_ex_var/4,
   serialize/1, deserialize/1, deserialize/2,
   to_erl_env/1, to_ex_env/1, filename/1,
-  umergev/2, umergec/2
+  umergev/2, umergec/2, merge_clause_vars/2
   ]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
@@ -14,7 +17,8 @@ translate_var(Line, Name, Kind, S) ->
   Vars = S#elixir_scope.vars,
 
   case Name of
-    '_' -> { {var, Line, Name}, S };
+    '_' ->
+      { { var, Line, Name }, S };
     _ ->
       case S#elixir_scope.context of
         assign ->
@@ -23,16 +27,21 @@ translate_var(Line, Name, Kind, S) ->
             { true, { ok, Kind } } ->
               { {var, Line, orddict:fetch(Name, Vars) }, S };
             { Else, _ } ->
-              { NewVar, NS } = case Else or S#elixir_scope.noname of
-                true -> build_erl_var(Line, S);
-                false -> { {var, Line, Name}, S }
+              { NewVar, NS } = if
+                Kind == quoted -> build_erl_var(Line, S);
+                Else -> build_erl_var(Line, Name, S);
+                S#elixir_scope.noname -> build_erl_var(Line, Name, S);
+                true -> { {var, Line, Name}, S }
               end,
               RealName = element(3, NewVar),
               ClauseVars = S#elixir_scope.clause_vars,
               { NewVar, NS#elixir_scope{
                 vars=orddict:store(Name, RealName, Vars),
                 temp_vars=orddict:store(Name, Kind, TempVars),
-                clause_vars=orddict:store({ Name, Kind }, RealName, ClauseVars)
+                clause_vars=if
+                  ClauseVars == nil -> nil;
+                  true -> orddict:store({ Name, Kind }, RealName, ClauseVars)
+                end
               } }
           end;
         _ ->
@@ -45,14 +54,24 @@ translate_var(Line, Name, Kind, S) ->
 
 % Handle variables translation
 
-build_erl_var(Line, #elixir_scope{counter=Counter} = S) ->
-  NS = S#elixir_scope{counter=Counter+1},
-  Var = { var, Line, ?ELIXIR_ATOM_CONCAT(["_@", Counter]) },
+build_ex_var(Line, S)  -> build_ex_var(Line, '', "_", S).
+build_erl_var(Line, S) -> build_erl_var(Line, '', "_", S).
+
+build_ex_var(Line, Key, S)  -> build_ex_var(Line, Key, Key, S).
+build_erl_var(Line, Key, S) -> build_erl_var(Line, Key, Key, S).
+
+build_var_counter(Key, #elixir_scope{counter=Counter} = S) ->
+  New = orddict:update_counter(Key, 1, Counter),
+  { orddict:fetch(Key, New), S#elixir_scope{counter=New} }.
+
+build_erl_var(Line, Key, Name, S) ->
+  { Counter, NS } = build_var_counter(Key, S),
+  Var = { var, Line, ?ELIXIR_ATOM_CONCAT([Name, "@", Counter]) },
   { Var, NS }.
 
-build_ex_var(Line, #elixir_scope{counter=Counter} = S) ->
-  NS = S#elixir_scope{counter=Counter+1},
-  Var = { ?ELIXIR_ATOM_CONCAT(["_@", Counter]), Line, nil },
+build_ex_var(Line, Key, Name, S) ->
+  { Counter, NS } = build_var_counter(Key, S),
+  Var = { ?ELIXIR_ATOM_CONCAT([Name, "@", Counter]), Line, quoted },
   { Var, NS }.
 
 % Handle Macro.Env conversion
@@ -65,8 +84,8 @@ to_ex_env({ Line, Tuple }) when element(1, Tuple) == 'Elixir.Macro.Env' ->
 
 to_ex_env({ Line, #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
-    requires=Requires,macros=Macros} }) ->
-  { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases, Context, Requires, Macros }.
+    requires=Requires,macros=Macros,functions=Functions} }) ->
+  { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases, Context, Requires, Functions, Macros }.
 
 filename(#elixir_scope{file=File}) -> File;
 filename(Other) -> element(3, Other).
@@ -75,7 +94,7 @@ filename(Other) -> element(3, Other).
 
 serialize(S) ->
   elixir_tree_helpers:abstract_syntax(
-    { S#elixir_scope.file, S#elixir_scope.functions, S#elixir_scope.check_clauses, S#elixir_scope.macro,
+    { S#elixir_scope.file, S#elixir_scope.functions, S#elixir_scope.check_clauses,
       S#elixir_scope.requires, S#elixir_scope.macros, S#elixir_scope.aliases, S#elixir_scope.scheduled }
   ).
 
@@ -83,18 +102,17 @@ serialize(S) ->
 
 deserialize(Tuple) -> deserialize(Tuple, []).
 
-deserialize({ File, Functions, CheckClauses, Macro, Requires, Macros, Aliases, Scheduled }, Vars) ->
+deserialize({ File, Functions, CheckClauses, Requires, Macros, Aliases, Scheduled }, Vars) ->
   #elixir_scope{
     file=File,
     functions=Functions,
     check_clauses=CheckClauses,
-    macro=Macro,
     requires=Requires,
     macros=Macros,
     aliases=Aliases,
     scheduled=Scheduled,
     vars=orddict:from_list(Vars),
-    counter=length(Vars)
+    counter=[{'',length(Vars)}]
   }.
 
 % Receives two scopes and return a new scope based on the second
@@ -110,7 +128,7 @@ umergev(S1, S2) ->
   S2#elixir_scope{
     vars=orddict:merge(fun var_merger/3, V1, V2),
     quote_vars=orddict:merge(fun var_merger/3, Q1, Q2),
-    clause_vars=orddict:merge(fun clause_var_merger/3, C1, C2)
+    clause_vars=merge_clause_vars(C1, C2)
   }.
 
 % Receives two scopes and return a new scope based on the first
@@ -127,16 +145,24 @@ umergec(S1, S2) ->
 
 % Merge variables trying to find the most recently created.
 
+merge_clause_vars(nil, _C2) -> nil;
+merge_clause_vars(_C1, nil) -> nil;
+merge_clause_vars(C1, C2)   ->
+  orddict:merge(fun clause_var_merger/3, C1, C2).
+
 clause_var_merger({ Var, _ }, K1, K2) ->
   var_merger(Var, K1, K2).
 
 var_merger(Var, Var, K2) -> K2;
 var_merger(Var, K1, Var) -> K1;
 var_merger(_Var, K1, K2) ->
-  V1 = var_number(atom_to_list(K1)),
-  V2 = var_number(atom_to_list(K2)),
-  if V1 > V2 -> K1;
-     true -> K2
+  V1 = var_number(atom_to_list(K1), []),
+  V2 = var_number(atom_to_list(K2), []),
+  case V1 > V2 of
+    true  -> K1;
+    false -> K2
   end.
 
-var_number([_,_|T]) -> list_to_integer(T).
+var_number([$@|T], _Acc) -> var_number(T, []);
+var_number([H|T], Acc)   -> var_number(T, [H|Acc]);
+var_number([], Acc)      -> list_to_integer(lists:reverse(Acc)).

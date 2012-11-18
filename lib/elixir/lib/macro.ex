@@ -236,11 +236,14 @@ defmodule Macro do
   defp is_kw_blocks?([_|_] = kw) do
     Enum.all?(kw, match?({x, _} when x in kw_keywords, &1))
   end
-  defp is_kw_blocks?(_),          do: false
+  defp is_kw_blocks?(_), do: false
+
+  defp module_to_binary(atom) when is_atom(atom), do: Binary.Inspect.inspect(atom, raw: true)
+  defp module_to_binary(other), do: call_to_binary(other)
 
   defp call_to_binary(atom) when is_atom(atom),  do: atom_to_binary(atom, :utf8)
-  defp call_to_binary({ :., _, [arg] }),         do: call_to_binary(arg) <> "."
-  defp call_to_binary({ :., _, [left, right] }), do: call_to_binary(left) <> "." <> call_to_binary(right)
+  defp call_to_binary({ :., _, [arg] }),         do: module_to_binary(arg) <> "."
+  defp call_to_binary({ :., _, [left, right] }), do: module_to_binary(left) <> "." <> call_to_binary(right)
   defp call_to_binary(other),                    do: to_binary(other)
 
   defp call_to_binary_with_args(target, args) do

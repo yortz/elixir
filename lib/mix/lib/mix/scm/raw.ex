@@ -2,37 +2,43 @@ defmodule Mix.SCM.Raw do
   @behavior Mix.SCM
   @moduledoc false
 
-  def key do
-    :raw
+  def format(opts) do
+    [raw: opts[:raw]]
   end
 
-  def consumes?(opts) do
+  def format_lock(_lock) do
+    nil
+  end
+
+  def accepts_options(opts) do
     if raw = opts[:raw] do
-      Keyword.put opts, :path, raw
+      Keyword.put opts, :path, File.expand_path(raw)
     end
   end
 
-  def available?(path, _) do
-    File.dir?(path)
+  def checked_out?(opts) do
+    File.dir?(opts[:path])
   end
 
-  def check?(_app, _opts) do
+  def matches_lock?(_opts) do
     true
   end
 
-  def match?(opts1, opts2) do
+  def equals?(opts1, opts2) do
     opts1[:raw] == opts2[:raw]
   end
 
-  def checkout(path, _opts) do
+  def checkout(opts) do
+    path = Mix.Utils.relative_to_cwd opts[:path]
     raise Mix.Error, message: "Cannot checkout raw dependency. Expected a dependency at #{path}"
   end
 
-  def update(_path, opts) do
+  def update(opts) do
     opts[:lock]
   end
 
-  def clean(path, _) do
+  def clean(opts) do
+    path = Mix.Utils.relative_to_cwd opts[:path]
     Mix.shell.info "  #{path} is a raw dependency, it was not cleaned"
     :noop
   end

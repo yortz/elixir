@@ -75,15 +75,6 @@ defmodule ExUnit.AssertionsTest do
     { 2, 1 } = (assert { 2, 1 } = Value.tuple)
   end
 
-  test :assert_match_when_different do
-    try do
-      "This should never be tested" = assert {_, 2} = Value.tuple
-    rescue
-      error in [ExUnit.AssertionError] ->
-        "no match of right hand side value: {2,1}" = error.message
-    end
-  end
-
   test :assert_received do
     self <- :hello
     :hello = assert_received :hello

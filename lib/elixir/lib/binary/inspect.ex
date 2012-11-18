@@ -128,8 +128,7 @@ defimpl Binary.Inspect, for: Atom do
       valid_atom_identifier?(binary) ->
         ":" <> binary
       valid_ref_identifier?(binary) ->
-        "Elixir-" <> rest = binary
-        bc <<r>> inbits rest, do: <<to_dot(r)>>
+        Module.to_binary(atom)
       atom in Macro.binary_ops or atom in Macro.unary_ops ->
         ":" <> binary
       true ->
@@ -138,9 +137,6 @@ defimpl Binary.Inspect, for: Atom do
   end
 
   # Detect if atom is an atom alias (Elixir-Foo-Bar-Baz)
-
-  defp to_dot(?-), do: ?.
-  defp to_dot(l),  do: l
 
   defp valid_ref_identifier?("Elixir" <> rest) do
     valid_ref_piece?(rest)
@@ -265,19 +261,12 @@ defimpl Binary.Inspect, for: List do
     cond do
       printable?(thing) ->
         escape(list_to_binary(thing), ?')
-      keywords?(thing) ->
+      Keyword.keyword?(thing) ->
         "[" <> join_keywords(thing, opts) <> "]"
       true ->
         container_join(thing, "[", "]", opts)
     end
   end
-
-  ## keywords?
-  defp keywords?([]), do: true
-  defp keywords?([{ key, _value } | rest]) when is_atom(key) do
-    keywords?(rest)
-  end
-  defp keywords?(_other), do: false
 
   defp join_keywords(thing, opts) do
     Enum.join(lc {key, value} inlist thing do
@@ -334,9 +323,7 @@ defimpl Binary.Inspect, for: Tuple do
     name = elem(tuple, 0)
 
     if is_atom(name) and match?("Elixir-" <> _, atom_to_binary(name)) do
-      if name in [BitString, List, Tuple, Atom, Number, Any] do
-        record_inspect(tuple, opts)
-      else
+      unless name in [BitString, List, Tuple, Atom, Number, Any] do
         try do
           target = Module.concat(Binary.Inspect, name)
           target.inspect(tuple, opts)
@@ -348,19 +335,16 @@ defimpl Binary.Inspect, for: Tuple do
     end
   end
 
-  defp record_inspect(exception, opts) when is_exception(exception) do
-    list = tuple_to_list(exception)
-    [name,_|tail] = list
-    [_|fields]    = name.__record__(:fields)
-    record_join(name, fields, tail, opts)
-  end
-
   defp record_inspect(record, opts) do
     list = tuple_to_list(record)
     [name|tail] = list
 
     if (fields = record_fields(name)) && (length(fields) == size(record) - 1) do
-      record_join(name, fields, tail, opts)
+      if Enum.first(tail) == :__exception__ do
+        record_join(name, tl(fields), tl(tail), opts)
+      else
+        record_join(name, fields, tail, opts)
+      end
     end
   end
 
@@ -422,8 +406,12 @@ defimpl Binary.Inspect, for: Regex do
 
   """
 
-  def inspect(thing, _) do
-    "%r" <> Binary.Inspect.inspect(Regex.source(thing), []) <> Regex.opts(thing)
+  def inspect(regex, _opts) when size(regex) == 5 do
+    "%r" <> Binary.Inspect.inspect(Regex.source(regex), []) <> Regex.opts(regex)
+  end
+
+  def inspect(other, opts) do
+    Binary.Inspect.inspect other, Keyword.put(opts, :raw, true)
   end
 end
 

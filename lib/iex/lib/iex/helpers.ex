@@ -1,9 +1,20 @@
 defmodule IEx.Helpers do
   @moduledoc """
-  A bunch of helpers available in IEx.
+  Welcome to Interactive Elixir. You are currently
+  seeing the documentation for the module IEx.Helpers
+  which provides many helpers to make Elixir's shell
+  more joyful to work with.
+
+  This message was triggered by invoking the helper
+  `h()`, usually referred as `h/0` (since it expects 0
+  arguments).
+
+  There are many other helpers available:
 
   * `c/2` - compiles a file in the given path
   * `h/0`,`h/1`, `h/2` - prints help/documentation
+  * `t/1`, `t/3` — prints type information
+  * `s/1`, `s/3` — prints spec information
   * `m/0` - prints loaded modules
   * `r/0` - recompiles and reloads the given module's source file
   * `v/0` - prints all commands and values
@@ -68,7 +79,7 @@ defmodule IEx.Helpers do
   Shows the documentation for IEx.Helpers.
   """
   def h() do
-    h(IEx.Helpers, :all)
+    h(IEx.Helpers, :moduledoc)
   end
 
   @doc """
@@ -101,7 +112,7 @@ defmodule IEx.Helpers do
 
   defmacro h(other) do
     quote do
-      h(unquote(other), :all)
+      h(unquote(other), :moduledoc)
     end
   end
 
@@ -130,7 +141,7 @@ defmodule IEx.Helpers do
     end
   end
 
-  def h(module, :all) when is_atom(module) do
+  def h(module, :moduledoc) when is_atom(module) do
     case Code.ensure_loaded(module) do
       { :module, _ } ->
         case module.__info__(:moduledoc) do
@@ -138,7 +149,7 @@ defmodule IEx.Helpers do
             IO.puts "# #{inspect module}\n"
             IO.write binary
           { _, _ } ->
-            IO.puts "No docs for #{inspect module}"
+            IO.puts "No docs for #{inspect module} have been found"
           _ ->
             IO.puts "#{inspect module} was not compiled with docs"
         end
@@ -153,17 +164,35 @@ defmodule IEx.Helpers do
   def h(module, function, arity) when is_atom(module) and is_atom(function) and is_integer(arity) do
     if docs = module.__info__(:docs) do
       doc =
-        if tuple = List.keyfind(docs, { function, arity }, 0) do
-          print_signature(tuple)
+        cond do
+          d = find_doc(docs, function, arity)         -> d
+          d = find_default_doc(docs, function, arity) -> d
+          true                                        -> nil
         end
 
       if doc do
-        IO.write "\n" <> doc
+        IO.write "\n" <> print_signature(doc)
       else
-        IO.puts "No docs for #{function}/#{arity}"
+        IO.puts "No docs for #{inspect module}#.{function}/#{arity} have been found"
       end
     else
       IO.puts "#{inspect module} was not compiled with docs"
+    end
+  end
+
+  defp find_doc(docs, function, arity) do
+    List.keyfind(docs, { function, arity }, 0)
+  end
+
+  defp find_default_doc(docs, function, min) do
+    Enum.find docs, fn(doc) ->
+      case elem(doc, 0) do
+        { ^function, max } when max > min ->
+          defaults = Enum.count elem(doc, 3), match?({ ://, _, _ }, &1)
+          min + defaults >= max
+        _ ->
+          false
+      end
     end
   end
 
@@ -184,6 +213,123 @@ defmodule IEx.Helpers do
 
   defp signature_arg({ var, _, _ }) do
     atom_to_binary(var)
+  end
+
+  @doc """
+  Prints all types for the given module or prints out a specified type's 
+  specification
+
+  ## Examples
+
+      t(Enum)
+      t(Enum.t/0)
+
+  """
+  defmacro t({ :/, _, [{ { :., _, [mod, fun] }, _, [] }, arity] }) do
+    quote do
+      t(unquote(mod), unquote(fun), unquote(arity))
+    end
+  end
+
+  defmacro t(module) do
+    quote do
+      t(unquote(module), :all)
+    end
+  end
+
+
+  @doc false
+  def t(module, :all) do
+    types = lc type inlist Kernel.Typespec.beam_types(module), do: print_type(type)
+
+    if types == [] do
+      IO.puts "No types for #{inspect module} have been found"
+    end
+
+    :ok
+  end
+
+  @doc false
+  def t(module, type, arity) do
+    types = lc {_, {t, _, args}} = typespec inlist Kernel.Typespec.beam_types(module), 
+               length(args) == arity and t == type, do: typespec
+
+    case types do
+     [] ->
+       IO.puts "No types for #{inspect module}.#{type}/#{arity} have been found"
+     [type] ->
+       print_type(type)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Prints all specs from a given module.
+
+  ## Examples
+
+      s(Enum)
+
+  """
+  defmacro s({ :/, _, [{ { :., _, [mod, fun] }, _, [] }, arity] }) do
+    quote do
+      s(unquote(mod), unquote(fun), unquote(arity))
+    end
+  end
+
+  defmacro s(module) do
+    quote do
+      s(unquote(module), :all)
+    end
+  end
+
+  @doc false
+  def s(module, :all) do
+    specs = lc spec inlist Kernel.Typespec.beam_specs(module), do: print_spec(spec)
+
+    if specs == [] do
+      IO.puts "No specs for #{inspect module} have been found"
+    end
+
+    :ok
+  end
+
+  @doc """
+  Prints the specs for a given function.
+
+  ## Examples
+
+      s(Enum.all?/2)
+      s(Enum.t/0)
+
+  """
+  def s(module, function, arity) do
+    spec = List.keyfind(Kernel.Typespec.beam_specs(module), { function, arity }, 0)
+
+    if spec do
+      print_spec(spec)
+    else
+      IO.puts "No specs for #{inspect module}.#{function}/#{arity} have been found"
+    end
+
+    :ok
+  end
+
+  defp print_type({ kind, type }) do
+    ast = Kernel.Typespec.type_to_ast(type)
+    IO.puts "@#{kind} #{Macro.to_binary(ast)}"
+    true
+  end
+
+  defp print_spec({ { name, _arity }, specs }) do
+    Enum.each specs, fn(spec) ->
+      { args, result } = Kernel.Typespec.spec_to_ast(spec)
+      bin_args   = Macro.to_binary { name, 0, args }
+      bin_result = Macro.to_binary result
+      IO.puts "@spec #{bin_args}, do: #{bin_result}"
+    end
+    true
   end
 
   @doc """

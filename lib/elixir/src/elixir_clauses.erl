@@ -87,9 +87,12 @@ extract_last_guards(Args) ->
 
 % Function for translating macros with match style like case and receive.
 
-match(Line, DecoupledClauses, RawS) ->
-  S = RawS#elixir_scope{clause_vars=orddict:new()},
+match(Line, Clauses, #elixir_scope{clause_vars=C1} = S) ->
+  { TC, TS } = do_match(Line, Clauses, S#elixir_scope{clause_vars=orddict:new()}),
+  C2 = TS#elixir_scope.clause_vars,
+  { TC, TS#elixir_scope{clause_vars=elixir_scope:merge_clause_vars(C1, C2)} }.
 
+do_match(Line, DecoupledClauses, S) ->
   case DecoupledClauses of
     [DecoupledClause] ->
       { TDecoupledClause, TS } = each_clause(Line, DecoupledClause, S),
@@ -207,7 +210,11 @@ normalize_vars({ Var, Kind }, S) ->
 
 normalize_vars(Var, Kind, Index, #elixir_scope{clause_vars=ClauseVars} = S) ->
   Vars = element(Index, S),
-  { { _, _, NewValue }, S1 } = elixir_scope:build_erl_var(0, S),
+
+  { { _, _, NewValue }, S1 } = if
+    (Kind == quoted) or (S#elixir_scope.noname) -> elixir_scope:build_erl_var(0, S);
+    true -> elixir_scope:build_erl_var(0, Var, "_@" ++ atom_to_list(Var), S)
+  end,
 
   S2 = setelement(Index, S1, orddict:store(Var, NewValue, Vars)),
   S3 = S2#elixir_scope{clause_vars=orddict:store({ Var, Kind }, NewValue, ClauseVars)},

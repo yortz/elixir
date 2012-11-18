@@ -14,7 +14,7 @@ eval_quoted(Module, Quoted, RawBinding, Opts) ->
     false -> Line = 1
   end,
 
-  { Value, FinalBinding, _Scope } = elixir:eval_quoted([Quoted], Binding, Line, Scope),
+  { Value, FinalBinding, _Scope } = elixir:eval_quoted([Quoted], Binding, Line, Scope#elixir_scope{check_clauses=false}),
   { Value, FinalBinding }.
 
 scope_for_eval(Module, #elixir_scope{} = S) ->
@@ -25,7 +25,6 @@ scope_for_eval(Module, Opts) ->
 
 binding_for_eval(Module, Binding) -> [{'_@MODULE',Module}|Binding].
 
-
 %% TABLE METHODS
 
 data_table(Module) ->
@@ -33,9 +32,6 @@ data_table(Module) ->
 
 docs_table(Module) ->
   ?ELIXIR_ATOM_CONCAT([o, Module]).
-
-spec_table(Module) ->
-  ?ELIXIR_ATOM_CONCAT([s, Module]).
 
 %% TRANSFORMATION FUNCTIONS
 
@@ -72,15 +68,15 @@ compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
     { Export, Private, Def, Defmacro, Defmacrop, Functions } = elixir_def:unwrap_stored_definitions(Module),
 
     { All, Forms0 } = functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Functions, C),
-    Forms1          = attributes_form(Line, File, Module, Forms0),
-    Forms2          = specs_form(Line, Module, Defmacro, Defmacrop, Forms1),
+    Forms1          = specs_form(Line, Module, Defmacro, Defmacrop, Forms0, C),
+    Forms2          = attributes_form(Line, File, Module, Forms1),
 
     elixir_import:ensure_no_local_conflict(Line, File, Module, All),
     elixir_import:ensure_no_import_conflict(Line, File, Module, All),
 
     Final = [
-      {attribute, Line, file, {File,Line}},
-      {attribute, Line, module, Module} | Forms2
+      { attribute, Line, file, { binary_to_list(File), Line } },
+      { attribute, Line, module, Module } | Forms2
     ],
 
     Binary = load_form(Line, Final, S),
@@ -88,7 +84,6 @@ compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
   after
     ets:delete(data_table(Module)),
     ets:delete(docs_table(Module)),
-    ets:delete(spec_table(Module)),
     elixir_def:delete_table(Module),
     elixir_import:delete_table(Module)
   end;
@@ -131,10 +126,6 @@ build(Line, File, Module) ->
   DocsTable = docs_table(Module),
   ets:new(DocsTable, [ordered_set, named_table, public]),
 
-  %% Holds specs in a format it is easier to query.
-  SpecTable = spec_table(Module),
-  ets:new(SpecTable, [duplicate_bag, named_table, public]),
-
   %% We keep a separated table for function definitions
   %% and another one for imports. We keep them in different
   %% tables for organization and speed purpose (since the
@@ -145,11 +136,11 @@ build(Line, File, Module) ->
 %% Receives the module representation and evaluates it.
 
 eval_form(Line, Module, Block, Vars, RawS) ->
-  Temp = ?ELIXIR_ATOM_CONCAT(["COMPILE-",Module]),
   S = scope_for_eval(Module, RawS),
-  { Value, NewS } = elixir_compiler:eval_forms([Block], Line, Temp, Vars, S),
+  { Value, NewS } = elixir_compiler:eval_forms([Block], Line, Vars, S),
   elixir_def_overridable:store_pending(Module),
   eval_callbacks(Line, Module, before_compile, [Module], NewS),
+  elixir_def_overridable:store_pending(Module),
   Value.
 
 %% Return the form with exports and function declarations.
@@ -188,36 +179,41 @@ attributes_form(Line, _File, Module, Current) ->
 
 %% Specs
 
-specs_form(Line, Module, Defmacro, Defmacrop, Forms) ->
-  { Specs, Callbacks } = ets:foldl(fun(X, Acc) ->
-    translate_spec(X, Defmacro, Defmacrop, Acc)
-  end, { [], [] }, spec_table(Module)),
+specs_form(Line, Module, Defmacro, DefmacropWithLine, Forms, C) ->
+  Defmacrop = [Tuple || { Tuple, _, _ } <- DefmacropWithLine],
+  case elixir_compiler:get_opt(internal, C) of
+    true -> Forms;
+    _    ->
+      Callbacks = 'Elixir.Module':get_attribute(Module, callback),
+      Specs     = [translate_spec(Spec, Defmacro, Defmacrop) ||
+                    Spec <- 'Elixir.Module':get_attribute(Module, spec)],
 
-  Temp = specs_attributes(Line, spec, Forms, Specs),
-  specs_attributes(Line, callback, Temp, Callbacks).
+      'Elixir.Module':delete_attribute(Module, spec),
+      'Elixir.Module':delete_attribute(Module, callback),
+
+      Temp = specs_attributes(Line, spec, Forms, Specs),
+      specs_attributes(Line, callback, Temp, Callbacks)
+  end.
 
 specs_attributes(Line, Type, Forms, Specs) ->
   Keys = lists:ukeysort(1, Specs),
   lists:foldl(fun({ Tuple, _ }, Acc) ->
-    [{ attribute, Line, Type, { Tuple, proplists:append_values(Tuple, Specs) } }|Acc]
+    Values = [V || { K, V } <- Specs, K == Tuple],
+    [{ attribute, Line, Type, { Tuple, Values } }|Acc]
   end, Forms, Keys).
 
-translate_spec({ { spec, Spec }, Rest }, Defmacro, Defmacrop, { Specs, Callbacks } = Acc) ->
+translate_spec({ Spec, Rest }, Defmacro, Defmacrop) ->
   case ordsets:is_element(Spec, Defmacrop) of
-    true  -> Acc;
+    true  -> { Spec, Rest };
     false ->
       case ordsets:is_element(Spec, Defmacro) of
         true ->
           { Name, Arity } = Spec,
-          New = { { ?ELIXIR_MACRO(Name), Arity + 1 }, [spec_for_macro(X) || X <- Rest] },
-          { [New|Specs], Callbacks };
+          { { ?ELIXIR_MACRO(Name), Arity + 1 }, spec_for_macro(Rest) };
         false ->
-          { [{ Spec, Rest }|Specs], Callbacks }
+          { Spec, Rest }
       end
-  end;
-
-translate_spec({ { callback, Spec }, Rest }, _, _, { Specs, Callbacks }) ->
-  { Specs, [{ Spec, Rest }|Callbacks] }.
+  end.
 
 spec_for_macro({ type, Line, 'fun', [{ type, _, product, Args }|T] }) ->
   NewArgs = [{type,Line,term,[]}|Args],
@@ -271,8 +267,7 @@ add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C) ->
         macros_clause(Line, Module, Def, Defmacro),
         docs_clause(Line, Module, Docs),
         moduledoc_clause(Line, Module, Docs),
-        compile_clause(Line),
-        self_clause(Line, Module),
+        module_clause(Line, Module),
         else_clause(Line)
       ] },
       { [Pair|Export], [Contents|Functions] }
@@ -291,8 +286,8 @@ handle_builtin_macros('Elixir.Kernel', Def, Defmacro) ->
     elixir_dispatch:in_erlang_macros()), Def);
 handle_builtin_macros(_, _Def, Defmacro) -> Defmacro.
 
-self_clause(Line, Module) ->
-  { clause, Line, [{ atom, Line, self }], [], [{ atom, Line, Module }] }.
+module_clause(Line, Module) ->
+  { clause, Line, [{ atom, Line, module }], [], [{ atom, Line, Module }] }.
 
 docs_clause(Line, Module, true) ->
   Docs = ordsets:from_list(ets:tab2list(docs_table(Module))),
@@ -307,11 +302,6 @@ moduledoc_clause(Line, Module, true) ->
 
 moduledoc_clause(Line, _Module, _) ->
   { clause, Line, [{ atom, Line, moduledoc }], [], [{ atom, Line, nil }] }.
-
-compile_clause(Line) ->
-  Info = { call, Line, { atom, Line, module_info }, [{ atom, Line, compile }] },
-  WrappedInfo = ?ELIXIR_WRAP_CALL(Line, 'Elixir.Keyword', 'from_enum', [Info]),
-  { clause, Line, [{ atom, Line, compile }], [], [WrappedInfo] }.
 
 else_clause(Line) ->
   Info = { call, Line, { atom, Line, module_info }, [{ var, Line, atom }] },

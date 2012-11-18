@@ -1,12 +1,14 @@
 Code.require_file "../test_helper.exs", __FILE__
 
 defprotocol ProtocolTest.WithAll do
+  @type t :: any
   @doc "Blank"
   def blank(thing)
 end
 
 defprotocol ProtocolTest.WithExcept do
   @except [Atom, Number, List]
+  @spec blank(t), do: boolean
   def blank(thing)
 end
 
@@ -138,6 +140,19 @@ defmodule ProtocolTest do
     assert ProtocolTest.Multi.test(1) == 1
     assert ProtocolTest.Multi.test(:a) == :a
     assert catch_error(ProtocolTest.Multi.test("a")) == :undef
+  end
+
+  test :protocol_callback do
+    assert get_callbacks(ProtocolTest.WithOnly, :blank, 1) ==
+      [{:type,17,:fun,[{:type,17,:product,[{:type,17,:t,[]}]},{:type,17,:term,[]}]}]
+
+    assert get_callbacks(ProtocolTest.WithExcept, :blank, 1) ==
+      [{:type,11,:fun,[{:type,11,:product,[{:type,11,:t,[]}]},{:type,11,:boolean,[]}]}]
+  end
+
+  defp get_callbacks(module, name, arity) do
+    callbacks = lc { :callback, info } inlist module.__info__(:attributes), do: hd(info)
+    List.keyfind(callbacks, { name, arity }, 0) /> elem(1)
   end
 
   # Assert that the given protocol is going to be dispatched.

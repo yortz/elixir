@@ -4,8 +4,10 @@ defrecord Kernel.CLI.Config, commands: [], output: ".",
 defmodule Kernel.CLI do
   @moduledoc false
 
-  # Invoked directly from erlang boot process. It parses all argv
-  # options and execute them in the order they are specified.
+  @doc """
+  Invoked directly from erlang boot process. It parses all argv
+  options and execute them in the order they are specified.
+  """
   def process_argv(options) do
     { config, argv } = process_options(options, Kernel.CLI.Config.new)
 
@@ -14,11 +16,19 @@ defmodule Kernel.CLI do
 
     all_commands = Enum.reverse(config.commands)
 
+    run fn -> Enum.map all_commands, process_command(&1, config) end, config.halt
+  end
+
+  @doc """
+  Runs the given function and wraps any exception or
+  error in messages useful for the command line.
+  """
+  def run(fun, halt // true) do
     try do
-      Enum.map all_commands, process_command(&1, config)
-      if config.halt do
+      fun.()
+      if halt do
         at_exit(0)
-        halt(0)
+        System.halt(0)
       end
     rescue
       exception ->
@@ -26,20 +36,20 @@ defmodule Kernel.CLI do
         trace = System.stacktrace
         IO.puts :stderr, "** (#{inspect exception.__record__(:name)}) #{exception.message}"
         IO.puts Exception.formatted_stacktrace(trace)
-        halt(1)
+        System.halt(1)
     catch
       :exit, reason when is_integer(reason) ->
         at_exit(reason)
-        halt(reason)
+        System.halt(reason)
       :exit, :normal ->
         at_exit(0)
-        halt(0)
+        System.halt(0)
       kind, reason ->
         at_exit(1)
         trace = System.stacktrace
         IO.puts :stderr, "** (#{kind}) #{inspect(reason)}"
         IO.puts Exception.formatted_stacktrace(trace)
-        halt(1)
+        System.halt(1)
     end
   end
 
@@ -66,7 +76,7 @@ defmodule Kernel.CLI do
 
   defp invalid_option(option) do
     IO.puts(:stderr, "Unknown option #{list_to_binary(option)}")
-    halt(1)
+    System.halt(1)
   end
 
   defp shared_option?(list, config, callback) do
@@ -140,7 +150,7 @@ defmodule Kernel.CLI do
       { config.prepend_commands([require: list_to_binary(exec)]), t }
     else
       IO.puts(:stderr, "Could not find executable #{h}")
-      halt(1)
+      System.halt(1)
     end
   end
 

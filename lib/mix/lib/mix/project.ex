@@ -32,15 +32,9 @@ defmodule Mix.Project do
   """
 
   @doc false
-  def behaviour_info(:callbacks) do
-    [project: 0]
-  end
-
-  @doc false
   defmacro __using__(_) do
     quote do
       @after_compile Mix.Project
-      @behaviour Mix.Project
     end
   end
 
@@ -116,9 +110,8 @@ defmodule Mix.Project do
 
   defp default_config do
     [ compile_path: "ebin",
-      compile_first: [],
       compile_exts: [:ex],
-      watch_exts: [:ex, :eex],
+      watch_exts: [:ex, :eex, :exs],
       default_env: [test: :test],
       default_task: "test",
       deps_path: "deps",

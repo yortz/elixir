@@ -1,3 +1,34 @@
+# v0.7.1 (2012-11-18)
+
+* enhancements
+  * [IEx] Only show documented functions and also show docs for default generated functions
+  * [IO] Add `IO.binread`, `IO.binwrite` and `IO.binreadline` to handle raw binary file operations
+  * [ExUnit] Add support for user configuration at `HOME/.ex_unit.exs`
+  * [ExUnit] Add support for custom formatters via a well-defined behaviour
+  * [Kernel] Add support for `defrecordp`
+  * [Kernel] Improved dialyzer support
+  * [Kernel] Improved error messages when creating functions with aliases names
+  * [Mix] Improve SCM behaviour to allow more robust integration
+  * [Mix] Changing deps information on `mix.exs` forces users to fetch new dependencies
+  * [Mix] Support (parallel) requires on mix run
+  * [Mix] Support `-q` when running tests to compile only changed files
+  * [String] Support `String.downcase` and `String.upcase` according to Unicode 6.2.0
+  * [String] Add support for graphemes in `String.length`, `String.at` and others
+  * [Typespec] Support `@opaque` as attribute
+  * [Typespec] Define a default type `t` for protocols and records
+  * [Typespec] Add support for the access protocol in typespecs
+
+* bug fix
+  * [Kernel] Fix an issue where variables inside clauses remained unassigned
+  * [Kernel] Ensure `defoverridable` functions can be referred in many clauses
+  * [Kernel] Allow keywords as function names when following a dot (useful when integrating with erlang libraries)
+  * [File] File is opened by default on binary mode instead of utf-8
+
+* deprecations
+  * [Behaviour] `defcallback/1` was deprecated in favor of `defcallback/2` which matches erlang `@callbacks`
+  * [Enum] `Enum.times` was deprecated in favor of using ranges
+  * [System] `halt` was moved to System module
+
 # v0.7.0 (2012-10-20)
 
 * enhancements

@@ -39,7 +39,7 @@ defmodule Mix.Tasks.Compile.AppTest do
     Mix.Project.pop
   end
 
-  test "use custom applicaiton settings" do
+  test "use custom application settings" do
     Mix.Project.push CustomProject
 
     in_fixture "no_mixfile", fn ->
@@ -61,7 +61,7 @@ defmodule Mix.Tasks.Compile.AppTest do
       Mix.Tasks.Compile.Elixir.run([])
       assert Mix.Tasks.Compile.App.run([]) == :ok
 
-      {:ok, [{application, _, properties}]} = :file.consult("ebin/simple_project.app")
+      {:ok, [{_app, _, properties}]} = :file.consult("ebin/simple_project.app")
       properties = Keyword.from_enum(properties)
       assert properties[:registered] == []
       assert properties[:description] == 'simple_project'   

@@ -1,12 +1,22 @@
 defmodule String do
   @moduledoc """
   A string in Elixir is a utf-8 binary. This module
-  contains function to work with utf-8 data and its
-  codepoints.
+  contains function to work with utf-8 data, its
+  codepoints and graphemes.
+
+  Notice that graphemes is a superset of UTF-8 codepoints
+  which also contains named sequences as defined per
+  http://www.unicode.org/reports/tr34/. In short, graphemes
+  also contain multiple characters that are "perceived as
+  a single character" by readers.
 
   For working with raw binaries, use Erlang's :binary
   module.
   """
+
+  @type t :: binary
+  @type codepoint :: t
+  @type grapheme :: t
 
   @doc """
   Checks if a string is printable considering it is encoded
@@ -17,7 +27,7 @@ defmodule String do
       String.printable?("abc") #=> true
 
   """
-
+  @spec printable?(t), do: boolean  
   # Allow basic ascii chars
   def printable?(<<c, t :: binary>>) when c in ?\s..?~ do
     printable?(t)
@@ -90,7 +100,6 @@ defmodule String do
   def printable?(<<>>), do: true
   def printable?(_),    do: false
 
-
   @doc """
   Divides a string into sub string based on a pattern,
   returning a list of these sub string. The pattern can
@@ -116,6 +125,9 @@ defmodule String do
       String.split("a,b", %r{\.})   #=> ["a,b"]
 
   """
+  @spec split(t), do: [t]
+  @spec split(t, t | [t] | Regex.t), do: [t]
+  @spec split(t, t | [t] | Regex.t, Keyword.t), do: [t]
   def split(binary, pattern // " ", options // [])
 
   def split(binary, pattern, options) when is_regex(pattern) do
@@ -128,7 +140,11 @@ defmodule String do
   end
 
   @doc """
-  Convert all characters on the given string to upper case.
+  Convert all characters on the given string to upcase.
+
+  This function relies on the simple uppercase mapping
+  available in Unicode 6.2.0, check http://unicode.org/reports/tr44/
+  for more information.
 
   ## Examples
 
@@ -137,22 +153,15 @@ defmodule String do
       String.upcase("josé") #=> "JOSÉ"
 
   """
-  def upcase(<<>>), do: <<>>
-
-  def upcase(<<195, c, t :: binary>>) when c in 160..191 do
-    <<195, c - 32, upcase(t) :: binary>>
-  end
-
-  def upcase(<<c, t :: binary>>) when c in ?a..?z do
-    <<c  - 32, upcase(t) :: binary>>
-  end
-
-  def upcase(<<c, t :: binary>>) do
-    <<c , upcase(t) :: binary>>
-  end
+  @spec upcase(t), do: t
+  defdelegate upcase(binary), to: String.Unicode
 
   @doc """
-  Convert all characters on the given string to down case.
+  Convert all characters on the given string to downcase.
+
+  This function relies on the simple lowercase mapping
+  available in Unicode 6.2.0, check http://unicode.org/reports/tr44/
+  for more information.
 
   ## Examples
 
@@ -161,19 +170,8 @@ defmodule String do
       String.downcase("JOSÉ") #=> "josé"
 
   """
-  def downcase(<<>>), do: <<>>
-
-  def downcase(<<195, c, t :: binary>>) when c in 128..159 do
-    <<195, c + 32, downcase(t) :: binary>>
-  end
-
-  def downcase(<<c, t :: binary>>) when c in ?A..?Z do
-    <<c + 32, downcase(t) :: binary>>
-  end
-
-  def downcase(<<c, t :: binary>>) do
-    <<c , downcase(t) :: binary>>
-  end
+  @spec downcase(t), do: t
+  defdelegate downcase(binary), to: String.Unicode
 
   @doc """
   Returns a string where trailing char have been
@@ -185,7 +183,11 @@ defmodule String do
       String.rstrip("   abc _", ?_)  #=> "   abc "
 
   """
+  @spec rstrip(t), do: t
+  @spec rstrip(t, char), do: t
   def rstrip(string, char // ?\s)
+
+  def rstrip("", _char), do: ""
 
   # Do a quick check before we traverse the whole
   # binary. :binary.last is a fast operation (it
@@ -220,6 +222,8 @@ defmodule String do
       String.lstrip("_  abc  _", ?_)  #=> "  abc  _"
 
   """
+  @spec lstrip(t), do: t
+  @spec lstrip(t, char), do: t  
   def lstrip(string, char // ?\s)
 
   def lstrip(<<char, rest :: binary>>, char) do
@@ -240,6 +244,8 @@ defmodule String do
       String.strip("a  abc  a", ?a)  #=> "  abc  "
 
   """
+  @spec strip(t), do: t
+  @spec strip(t, char), do: t  
   def strip(string, char // ?\s) do
     rstrip(lstrip(string, char), char)
   end
@@ -263,6 +269,8 @@ defmodule String do
       String.replace("a,b,c", ",", "[]", insert_replaced: [1,1]) #=> "a[,,]b[,,]c"
 
   """
+  @spec replace(t, t, t), do: t
+  @spec replace(t, t, t, Keyword.t), do: t
   def replace(subject, pattern, replacement, options // []) do
     opts = translate_replace_options(options)
     :binary.replace(subject, pattern, replacement, opts)
@@ -287,6 +295,7 @@ defmodule String do
       String.duplicate("abc", 2) #=> "abcabc"
 
   """
+  @spec duplicate(t, pos_integer), do: t
   def duplicate(subject, n) when is_integer(n) and n > 0 do
     :binary.copy(subject, n)
   end
@@ -301,18 +310,51 @@ defmodule String do
       String.codepoints("ἅἪῼ")          #=> ["ἅ","Ἢ","ῼ"]
 
   """
-  def codepoints(string) do
-    do_codepoints(codepoint(string))
-  end
-
-  defp do_codepoints({char, rest}) do
-    [char|do_codepoints(codepoint(rest))]
-  end
-
-  defp do_codepoints(:no_codepoint), do: []
+  @spec codepoints(t), do: [codepoint]
+  defdelegate codepoints(string), to: String.Unicode
 
   @doc """
-  Returns the first codepoint from an utf8 string.
+  Returns the next codepoint in a String.
+
+  The result is a tuple with the codepoint and the
+  remaining of the string or `:no_codepoint` in case
+  the String reached its end.
+
+  ## Examples
+
+      String.next_codepoint("josé") #=> { "j", "osé" }
+
+  """
+  @spec next_codepoint(t), do: codepoint | :no_codepoint
+  defdelegate next_codepoint(string), to: String.Unicode
+
+  @doc """
+  Returns unicode graphemes in the string
+
+  ## Examples
+     String.graphemes("Ā̀stute") # => ["Ā̀","s","t","u","t","e"]
+
+  """
+  @spec graphemes(t), do: [grapheme]
+  defdelegate graphemes(string), to: String.Unicode
+
+  @doc """
+  Returns the next grapheme in a String.
+
+  The result is a tuple with the grapheme and the
+  remaining of the string or `:no_grapheme` in case
+  the String reached its end.
+
+  ## Examples
+
+      String.next_grapheme("josé") #=> { "j", "osé" }
+
+  """
+  @spec next_grapheme(t), do: grapheme | :no_grapheme
+  defdelegate next_grapheme(string), to: String.Unicode
+
+  @doc """
+  Returns the first grapheme from an utf8 string.
 
   ## Examples
 
@@ -320,15 +362,16 @@ defmodule String do
       String.first("եոգլի") #=> "ե"
 
   """
+  @spec first(t), do: grapheme
   def first(string) do
-    case codepoint(string) do
+    case next_grapheme(string) do
       { char, _ } -> char
-      :no_codepoint -> ""
+      :no_grapheme -> ""
     end
   end
 
   @doc """
-  Returns the last codepoint from an utf8 string.
+  Returns the last grapheme from an utf8 string.
 
   ## Examples
 
@@ -336,18 +379,19 @@ defmodule String do
       String.last("եոգլի") #=> "ի"
 
   """
+  @spec last(t), do: grapheme
   def last(string) do
-    do_last(codepoint(string), "")
+    do_last(next_grapheme(string), "")
   end
 
   defp do_last({char, rest}, _) do
-    do_last(codepoint(rest), char)
+    do_last(next_grapheme(rest), char)
   end
 
-  defp do_last(:no_codepoint, last_char), do: last_char
+  defp do_last(:no_grapheme, last_char), do: last_char
 
   @doc """
-  Returns the number of codepoint in an utf8 string.
+  Returns the number of unicode graphemes in an utf8 string.
 
   ## Examples
 
@@ -355,18 +399,19 @@ defmodule String do
       String.length("եոգլի") #=> 5
 
   """
+  @spec length(t), do: non_neg_integer
   def length(string) do
-    do_length(codepoint(string))
+    do_length(next_grapheme(string))
   end
 
   defp do_length({_, rest}) do
-    1 + do_length(codepoint(rest))
+    1 + do_length(next_grapheme(rest))
   end
 
-  defp do_length(:no_codepoint), do: 0
+  defp do_length(:no_grapheme), do: 0
 
   @doc """
-  Returns the codepoint in the `position` of the given utf8 `string`.
+  Returns the grapheme in the `position` of the given utf8 `string`.
   If `position` is greater than `string` length, than it returns `nil`.
 
   ## Examples
@@ -375,51 +420,29 @@ defmodule String do
       String.at("elixir", 1) #=> "l"
       String.at("elixir", 10) #=> nil
       String.at("elixir", -1) #=> "r"
-      String.at("elixir", -10) #=> "nil"
+      String.at("elixir", -10) #=> nil
 
   """
+  @spec at(t, integer), do: grapheme | nil
   def at(string, position) when position >= 0 do
-    do_at(codepoint(string), position, 0)
+    do_at(next_grapheme(string), position, 0)
   end
 
   def at(string, position) when position < 0 do
-    real_pos = do_length(codepoint(string)) - abs(position)
+    real_pos = do_length(next_grapheme(string)) - abs(position)
     case real_pos >= 0 do
-      true -> do_at(codepoint(string), real_pos, 0)
+      true  -> do_at(next_grapheme(string), real_pos, 0)
       false -> ""
     end
   end
 
   defp do_at({_ , rest}, desired_pos, current_pos) when desired_pos > current_pos do
-    do_at(codepoint(rest), desired_pos, current_pos + 1)
+    do_at(next_grapheme(rest), desired_pos, current_pos + 1)
   end
 
   defp do_at({char, _}, desired_pos, current_pos) when desired_pos == current_pos do
     char
   end
 
-  defp do_at(:no_codepoint, _, _), do: ""
-
-  # Private implementation which returns the first codepoint
-  # of any given utf8 string and the rest of it
-  # If an empty string is given, :no_codepoint is returned.
-  defp codepoint(<<194, char, rest :: binary>>)
-    when char in 161..191,
-    do: { <<194, char>>, rest }
-
-  defp codepoint(<<first, char, rest :: binary>>)
-    when first in 195..223 and char in 128..191,
-    do: { <<first, char>>, rest }
-
-  defp codepoint(<<first, second, char, rest :: binary>>)
-    when first == 224 and second in 160..191 and char in 128..191,
-    do: { <<first, second, char>>, rest }
-
-  defp codepoint(<<first, second, char, rest :: binary>>)
-    when first in 225..239 and second in 128..191 and char in 128..191,
-    do: { <<first, second, char>>, rest }
-
-  defp codepoint(<<other, rest :: binary>>), do: { <<other>>, rest }
-
-  defp codepoint(<<>>), do: :no_codepoint
+  defp do_at(:no_grapheme, _, _), do: nil
 end

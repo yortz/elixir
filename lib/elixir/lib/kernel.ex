@@ -487,7 +487,7 @@ defmodule Kernel do
   number of bits in the binary is not divisible by 8, the last element of the list will
   be a bitstring containing the remaining bits (1 up to 7 bits).
   """
-  @spec bitstring_to_list(bitstring), do: non_neg_integer
+  @spec bitstring_to_list(bitstring), do: list
   def bitstring_to_list(bitstring) do
     :erlang.bitstring_to_list(bitstring)
   end
@@ -543,57 +543,9 @@ defmodule Kernel do
       #=> '7.00000000000000000000e+00'
 
   """
-  @spec float_to_list(number), do: string
+  @spec float_to_list(number), do: char_list
   def float_to_list(number) do
     :erlang.float_to_list(number)
-  end
-
-  @doc """
-  The same as halt(0, []).
-  """
-  @spec halt(), do: no_return
-  def halt() do
-    :erlang.halt()
-  end
-
-  @doc """
-  The same as halt(status, []).
-  """
-  @spec halt(non_neg_integer | string | :abort), do: no_return
-  def halt(status) do
-    :erlang.halt(status)
-  end
-
-  @doc """
-  Halts the Erlang runtime system where the first argument status must be a
-  non-negative integer, a char list, or the atom `:abort`.
-
-  * If an integer, the runtime system exits with the integer value which
-    is returned to the Operating System;
-
-  * If a char list, an erlang crash dump is produced with status as slogan,
-    and then the runtime system exits with status code 1;
-
-  * If `:abort`, the runtime system aborts producing a core dump, if that is
-    enabled in the operating system.
-
-  Note that on many platforms, only the status codes 0-255 are supported
-  by the operating system.
-
-  For integer status, Erlang runtime system closes all ports and allows async
-  threads to finish their operations before exiting. To exit without such
-  flushing, pass options [flush: false] instead.
-
-  ## Examples
-
-      halt(0)
-      halt(1, flush: false)
-      halt(:abort)
-
-  """
-  @spec halt(non_neg_integer | string | :abort, [] | [flush: false]), do: no_return
-  def halt(status, options) do
-    :erlang.halt(status, options)
   end
 
   @doc """
@@ -613,7 +565,7 @@ defmodule Kernel do
       #=> '7'
 
   """
-  @spec integer_to_list(integer), do: string
+  @spec integer_to_list(integer), do: char_list
   def integer_to_list(number) do
     :erlang.integer_to_list(number)
   end
@@ -628,7 +580,7 @@ defmodule Kernel do
       #=> "3FF"
 
   """
-  @spec integer_to_list(integer, pos_integer), do: string
+  @spec integer_to_list(integer, pos_integer), do: char_list
   def integer_to_list(number, base) do
     :erlang.integer_to_list(number, base)
   end
@@ -840,7 +792,7 @@ defmodule Kernel do
 
       list_to_atom('elixir') #=> :elixir
   """
-  @spec list_to_atom(string), do: atom
+  @spec list_to_atom(char_list), do: atom
   def list_to_atom(char_list) do
     :erlang.list_to_atom(char_list)
   end
@@ -880,7 +832,7 @@ defmodule Kernel do
   Returns the atom whose text representation is `char_list`, but only if there already
   exists such atom.
   """
-  @spec list_to_existing_atom(string), do: atom
+  @spec list_to_existing_atom(char_list), do: atom
   def list_to_existing_atom(char_list) do
     :erlang.list_to_existing_atom(char_list)
   end
@@ -892,7 +844,7 @@ defmodule Kernel do
 
       list_to_float('2.2017764e+0') #=> 2.2017764
   """
-  @spec list_to_float(string), do: float
+  @spec list_to_float(char_list), do: float
   def list_to_float(char_list) do
     :erlang.list_to_float(char_list)
   end
@@ -904,7 +856,7 @@ defmodule Kernel do
 
       list_to_integer('123') #=> 123
   """
-  @spec list_to_integer(string), do: integer
+  @spec list_to_integer(char_list), do: integer
   def list_to_integer(char_list) do
     :erlang.list_to_integer(char_list)
   end
@@ -916,7 +868,7 @@ defmodule Kernel do
 
       list_to_integer('3FF', 16) #=> 1023
   """
-  @spec list_to_integer(string, non_neg_integer), do: integer
+  @spec list_to_integer(char_list, non_neg_integer), do: integer
   def list_to_integer(char_list, base) do
     :erlang.list_to_integer(char_list, base)
   end
@@ -934,7 +886,7 @@ defmodule Kernel do
   ## Examples
       list_to_pid('<0.41>') #=> <0.4.1>
   """
-  @spec list_to_pid(string), do: pid
+  @spec list_to_pid(char_list), do: pid
   def list_to_pid(char_list) do
     :erlang.list_to_pid(char_list)
   end
@@ -1393,7 +1345,12 @@ defmodule Kernel do
   defmacro defp(name, args, guards, do: contents)
 
   @doc %B"""
-  Define a record given by name and values.
+  Defines a record.
+
+  A record is a tagged tuple which contains one or more elements
+  and the first element is a module. This macro defines a module
+  that generates accessors to manipulate the record at both
+  compilation and runtime.
 
   ## Examples
 
@@ -1402,25 +1359,25 @@ defmodule Kernel do
   The line above will define a module named `FileInfo` which
   contains a function named `new` that returns a new record
   and other functions to read and set the values in the
-  record. Therefore, we can do:
+  record:
 
       file_info = FileInfo.new(atime: now())
       file_info.atime         #=> Returns the value of atime
       file_info.atime(now())  #=> Updates the value of atime
 
-  Internally, a record is simply a tuple where the first element is
-  the record module name. This can be noticed if we print the record:
+  A record is simply a tuple where the first element is the record
+  module name. We can get the record raw representation as follow:
 
-      IO.inspect FileInfo.new
-      { FileInfo, nil, nil }
+      inspect FileInfo.new, raw: true
+      #=> { FileInfo, nil, nil }
 
   ## Extensions
 
   Besides defining readers and writers for each attribute. Elixir will
   define extensions functions for each attribute. By default, it will
   define an `update_#{attribute}` function to update the value. Such
-  functions expect a function as argument that receives the current value
-  and must return the new one:
+  functions expect a function as argument that receives the current
+  value and must return the new one:
 
       file_info.update_atime(fn(_old) -> now() end) #=> Updates the value of atime
 
@@ -1443,20 +1400,79 @@ defmodule Kernel do
   Besides, if the default is a list, Elixir will define two helpers:
 
   * `merge_field` - Receives keywords and merge it into the current value;
-  * `prepend_field` - Receives another list and prepend its values
-
-  You can define your own extensions or disable them using the except
-  option:
-
-      defrecord Config, [counter: 0, failures: []], except: [:extensions]
+  * `prepend_field` - Receives another list and prepend its values;
 
   ## Documentation
 
-  By default records are not documented and have @moduledoc set to false.
+  By default records are not documented and have `@moduledoc` set to false.
+
+  ## Types
+
+  Every record defines a type named `t` that can be accessed in typespecs.
+  For example, assuming the `Config` record defined above, it could be used
+  in typespecs as follow:
+
+      @spec handle_config(Config.t), do: boolean()
+
+  Inside the record definition, a developer can define his own types too:
+
+      defrecord Config, counter: 0, failures: [] do
+        @type kind :: term
+        record_type counter: integer, failures: [kind]
+      end
+
+  When defining a type, all the fields not mentioned in the type are
+  assumed to have type `term`.
+  """
+  defmacro defrecord(name, fields, opts // [], do_block // []) do
+    Record.defrecord(name, fields, Keyword.merge(opts, do_block))
+  end
+
+  @doc """
+  Defines a record with a set of private macros to manipulate it.
+
+  A record is a tagged tuple which contains one or more elements
+  and the first element is a module. This macro defines a set of
+  macros private to the current module to manipulate the record
+  exclusively at compilation time.
+
+  `defrecordp` must be used instead of `defrecord` when there is
+  no interest in exposing the record as a whole. In many ways,
+  it is similar to Erlang records, since it is only available at
+  compilation time.
+
+  ## Examples
+
+      defmodule User do
+        defrecordp :user, [name: "José", age: "25"]
+      end
+
+  In the example above, a set of macros named `user` but with different
+  arities will be defined to manipulate the underlying record:
+
+      # To create records
+      user()        #=> { User, "José", 25 }
+      user(age: 26) #=> { User, "José", 26 }
+
+      # To get a field from the record
+      user(record, :name) #=> "José"
+
+      # To get many fields from the record
+      user(record, [:name, :age]) #=> ["José", 25]
+
+      # To update the record
+      user(record, age: 26) #=> { User, "José", 26 }
+
+      # To convert the record to keywords
+      user(record) #=> [name: "José", age: 25]
+
+      # To match against the record
+      user(name: name) = record
+      name #=> "José"
 
   """
-  defmacro defrecord(name, values, opts // [], do_block // []) do
-    Record.defrecord(name, values, Keyword.merge(opts, do_block))
+  defmacro defrecordp(name, fields) when is_atom(name) do
+    Record.defrecordp(name, fields)
   end
 
   @doc """
@@ -1467,21 +1483,21 @@ defmodule Kernel do
   differences:
 
   1) Differently from records, exceptions are documented by default;
-  2) Exceptions **must** implement `message/1` as API and return a
+  2) Exceptions **must** implement `message/1` as API that return a
      binary as result;
 
   """
-  defmacro defexception(name, values, opts // [], do_block // []) do
+  defmacro defexception(name, fields, opts // [], do_block // []) do
     opts = Keyword.merge(opts, do_block)
     opts = Keyword.put(opts, :do, quote do
       @moduledoc nil
       unquote(Keyword.get opts, :do)
       def exception(args), do: new(args)
-      def exception(args, self), do: self
+      def exception(args, self), do: update(args, self)
     end)
 
-    values = [{ :__exception__, :__exception__ }|values]
-    record = Record.defrecord(name, values, opts)
+    fields = [{ :__exception__, :__exception__ }|fields]
+    record = Record.defrecord(name, fields, opts)
 
     check  = quote do
       Exception.check! Module.concat(__MODULE__, unquote(name))
@@ -1621,7 +1637,7 @@ defmodule Kernel do
   Reference are never going to be blank, it would be easier if we
   could simply provide a default implementation.
 
-  This can be achieved with Elixir as follows:
+  This can be achieved in Elixir as follows:
 
       defprotocol Blank do
         @only [Atom, Tuple, List, BitString, Any]
@@ -1659,6 +1675,19 @@ defmodule Kernel do
 
   Finally, since records are simply tuples, one can add a default protocol
   implementation to any record by defining a default implementation for tuples.
+
+  ## Types
+
+  As in records, defining a protocol automatically defines a type named `t`,
+  which can be used as:
+
+      @spec present?(Blank.t), do: boolean
+      def present?(blank) do
+        not Blank.blank?(blank)
+      end
+
+  The `@spec` above expresses that all types allowed to implement the
+  given protocol are valid argument types for the given function.
   """
   defmacro defprotocol(name, [do: block]) do
     Protocol.defprotocol(name, [do: block])
@@ -2299,7 +2328,11 @@ defmodule Kernel do
   and documentation.
   """
   defmacro unless(clause, options) do
-    quote do: if(!unquote(clause), unquote(options))
+    do_clause   = Keyword.get(options, :do, nil)
+    else_clause = Keyword.get(options, :else, nil)
+    quote do
+      if(unquote(clause), do: unquote(else_clause), else: unquote(do_clause))
+    end
   end
 
   @doc """
@@ -2828,7 +2861,7 @@ defmodule Kernel do
               end
           end
 
-        Record.access(caller, atom, fields, args)
+        Record.access(atom, fields, args, caller)
       false ->
         case caller.in_match? do
           true  -> raise "invalid usage of access protocol in signature"
@@ -2872,7 +2905,7 @@ defmodule Kernel do
         defdelegate other_reverse(list), to: :lists, as: :reverse
       end
 
-      My:lists.reverse([1,2,3])
+      MyList.reverse([1,2,3])
       #=> [3,2,1]
 
       MyList.other_reverse([1,2,3])

@@ -1,18 +1,25 @@
 defmodule Mix.SCM do
   use Behaviour
 
+  @typep opts :: [{ atom, any }]
+  @typep lock
+
   @moduledoc """
   This module provides helper functions and defines the
   behavior required by any SCM used by mix.
   """
 
   @doc """
-  This behavior function should retrieve an atom representing
-  the SCM key. In the dependency opts, a value for the given
-  must be found since it is used to print information about
-  the requested dependency.
+  Returns an Elixir term that contains relevant SCM
+  information for printing.
   """
-  defcallback key
+  defcallback format(opts), do: term
+
+  @doc """
+  Returns an Elixir term that contains relevant SCM
+  lock information for printing.
+  """
+  defcallback format_lock(lock), do: term
 
   @doc """
   This behavior function receives a keyword list of `opts`
@@ -20,20 +27,20 @@ defmodule Mix.SCM do
   the available options. For example, when a developer specifies
   a dependency:
 
-      { "foo", "0.1.0", github: "foo/bar" }
+      { :foo, "0.1.0", github: "foo/bar" }
 
   Each registered SCM will be asked if they consume this dependency,
   receiving [github: "foo/bar"] as argument. Since this option makes
   sense for the Git SCM, it will return an update list of options
   while other SCMs would simply return nil.
   """
-  defcallback consumes?(opts)
+  defcallback accepts_options(opts), do: opts | nil
 
   @doc """
-  This behavior function receives a `path`, `opts` and returns
-  a boolean if the dependency is available.
+  This behavior function returns a boolean if the
+  dependency is available.
   """
-  defcallback available?(path, opts)
+  defcallback checked_out?(opts), do: boolean
 
   @doc """
   This behavior function checks out dependencies.
@@ -43,7 +50,7 @@ defmodule Mix.SCM do
   no lock is given and the repository can be checked out
   to the latest version.
   """
-  defcallback checkout(path, opts)
+  defcallback checkout(opts), do: any
 
   @doc """
   This behavior function updates dependencies. It may be
@@ -55,7 +62,7 @@ defmodule Mix.SCM do
 
   It must return the current lock.
   """
-  defcallback update(path, opts)
+  defcallback update(opts), do: any
 
   @doc """
   This behavior function checks if the dependency is locked and
@@ -63,18 +70,19 @@ defmodule Mix.SCM do
   SCMs do not require a lock, for such, this function can simply
   return true.
   """
-  defcallback check?(path, opts)
+  defcallback matches_lock?(opts), do: boolean
 
   @doc """
   Receives two options and must return true if the refer to the
-  same repository.
+  same repository. The options are guaranteed to belong to the
+  same SCM.
   """
-  defcallback match?(opts1, opts2)
+  defcallback equals?(opts1 :: opts, opts2 :: opts), do: boolean
 
   @doc """
   This behavior function should clean the given dependency.
   """
-  defcallback clean(path, opts)
+  defcallback clean(opts), do: any
 
   @doc """
   Returns all available SCM.

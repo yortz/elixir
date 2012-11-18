@@ -1,5 +1,5 @@
 /.eunit/*
-/.full
+/.release
 /lib/*/ebin/*
 /lib/*/tmp
 /lib/*/test/tmp
@@ -11,3 +11,5 @@
 /ebin
 /rel/elixir
 erl_crash.dump
+.dialyzer_plt
+.dialyzer.base_plt

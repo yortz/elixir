@@ -1,6 +1,6 @@
 -module(elixir_compiler).
 -export([get_opts/0, get_opt/1, get_opt/2, string/2, file/1, file_to_path/2]).
--export([core/0, module/3, eval_forms/5]).
+-export([core/0, module/3, eval_forms/4]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
@@ -27,7 +27,7 @@ string(Contents, File) when is_list(Contents), is_binary(File) ->
   try
     put(elixir_compiled, []),
     Forms = elixir_translator:'forms!'(Contents, 1, File, []),
-    eval_forms(Forms, 1, File, [], #elixir_scope{file=File}),
+    eval_forms(Forms, 1, File, [], elixir:scope_for_eval([{file,File}])),
     lists:reverse(get(elixir_compiled))
   after
     put(elixir_compiled, Previous)
@@ -49,16 +49,16 @@ file_to_path(File, Path) when is_binary(File), is_binary(Path) ->
 
 %% Evaluates the contents/forms by compiling them to an Erlang module.
 
-eval_forms(Forms, Line, Module, Vars, #elixir_scope{module=nil} = S) ->
-  eval_forms(Forms, Line, Module, nil, Vars, S);
+eval_forms(Forms, Line, Vars, #elixir_scope{module=nil} = S) ->
+  eval_forms(Forms, Line, nil, Vars, S);
 
-eval_forms(Forms, Line, Module, Vars, #elixir_scope{module=Value} = S) ->
-  eval_forms(Forms, Line, Module, Value, Vars, S).
+eval_forms(Forms, Line, Vars, #elixir_scope{module=Value} = S) ->
+  eval_forms(Forms, Line, Value, Vars, S).
 
-eval_forms(Forms, Line, RawModule, Value, Vars, S) ->
+eval_forms(Forms, Line, Value, Vars, S) ->
   case (Value == nil) andalso allows_fast_compilation(Forms) of
     true  -> eval_compilation(Forms, Vars, S);
-    false -> code_loading_compilation(Forms, Line, RawModule, Value, Vars, S)
+    false -> code_loading_compilation(Forms, Line, Value, Vars, S)
   end.
 
 eval_compilation(Forms, Vars, S) ->
@@ -66,17 +66,20 @@ eval_compilation(Forms, Vars, S) ->
   { Result, _Binding, FS } = elixir:eval_forms(Forms, [{'_@MODULE',nil}|Binding], S),
   { Result, FS }.
 
-code_loading_compilation(Forms, Line, RawModule, Value, Vars, S) ->
-  Module        = escape_module(RawModule),
+code_loading_compilation(Forms, Line, Value, Vars, S) ->
+  { Module, I } = retrieve_module_name(),
   { Exprs, FS } = elixir_translator:translate(Forms, S),
   ModuleForm    = module_form(Exprs, Line, S#elixir_scope.file, Module, Vars),
 
   Args = [X || { _, _, X } <- Vars],
 
-  { module(ModuleForm, S#elixir_scope.file, [], true, fun(Mod, _) ->
-    Res = Mod:'BOOTSTRAP'(Value, Args),
-    code:purge(Module),
+  { module(ModuleForm, S#elixir_scope.file, [], true, fun(_, _) ->
+    Res = Module:'BOOTSTRAP'(Value, Args),
     code:delete(Module),
+    case code:soft_purge(Module) of
+      true  -> return_module_name(I);
+      false -> ok
+    end,
     Res
   end), FS }.
 
@@ -110,17 +113,14 @@ module(Forms, File, Options, Bootstrap, Callback) when
 
 core() ->
   elixir:start_app(),
-  gen_server:call(elixir_code_server, { compiler_options, [{docs,false},{internal,true}] }),
-  [core_file(File) || File <- core_main()],
-  AllLists = [filelib:wildcard(Wildcard) || Wildcard <- core_list()],
-  Files = lists:append(AllLists) -- core_main(),
-  [core_file(File) || File <- 'Elixir.List':uniq(Files)].
+  gen_server:call(elixir_code_server, { compiler_options, [{docs,false},{internal,true},{debug_info,true}] }),
+  [core_file(File) || File <- core_main()].
 
 %% HELPERS
 
 no_auto_import() ->
-  { attribute, 0, compile, {
-    no_auto_import, erlang:module_info(exports) } }.
+  Bifs = [{ Name, Arity } || { Name, Arity } <- erlang:module_info(exports), erl_internal:bif(Name, Arity)],
+  { attribute, 0, compile, { no_auto_import, Bifs } }.
 
 module_form(Exprs, Line, File, Module, Vars) when
     is_binary(File), is_list(Exprs), is_integer(Line), is_atom(Module) ->
@@ -146,25 +146,13 @@ allows_fast_compilation([{defmodule,_,_}|T]) -> allows_fast_compilation(T);
 allows_fast_compilation([]) -> true;
 allows_fast_compilation(_) -> false.
 
-%% Escape the module name, removing slashes, dots,
-%% so it can be loaded by Erlang.
+%% Generate module names from code server.
 
-escape_module(Module) when is_atom(Module) ->
-  escape_module(atom_to_list(Module));
+retrieve_module_name() ->
+  gen_server:call(elixir_code_server, retrieve_module_name).
 
-escape_module(Module) when is_binary(Module) ->
-  escape_module(binary_to_list(Module));
-
-escape_module(Module) when is_list(Module) ->
-  list_to_atom(escape_each(Module)).
-
-escape_each([H|T]) when H >= $A, H =< $Z; H >= $a, H =< $z; H >= $0, H =< $9; H == $- ->
-  [H|escape_each(T)];
-
-escape_each([_|T]) ->
-  [$_|escape_each(T)];
-
-escape_each([]) -> [].
+return_module_name(I) ->
+  gen_server:cast(elixir_code_server, { return_module_name, I }).
 
 %% Receives a module Binary and outputs it in the given path.
 
@@ -186,29 +174,17 @@ core_file(File) ->
       exit(1)
   end.
 
-core_list() ->
-  [
-    "lib/elixir/lib/range.ex",
-    "lib/elixir/lib/behaviour.ex",
-    "lib/elixir/lib/uri/parser.ex",
-    "lib/elixir/lib/elixir/formatter.ex",
-    "lib/elixir/lib/dict.ex",
-    "lib/elixir/lib/dict/common.ex",
-    "lib/elixir/lib/access.ex",
-    "lib/elixir/lib/range.ex",
-    "lib/elixir/lib/*/*.ex",
-    "lib/elixir/lib/*.ex"
-  ].
-
 core_main() ->
   [
     "lib/elixir/lib/kernel.ex",
     "lib/elixir/lib/keyword.ex",
+    "lib/elixir/lib/list.ex",
+    "lib/elixir/lib/kernel/typespec.ex",    
     "lib/elixir/lib/record.ex",
+    "lib/elixir/lib/record/extractor.ex",
     "lib/elixir/lib/macro.ex",
     "lib/elixir/lib/macro/env.ex",
     "lib/elixir/lib/module.ex",
-    "lib/elixir/lib/list.ex",
     "lib/elixir/lib/code.ex",
     "lib/elixir/lib/protocol.ex",
     "lib/elixir/lib/enum.ex",
@@ -216,7 +192,14 @@ core_main() ->
     "lib/elixir/lib/binary/inspect.ex",
     "lib/elixir/lib/binary/chars.ex",
     "lib/elixir/lib/list/chars.ex",
-    "lib/elixir/lib/gen_server/behaviour.ex"
+    "lib/elixir/lib/io.ex",
+    "lib/elixir/lib/file.ex",
+    "lib/elixir/lib/access.ex",
+    "lib/elixir/lib/regex.ex",
+    "lib/elixir/lib/system.ex",
+    "lib/elixir/lib/kernel/cli.ex",
+    "lib/elixir/lib/kernel/error_handler.ex",
+    "lib/elixir/lib/kernel/parallel_compiler.ex"
   ].
 
 %% ERROR HANDLING

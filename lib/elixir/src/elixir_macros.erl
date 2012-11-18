@@ -8,7 +8,9 @@
   assert_no_function_scope/3, assert_module_scope/3, assert_no_assign_or_guard_scope/3]).
 -include("elixir.hrl").
 
--define(FUNS(), Kind == def; Kind == defp; Kind == defmacro; Kind == defmacrop).
+-define(FUNS(Kind), Kind == def; Kind == defp; Kind == defmacro; Kind == defmacrop).
+-define(IN_TYPES(Kind), Kind == atom orelse Kind == integer orelse Kind == float).
+
 -compile({parse_transform, elixir_transform}).
 
 %% Operators
@@ -34,11 +36,11 @@ translate({ Op, Line, Exprs }, S) when is_list(Exprs),
 
 translate({ '!', Line, [{ '!', _, [Expr] }] }, S) ->
   { TExpr, SE } = translate_each(Expr, S),
-  { elixir_tree_helpers:convert_to_boolean(Line, TExpr, true, S#elixir_scope.context == guard), SE };
+  elixir_tree_helpers:convert_to_boolean(Line, TExpr, true, S#elixir_scope.context == guard, SE);
 
 translate({ '!', Line, [Expr] }, S) ->
   { TExpr, SE } = translate_each(Expr, S),
-  { elixir_tree_helpers:convert_to_boolean(Line, TExpr, false, S#elixir_scope.context == guard), SE };
+  elixir_tree_helpers:convert_to_boolean(Line, TExpr, false, S#elixir_scope.context == guard, SE);
 
 translate({ in, Line, [Left, Right] }, #elixir_scope{extra_guards=nil} = S) ->
   { _, TExpr, TS } = translate_in(Line, Left, Right, S),
@@ -78,7 +80,7 @@ translate({ function, Line, [_,_,_] = Args }, S) when is_list(Args) ->
 
 %% @
 
-translate({'@', Line, [{ Name, _, Args }]}, S) when Name == typep; Name == type; Name == spec; Name == callback ->
+translate({'@', Line, [{ Name, _, Args }]}, S) when is_list(Args) andalso (Name == typep orelse Name == type orelse Name == spec orelse Name == callback orelse Name == opaque) ->
   case elixir_compiler:get_opt(internal) of
     true  -> { { nil, Line }, S };
     false ->
@@ -205,23 +207,24 @@ translate({defmodule, Line, [Ref, KV]}, S) ->
       { TRef, S }
   end,
 
-  { elixir_module:translate(Line, FRef, Block, S), FS };
+  { elixir_module:translate(Line, FRef, Block, S#elixir_scope{check_clauses=true}), FS };
 
-translate({Kind, Line, [Call]}, S) when ?FUNS() ->
+translate({Kind, Line, [Call]}, S) when ?FUNS(Kind) ->
   translate({Kind, Line, [Call, nil]}, S);
 
-translate({Kind, Line, [Call, Expr]}, S) when ?FUNS() ->
+translate({Kind, Line, [Call, Expr]}, S) when ?FUNS(Kind) ->
   assert_module_scope(Line, Kind, S),
   assert_no_function_scope(Line, Kind, S),
   { TCall, Guards } = elixir_clauses:extract_guards(Call),
   { Name, Args }    = elixir_clauses:extract_args(TCall),
+  assert_no_aliases_name(Line, Name, Args, S),
   TName             = elixir_tree_helpers:abstract_syntax(Name),
   TArgs             = elixir_tree_helpers:abstract_syntax(Args),
   TGuards           = elixir_tree_helpers:abstract_syntax(Guards),
   TExpr             = elixir_tree_helpers:abstract_syntax(Expr),
   { elixir_def:wrap_definition(Kind, Line, TName, TArgs, TGuards, TExpr, S), S };
 
-translate({Kind, Line, [Name, Args, Guards, Expr]}, S) when ?FUNS() ->
+translate({Kind, Line, [Name, Args, Guards, Expr]}, S) when ?FUNS(Kind) ->
   assert_module_scope(Line, Kind, S),
   assert_no_function_scope(Line, Kind, S),
   { TName, NS }   = translate_each(Name, S),
@@ -271,22 +274,24 @@ translate_in(Line, Left, Right, S) ->
   Expr = case TRight of
     { cons, _, _, _ } ->
       [H|T] = elixir_tree_helpers:cons_to_list(TRight),
-      lists:foldl(fun(X, Acc) ->
-        { op, Line, 'orelse', Acc, { op, Line, '==', Var, X } }
+      lists:foldr(fun(X, Acc) ->
+        { op, Line, 'orelse', { op, Line, '==', Var, X }, Acc }
       end, { op, Line, '==', Var, H }, T);
     { tuple, _, [{ atom, _, 'Elixir.Range' }, Start, End] } ->
-      { op, Line, 'orelse',
-        { op, Line, 'andalso',
-          { op, Line, '=<', Start, End},      
-          { op, Line, 'andalso',
-            { op, Line, '>=', Var, Start },
-            { op, Line, '=<', Var, End } } },
-        { op, Line, 'andalso',
-          { op, Line, '<', End, Start},
-          { op, Line, 'andalso',          
-            { op, Line, '=<', Var, Start },
-            { op, Line, '>=', Var, End } } }
-      };
+      case { Start, End } of
+        { { K1, _, StartInt }, { K2, _, EndInt } } when ?IN_TYPES(K1), ?IN_TYPES(K2), StartInt =< EndInt ->
+          increasing_compare(Line, Var, Start, End);
+        { { K1, _, _ }, { K2, _, _ } } when ?IN_TYPES(K1), ?IN_TYPES(K2) ->
+          decreasing_compare(Line, Var, Start, End);
+        _ ->
+          { op, Line, 'orelse',
+            { op, Line, 'andalso',
+              { op, Line, '=<', Start, End},
+              increasing_compare(Line, Var, Start, End) },
+            { op, Line, 'andalso',
+              { op, Line, '<', End, Start},
+              decreasing_compare(Line, Var, Start, End) } }
+      end;
     _ ->
       syntax_error(Line, S#elixir_scope.file, "invalid args for operator in")
   end,
@@ -295,6 +300,16 @@ translate_in(Line, Left, Right, S) ->
     true  -> { Var, { block, Line, [ { match, Line, Var, TLeft }, Expr ] }, SV };
     false -> { Var, Expr, SV }
   end.
+
+increasing_compare(Line, Var, Start, End) ->
+  { op, Line, 'andalso',
+    { op, Line, '>=', Var, Start },
+    { op, Line, '=<', Var, End } }.
+
+decreasing_compare(Line, Var, Start, End) ->
+  { op, Line, 'andalso',
+    { op, Line, '=<', Var, Start },
+    { op, Line, '>=', Var, End } }.
 
 rewrite_case_clauses([{do,[{in,_,[{'_',_,_},[false,nil]]}],False},{do,[{'_',_,_}],True}]) ->
   [{do,[false],False},{do,[true],True}];
@@ -317,9 +332,17 @@ is_reserved_data(_)         -> false.
 
 spec_to_macro(type)     -> deftype;
 spec_to_macro(typep)    -> deftypep;
+spec_to_macro(opaque)   -> defopaque;
 spec_to_macro(spec)     -> defspec;
 spec_to_macro(callback) -> defcallback.
 
 % Unpack a list of expressions from a block.
 unpack([{ '__block__', _, Exprs }]) -> Exprs;
 unpack(Exprs)                       -> Exprs.
+
+assert_no_aliases_name(Line, '__aliases__', [Atom], #elixir_scope{file=File}) when is_atom(Atom) ->
+  Message = "function names should start with lowercase characters or underscore, invalid name ~s",
+  syntax_error(Line, File, Message, [atom_to_binary(Atom, utf8)]);
+
+assert_no_aliases_name(_Line, _Aliases, _Args, _S) ->
+  ok.

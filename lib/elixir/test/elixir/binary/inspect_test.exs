@@ -110,6 +110,10 @@ defmodule Binary.Inspect.TupleTest do
     assert inspect({ List, 1 }) == "{List,1}"
   end
 
+  test :with_record_like_pseudo_exception do
+    assert inspect({ Other, :__exception__, 1 }) == "{Other,:__exception__,1}"
+  end
+
   defrecord Config, a: 1, b: []
 
   test :with_record do
@@ -153,6 +157,10 @@ defmodule Binary.Inspect.ListTest do
     assert inspect([a: 1, b: 2]) == "[a: 1, b: 2]"
     assert inspect([a: 1, a: 2, b: 2]) == "[a: 1, a: 2, b: 2]"
     assert inspect(["123": 1]) == %b(["123": 1])
+  end
+
+  test :non_keyword do
+    assert inspect([{ Regex, 1 }]) == "[{Regex,1}]"
   end
 
   test :non_printable do

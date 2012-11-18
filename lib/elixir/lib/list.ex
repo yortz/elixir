@@ -123,12 +123,6 @@ defmodule List do
     :lists.foldr(function, acc, list)
   end
 
-  @doc false
-  def reverse(list) do
-    IO.write "[WARNING] List.reverse/1 is deprecated, please use Enum.reverse/1 instead\n#{Exception.formatted_stacktrace}"
-    :lists.reverse(list)
-  end
-
   @doc """
   Returns the last element in `list` or nil if the `list` is empty.
 
@@ -277,7 +271,7 @@ defmodule List do
   def range(first, last, step // nil)
 
   def range(first, last, step) when is_integer(first) and is_integer(last) and first <= last do
-    step = case step do
+    case step do
       nil ->
         :lists.seq(first, last, 1)
       x when x < 0 ->
@@ -288,7 +282,7 @@ defmodule List do
   end
 
   def range(first, last, step) when is_integer(first) and is_integer(last) and first > last do
-    step = case step do
+    case step do
       nil ->
         :lists.seq(first, last, -1)
       x when x > 0 ->
@@ -361,12 +355,6 @@ defmodule List do
     [other]
   end
 
-  @doc false
-  def zip(item1, item2) do
-    IO.write "[WARNING] List.zip/2 is deprecated, please use Enum.zip/2 instead\n#{Exception.formatted_stacktrace}"
-    do_zip(to_list(item1), to_list(item2), [])
-  end
-
   @doc """
   Zips corresponding elements from each list in `list_of_lists`.
 
@@ -419,14 +407,6 @@ defmodule List do
   end
 
   # zip
-
-  defp do_zip([h1|t1], [h2|t2], acc) do
-    do_zip t1, t2, [{h1, h2}|acc]
-  end
-
-  defp do_zip(_, _, acc) do
-    :lists.reverse acc
-  end
 
   defp do_zip(list, acc) do
     converter = fn x, acc -> do_zip_each(to_list(x), acc) end

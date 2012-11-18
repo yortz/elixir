@@ -204,6 +204,54 @@ defmodule KernelTest do
     defp bang(_), do: :truthy
   end
 
+  defmodule IfScope do
+    use ExUnit.Case, async: true
+
+    test :variables_on_nested_if do
+      if true do
+        a = 1
+        if true do
+          b = 2
+        end
+      end
+
+      assert a == 1
+      assert b == 2
+    end
+
+    test :variables_on_siblings_if do
+      if true do
+        a = 1
+
+        if true do
+          b = 2
+        end
+
+        if true do
+          c = 3
+        end
+      end
+
+      assert a == 1
+      assert b == 2
+      assert c == 3
+    end
+
+    test :variables_counter_on_nested_if do
+      r = (fn() -> 3 end).() # supresses warning at (if r < 0...)
+      r = r - 1
+      r = r - 1
+      r = r - 1
+
+      if true do
+        r = r - 1
+        if r < 0, do: r = 0
+      end
+
+      assert r == 0
+    end
+  end
+
   defmodule Destructure do
     use ExUnit.Case, async: true
 

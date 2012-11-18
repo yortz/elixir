@@ -23,43 +23,40 @@ defmodule Module do
 
   @doc """
   Evalutes the quotes contents in the given module context.
+
+  A list of environment options can also be given as argument.
+  Check `Code.eval` for more information.
+
   Raises an error if the module was already compiled.
-
-  ## Options
-
-  This function accepts a list of options. The supported
-  options are:
-
-  * `:file` - The filename to be used in stacktraces
-    and the file reported in the __ENV__ variable.
-
-  * `:line` - The line reported in the __ENV__ variable.
 
   ## Examples
 
       defmodule Foo do
         contents = quote do: (def sum(a, b), do: a + b)
-        Module.eval_quoted __MODULE__, contents, []
+        Module.eval_quoted __MODULE__, contents
       end
 
       Foo.sum(1, 2) #=> 3
 
-  This function also accepts a `Macro.Env` as first argument. This
-  is useful to evalute the quoted contents inside an existing
-  environment (considering the environemnt module, line and file):
+  For convenience, you can my pass `__ENV__` as argument and
+  all options will be automatically extracted from the environment:
 
       defmodule Foo do
         contents = quote do: (def sum(a, b), do: a + b)
-        Module.eval_quoted __ENV__, contents, []
+        Module.eval_quoted __MODULE__, contents, [], __ENV__
       end
 
       Foo.sum(1, 2) #=> 3
 
   """
-  def eval_quoted(env, quoted, binding // [], opts // [])
+  def eval_quoted(module, quoted, binding // [], opts // [])
 
   def eval_quoted(Macro.Env[module: module] = env, quoted, binding, opts) do
-    eval_quoted(module, quoted, binding, Keyword.merge(env.location, opts))
+    eval_quoted(module, quoted, binding, Keyword.merge(env.to_keywords, opts))
+  end
+
+  def eval_quoted(module, quoted, binding, Macro.Env[] = env) do
+    eval_quoted(module, quoted, binding, env.to_keywords)
   end
 
   def eval_quoted(module, quoted, binding, opts) do
@@ -79,7 +76,7 @@ defmodule Module do
           def world, do: true
         end
 
-      Module.create(Hello, contents, __ENV__)
+      Module.create(Hello, contents, __ENV__.location)
 
       Hello.world #=> true
 
@@ -91,16 +88,15 @@ defmodule Module do
   function is preferred when the module body is given
   by a quoted expression.
 
-  Another important distinction is that `defmodule`
-  blends into the scope it is invoked, allowing you
-  to access all variables, imports and requires from
-  the module. `Module.create`, on the other hand, creates
-  a new scope so imports, requires, etc are not inherited.
+  Another important distinction is that `Module.create`
+  allows you to control the environment variables used
+  when defining the module, while `defmodule` automatically
+  shares the same environment.
   """
   def create(module, quoted, opts // [])
 
   def create(module, quoted, Macro.Env[] = env) do
-    create(module, quoted, env.location)
+    create(module, quoted, env.to_keywords)
   end
 
   def create(module, quoted, opts) when is_atom(module) do
@@ -196,7 +192,7 @@ defmodule Module do
   end
 
   def add_doc(module, line, kind, tuple, signature, doc) when
-      kind in [:def, :defmacro, :defcallback] and (is_binary(doc) or is_boolean(doc) or doc == nil) do
+      kind in [:def, :defmacro] and (is_binary(doc) or is_boolean(doc) or doc == nil) do
     assert_not_compiled!(:add_doc, module)
     table = docs_table_for(module)
 
@@ -212,7 +208,7 @@ defmodule Module do
         ETS.insert(table, {
           tuple,
           line,
-          merge_kind(old_kind, kind),
+          kind,
           merge_signatures(old_sign, signature, 1),
           doc || old_doc
         })
@@ -248,10 +244,6 @@ defmodule Module do
   defp simplify_signature(_, line, i), do: { :"arg#{i}", line, :guess }
 
   # Merge
-
-  defp merge_kind(:defcallback, new), do: new
-  defp merge_kind(old, :defcallback), do: old
-  defp merge_kind(_old, new),         do: new
 
   defp merge_signatures([h1|t1], [h2|t2], i) do
     [merge_signature(h1, h2, i)|merge_signatures(t1, t2, i + 1)]
@@ -371,8 +363,8 @@ defmodule Module do
           ETS.delete(table, tuple)
 
           old    = get_attribute(module, :__overridable)
-          new    = [ { tuple, { 1, [clause] } } ]
-          merged = :orddict.merge(fn(_k, { count, v1 }, _v2) -> { count + 1, [clause|v1] } end, old, new)
+          new    = [ { tuple, { 1, clause, false } } ]
+          merged = :orddict.merge(fn(_k, { count, _, _ }, _v2) -> { count + 1, clause, false } end, old, new)
 
           put_attribute(module, :__overridable, merged)
         _ ->
@@ -386,8 +378,7 @@ defmodule Module do
   Returns true if the given tuple in module is marked as overridable.
   """
   def overridable?(module, tuple) do
-    key = List.keyfind(get_attribute(module, :__overridable), tuple, 0)
-    match? { _, { _, [_|_] } }, key
+    !! List.keyfind(get_attribute(module, :__overridable), tuple, 0)
   end
 
   @doc """
@@ -421,12 +412,6 @@ defmodule Module do
     ETS.insert(table, { key, new })
   end
 
-  @doc false
-  def add_attribute(module, key, value) when is_atom(key) do
-    IO.write "[WARNING] Module.add_attribute is deprecated, please use Module.put_attribute instead\n#{Exception.formatted_stacktrace}"
-    put_attribute(module, key, value)
-  end
-
   @doc """
   Gets the given attribute from a module. If the attribute
   was marked as accumulate with `Module.register_attribute`,
@@ -454,12 +439,6 @@ defmodule Module do
         acc = ETS.lookup_element(table, :__acc_attributes, 2)
         if List.member?(acc, key), do: [], else: nil
     end
-  end
-
-  @doc false
-  def read_attribute(module, key) when is_atom(key) do
-    IO.write "[WARNING] Module.read_attribute is deprecated, please use Module.get_attribute instead\n#{Exception.formatted_stacktrace}"
-    get_attribute(module, key)
   end
 
   @doc """
@@ -536,19 +515,29 @@ defmodule Module do
 
   """
   def split(module) do
-    tl(String.split(to_binary(module), "-"))
+    tl(String.split(Binary.Chars.to_binary(module), "-"))
   end
+
+  @doc """
+  Convert a module name to binary without the Elixir prefix.
+  """
+  def to_binary(module) do
+    "Elixir-" <> rest = Binary.Chars.to_binary(module)
+    bc <<r>> inbits rest, do: <<to_dot(r)>>
+  end
+
+  defp to_dot(?-), do: ?.
+  defp to_dot(l),  do: l
 
   @doc false
   # Used internally to compile documentation. This function
   # is private and must be used only internally.
-  def compile_doc(env, kind, name, args, _guards, body) do
+  def compile_doc(env, kind, name, args, _guards, _body) do
     module = env.module
     line   = env.line
     arity  = length(args)
     pair   = { name, arity }
     doc    = get_attribute(module, :doc)
-    kind   = if kind == :def and body == nil and module != Kernel, do: :defcallback, else: kind
 
     case add_doc(module, line, kind, pair, args, doc) do
       :ok ->
@@ -565,7 +554,7 @@ defmodule Module do
   @doc false
   # Used internally to compile types. This function
   # is private and must be used only internally.
-  def compile_type(module, key, value) when is_atom(key) do
+  def compile_typespec(module, key, value) when is_atom(key) do
     assert_not_compiled!(:put_attribute, module)
     table = data_table_for(module)
 

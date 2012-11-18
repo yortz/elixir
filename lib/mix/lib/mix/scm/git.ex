@@ -2,11 +2,15 @@ defmodule Mix.SCM.Git do
   @behavior Mix.SCM
   @moduledoc false
 
-  def key do
-    :git
+  def format(opts) do
+    [git: opts[:git]]
   end
 
-  def consumes?(opts) do
+  def format_lock(lock) do
+    get_lock_rev lock
+  end
+
+  def accepts_options(opts) do
     cond do
       gh = opts[:github] ->
         opts /> Keyword.delete(:github) /> Keyword.put(:git, "https://github.com/#{gh}.git")
@@ -17,63 +21,84 @@ defmodule Mix.SCM.Git do
     end
   end
 
-  def available?(path, _opts) do
-    File.dir?(File.join(path, ".git"))
+  def checked_out?(opts) do
+    File.dir?(File.join(opts[:path], ".git"))
   end
 
-  def check?(path, opts) do
-    opts[:lock] && File.cd!(path, fn -> opts[:lock] == get_rev end)
+  def matches_lock?(opts) do
+    opts[:lock] && File.cd!(opts[:path], fn ->
+      opts[:lock] == get_lock(opts, true)
+    end)
   end
 
-  def match?(opts1, opts2) do
-    opts1[:git] == opts2[:git] and
-      opts1[:branch] == opts2[:branch] and
-      opts1[:tag] == opts2[:tag] and
-      opts1[:ref] == opts2[:ref] and
-      opts1[:submodules] == opts2[:submodules]
+  def equals?(opts1, opts2) do
+    get_lock(opts1, false) == get_lock(opts2, false)
   end
 
-  def checkout(path, opts) do
+  def checkout(opts) do
+    path     = opts[:path]
     location = opts[:git]
-    maybe_error System.cmd("git clone --quiet --no-checkout #{location} #{path}")
+    maybe_error System.cmd(%b[git clone --quiet --no-checkout "#{location}" "#{path}"])
 
-    if available?(path, opts) do
-      File.cd! path, fn -> checkout(opts) end
+    if checked_out?(opts) do
+      File.cd! path, fn -> do_checkout(opts) end
     end
   end
 
-  def update(path, opts) do
-    File.cd! path, fn ->
+  def update(opts) do
+    File.cd! opts[:path], fn ->
       command = "git fetch --force --quiet"
       if opts[:tag] do
         command = command <> " --tags"
       end
       maybe_error System.cmd(command)
-      checkout(opts)
+      do_checkout(opts)
     end
   end
 
-  def clean(path, _opts) do
-    File.rm_rf path
+  def clean(opts) do
+    File.rm_rf opts[:path]
   end
 
   ## Helpers
 
-  defp checkout(opts) do
-    ref =
-      if branch = opts[:branch] do
-        "origin/#{branch}"
-      else
-        opts[:lock] || opts[:ref] || opts[:tag] || "origin/master"
-      end
-
+  defp do_checkout(opts) do
+    ref = get_lock_rev(opts[:lock]) || get_opts_rev(opts)
     maybe_error System.cmd("git checkout --quiet #{ref}")
 
     if opts[:submodules] do
       maybe_error System.cmd("git submodule update --init --recursive")
     end
 
-    get_rev
+    get_lock(opts, true)
+  end
+
+  defp get_lock(opts, fresh) do
+    lock = if fresh, do: get_rev, else: get_lock_rev(opts[:lock])
+    { :git, opts[:git], lock, get_lock_opts(opts) }
+  end
+
+  # We are supporting binaries for backwards compatibility
+  defp get_lock_rev(lock) when is_binary(lock), do: lock
+  defp get_lock_rev({ :git, _repo, lock, _opts }) when is_binary(lock), do: lock
+  defp get_lock_rev(_), do: nil
+
+  defp get_lock_opts(opts) do
+    lock_opts = Enum.find_value [:branch, :ref, :tag], List.keyfind(opts, &1, 0)
+    lock_opts = List.wrap(lock_opts)
+    if opts[:submodules] do
+      lock_opts ++ [submodules: true]
+    else
+      lock_opts
+    end
+  end
+
+  defp get_opts_rev(opts) do
+    if branch = opts[:branch] do
+      "origin/#{branch}"
+    else
+      opts[:ref] || opts[:tag] || "origin/master"
+    end
   end
 
   defp get_rev do

@@ -13,7 +13,7 @@ Nonterminals
   open_curly close_curly
   open_bit close_bit
   base_comma_expr comma_expr optional_comma_expr matched_comma_expr
-  call_args call_args_parens call_args_no_parens parens_call
+  call_args call_args_parens call_args_parens_not_one call_args_no_parens parens_call
   stab_expr stab_expr_list
   kw_eol kw_expr kw_comma kw_base
   matched_kw_expr matched_kw_comma matched_kw_base
@@ -80,6 +80,7 @@ grammar -> '$empty' : [nil].
 
 % Note expressions are on reverse order
 expr_list -> expr : ['$1'].
+expr_list -> open_paren ')' : [nil].
 expr_list -> expr_list eol expr : ['$3'|'$1'].
 
 expr -> matched_expr : '$1'.
@@ -147,6 +148,7 @@ block_expr -> dot_identifier call_args_no_parens do_block : build_identifier('$1
 
 fn_expr -> fn_paren call_args_parens fn_block : build_fn('$1', '$2', '$3').
 fn_expr -> fn call_args_no_parens fn_block : build_fn('$1', '$2', '$3').
+fn_expr -> fn call_args_parens_not_one fn_block : build_fn('$1', '$2', '$3').
 fn_expr -> fn fn_block : build_fn('$1', [], '$2').
 fn_expr -> call_expr : '$1'.
 
@@ -163,7 +165,6 @@ max_expr -> parens_call call_args_parens : build_identifier('$1', '$2').
 max_expr -> parens_call call_args_parens call_args_parens : { build_identifier('$1', '$2'), ?line('$1'), '$3' }.
 max_expr -> dot_ref : '$1'.
 max_expr -> base_expr : '$1'.
-max_expr -> open_paren ')' : build_block([]).
 max_expr -> open_paren expr_list close_paren : build_block('$2').
 
 bracket_expr -> dot_bracket_identifier bracket_access : build_access(build_identifier('$1', nil), '$2').
@@ -211,7 +212,8 @@ stab_expr_list -> stab_expr : ['$1'].
 stab_expr_list -> stab_expr_list eol stab_expr : ['$3'|'$1'].
 
 stab_expr -> expr : '$1'.
-stab_expr -> comma_expr stab_op expr : build_op('$2', lists:reverse('$1'), '$3').
+stab_expr -> call_args_no_parens stab_op expr : build_op('$2', '$1', '$3').
+stab_expr -> call_args_parens_not_one stab_op expr : build_op('$2', '$1', '$3').
 
 block_item -> block_eol stab_expr_list eol : { ?exprs('$1'), build_stab(lists:reverse('$2')) }.
 block_item -> block_eol : { ?exprs('$1'), nil }.
@@ -400,6 +402,10 @@ call_args -> comma_expr : lists:reverse('$1').
 call_args_parens -> open_paren ')' : [].
 call_args_parens -> open_paren call_args close_paren : '$2'.
 
+call_args_parens_not_one -> open_paren ')' : [].
+call_args_parens_not_one -> open_paren kw_base close_paren : ['$2'].
+call_args_parens_not_one -> open_paren expr ',' call_args close_paren : ['$2'|'$4'].
+
 % KV
 
 kw_eol  -> kw_identifier : '$1'.
@@ -477,7 +483,6 @@ build_tuple(Marker, Args) ->
 
 build_block(Exprs) -> build_block(Exprs, true).
 
-build_block([], _)                                         -> nil;
 build_block([nil], _)                                      -> { '__block__', 0, [nil] };
 build_block([{Op,_,[_]}]=Exprs, _) when ?rearrange_uop(Op) -> { '__block__', 0, Exprs };
 build_block([Expr], _) when not is_list(Expr)              -> Expr;
@@ -530,7 +535,8 @@ build_fn(Op, Args, Expr) ->
 %% Access
 
 build_access(Expr, Access) ->
-  { access, ?line(Access), [ Expr, ?op(Access) ] }.
+  Line = ?line(Access),
+  { { '.', Line, ['Elixir-Kernel', access] }, ?line(Access), [ Expr, ?op(Access) ] }.
 
 %% Interpolation aware
 
@@ -541,10 +547,10 @@ build_bin_string({ bin_string, _Line, [H] }) when is_binary(H) -> H;
 build_bin_string({ bin_string, Line, Args }) -> { '<<>>', Line, Args }.
 
 build_list_string({ list_string, _Line, [H] }) when is_binary(H) -> binary_to_list(H);
-build_list_string({ list_string, Line, Args }) -> { binary_to_list, Line, [{ '<<>>', Line, Args}] }.
+build_list_string({ list_string, Line, Args }) -> { { '.', Line, [erlang, binary_to_list] }, Line, [{ '<<>>', Line, Args}] }.
 
 build_atom({ atom, _Line, Atom }) when is_atom(Atom) -> Atom;
-build_atom({ atom, Line, Args }) -> { binary_to_atom, Line, [{ '<<>>', Line, Args }, utf8] }.
+build_atom({ atom, Line, Args }) -> { { '.', Line, [erlang, binary_to_atom] }, Line, [{ '<<>>', Line, Args }, utf8] }.
 
 %% Keywords
 

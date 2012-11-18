@@ -43,12 +43,45 @@ defmodule ExUnit do
   Start ExUnit. Required to be invoked before loading
   any file that uses ExUnit.Case. Check `configure/1`
   to see the supported options.
+
+  This function will also try to read a user config from the following
+  locations, in this order:
+
+  * $EXUNIT_CONFIG environment variable
+  * $HOME/.ex_unit.exs
+
+  If none found, no user config will be read. 
+
+  User config is an elixir file which should return a keyword list
+  with ex_unit options. Please note that explicit options passed to start/1 
+  will take precedence over user options.
+
+  # User config example (~/.ex_unit.exs)
+
+    [formatter: ExUnit.Formatter.ANSI]
+
   """
   def start(options // []) do
+    options = Keyword.merge(user_options, options)    
     ExUnit.Server.start_link
     configure(options)
     System.at_exit fn status ->
       if status == 0, do: ExUnit.run
+    end
+  end
+
+  @doc false
+  def user_options(user_config // nil) do
+    user_config = user_config ||
+      System.get_env("EXUNIT_CONFIG") ||
+      File.join(System.get_env("HOME"), ".ex_unit.exs")
+
+    case File.read(user_config) do
+      { :ok, contents } ->
+        { config, _ } = Code.eval(contents, [], file: user_config)
+        config
+      _ ->
+        []
     end
   end
 
@@ -80,9 +113,8 @@ defmodule ExUnit do
   need to call it directly.
   """
   def run do
-    config = ExUnit.Runner.Config.new ExUnit.Server.options
-    config = config.formatter(config.formatter.start)
-    failures = ExUnit.Runner.loop config
-    if failures > 0, do: halt(1), else: halt(0)
+    config   = ExUnit.Runner.Config.new ExUnit.Server.options
+    failures = ExUnit.Runner.run config
+    if failures > 0, do: System.halt(1), else: System.halt(0)
   end
 end

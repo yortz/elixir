@@ -68,9 +68,12 @@ defmodule Enum do
   `{ key, value }` tuple.
   """
 
+  @type t :: Enum.Iterator.t
+  @type element :: any
+
   @doc """
   Invokes the given `fun` for each item in the `collection` and returns true if
-  each invocation returns true as well, otherwise it shirt-circuits and returns
+  each invocation returns true as well, otherwise it short-circuits and returns
   false.
 
   ## Examples
@@ -88,6 +91,9 @@ defmodule Enum do
       Enum.all? [1,nil,3] #=> false
 
   """
+  @spec all?(t), do: boolean
+  @spec all?(t, fun(element, do: boolean)), do: boolean
+
   def all?(collection, fun // fn(x) -> x end)
 
   def all?(collection, fun) when is_list(collection) do
@@ -122,6 +128,9 @@ defmodule Enum do
       Enum.any? [false,true,false]  #=> true
 
   """
+  @spec any?(t), do: boolean
+  @spec any?(t, fun(element, do: boolean)), do: boolean
+
   def any?(collection, fun // fn(x) -> x end)
 
   def any?(collection, fun) when is_list(collection) do
@@ -151,6 +160,7 @@ defmodule Enum do
         Enum.at! [2,4,6], 4 #=> raises Enum.OutOfBoundsError
 
   """
+  @spec at!(t, non_neg_integer), do: element | no_return
   def at!(collection, n) when is_list(collection) and n >= 0 do
     do_at!(collection, n)
   end
@@ -172,6 +182,7 @@ defmodule Enum do
       Enum.count [1,2,3] #=> 3
 
   """
+  @spec count(t), do: non_neg_integer
   def count(collection) do
     I.count(collection)
   end
@@ -179,6 +190,7 @@ defmodule Enum do
   @doc """
   Counts for how many items the function returns true.
   """
+  @spec count(t, fun(element, do: boolean)), do: non_neg_integer
   def count(collection, fun) when is_list(collection) do
     do_count(collection, fun)
   end
@@ -203,6 +215,7 @@ defmodule Enum do
       Enum.drop [1,2,3], 0  #=> [1,2,3]
 
   """
+  @spec drop(t, non_neg_integer), do: t
   def drop(collection, count) do
     elem split(collection, count), 1
   end
@@ -216,6 +229,7 @@ defmodule Enum do
       Enum.drop_while [1,2,3,4,5], fn(x) -> x < 3 end
       #=> [3,4,5]
   """
+  @spec drop_while(t, fun(element, do: boolean)), do: t
   def drop_while(collection, fun) when is_list(collection) do
     do_drop_while(collection, fun)
   end
@@ -238,6 +252,7 @@ defmodule Enum do
       Enum.each ['some', 'example'], fn(x) -> IO.puts x end
 
   """
+  @spec each(t, fun(element, do: any)), do: :ok
   def each(collection, fun) when is_list(collection) do
     :lists.foreach(fun, collection)
     :ok
@@ -262,6 +277,7 @@ defmodule Enum do
       Enum.empty? [1,2,3] #=> false
 
   """
+  @spec empty?(t), do: boolean
   def empty?(collection) when is_list(collection) do
     collection == []
   end
@@ -283,6 +299,7 @@ defmodule Enum do
       #=> [2]
 
   """
+  @spec filter(t, fun(element, do: boolean)), do: t
   def filter(collection, fun) when is_list(collection) do
     lc item inlist collection, fun.(item), do: item
   end
@@ -305,6 +322,7 @@ defmodule Enum do
       #=> [4]
 
   """
+  @spec filter_map(t, fun(element, do: boolean), fun(element, do: element)), do: t
   def filter_map(collection, filter, mapper) when is_list(collection) do
     lc item inlist collection, filter.(item), do: mapper.(item)
   end
@@ -334,6 +352,9 @@ defmodule Enum do
       #=> 3
 
   """
+  @spec find(t, fun(element, do: any)), do: element | :nil
+  @spec find(t, any, fun(element, do: any)), do: element | :nil
+
   def find(collection, ifnone // nil, fun)
 
   def find(collection, ifnone, fun) when is_list(collection) do
@@ -362,6 +383,9 @@ defmodule Enum do
       #=> true
 
   """
+  @spec find_value(t, fun(element, do: any)), do: any | :nil
+  @spec find_value(t, any, fun(element, do: any)), do: any | :nil
+
   def find_value(collection, ifnone // nil, fun)
 
   def find_value(collection, ifnone, fun) when is_list(collection) do
@@ -392,6 +416,7 @@ defmodule Enum do
       #=> 2
 
   """
+  @spec find_index(t, fun(element, do: any)), do: non_neg_integer | :nil
   def find_index(collection, fun) when is_list(collection) do
     do_find_index(collection, 0, fun)
   end
@@ -414,6 +439,7 @@ defmodule Enum do
       Enum.first [1,2,3] #=> 1
 
   """
+  @spec first(t), do: :nil | element
   def first([]),    do: nil
   def first([h|_]), do: h
 
@@ -442,6 +468,8 @@ defmodule Enum do
       Enum.join([1,2,3], ' = ') #=> '1 = 2 = 3'
 
   """
+  @spec join(t), do: String.t
+  @spec join(t, String.t | char_list), do: String.t | char_list
   def join(collection, joiner // "")
 
   def join(collection, joiner) when is_list(joiner) do
@@ -475,6 +503,7 @@ defmodule Enum do
       #=> [a: -1, b: -2]
 
   """
+  @spec map(t, fun(element, do: any)), do: t
   def map(collection, fun) when is_list(collection) do
     lc item inlist collection, do: fun.(item)
   end
@@ -501,10 +530,12 @@ defmodule Enum do
   ## Examples
 
       Enum.map_join([1,2,3], &1 * 2)        #=> "246"
-      Enum.map_join([1,2,3], &1 * 2, " = ") #=> "2 = 4 = 6"
-      Enum.map_join([1,2,3], &1 * 2, ' = ') #=> '2 = 4 = 6'
+      Enum.map_join([1,2,3], " = ", &1 * 2) #=> "2 = 4 = 6"
+      Enum.map_join([1,2,3], ' = ', &1 * 2) #=> '2 = 4 = 6'
 
   """
+  @spec map_join(t, fun(element, do: any)), do: String.t
+  @spec map_join(t, String.t | char_list, fun(element, do: any)), do: String.t | char_list
   def map_join(collection, joiner // "", mapper)
 
   def map_join(collection, joiner, mapper) when is_list(joiner) do
@@ -539,6 +570,7 @@ defmodule Enum do
       #=> { [2, 4, 6], 6 }
 
   """
+  @spec map_reduce(t, any, fun(element, any, do: any)), do: any
   def map_reduce(collection, acc, f) when is_list(collection) do
     :lists.mapfoldl(f, acc, collection)
   end
@@ -563,6 +595,7 @@ defmodule Enum do
       #=> { [2], [1,3] }
 
   """
+  @spec partition(t, fun(element, do: any)), do: {t, t}
   def partition(collection, fun) when is_list(collection) do
     do_partition(collection, fun, [], [])
   end
@@ -587,6 +620,7 @@ defmodule Enum do
       #=> 6
 
   """
+  @spec reduce(t, any, fun(element, any, do: any)), do: any
   def reduce(collection, acc, fun) when is_list(collection) do
     :lists.foldl(fun, acc, collection)
   end
@@ -603,14 +637,13 @@ defmodule Enum do
   @doc """
   Reverses the collection.
 
-  Expects an ordered collection.
-
   ## Examples
 
       Enum.reverse [1, 2, 3]
       #=> [3, 2, 1]
 
   """
+  @spec reverse(t), do: t
   def reverse(collection) when is_list(collection) do
     :lists.reverse(collection)
   end
@@ -630,6 +663,7 @@ defmodule Enum do
       Enum.qsort [3,2,1] #=> [1,2,3]
 
   """
+  @spec qsort(t), do: t
   def qsort(collection) when is_list(collection) do
     do_list_qsort(collection, [])
   end
@@ -659,6 +693,7 @@ defmodule Enum do
       Enum.split [1,2,3], -5 #=> { [], [1,2,3] }
 
   """
+  @spec split(t, integer), do: {t, t}
   def split(collection, count) when is_list(collection) and count >= 0 do
     do_split(collection, count, [])
   end
@@ -679,12 +714,6 @@ defmodule Enum do
     split(list, real_count)
   end
 
-  @doc false
-  def split_with(collection, fun) do
-    IO.write "[WARNING] Enum.split_with is deprecated, please use split_while instead\n#{Exception.formatted_stacktrace}"
-    split_while(collection, fun)
-  end
-
   @doc """
   Splits `collection` at the first element, for which `fun` returns true.
   Expects an ordered collection.
@@ -694,6 +723,7 @@ defmodule Enum do
       Enum.split_while [1,2,3,4], fn x -> x == 2 end
       #=> { [1], [2, 3, 4] }
   """
+  @spec split_while(t, fun(element, do: boolean)), do: {t, t}
   def split_while(collection, fun) when is_list(collection) do
     do_split_while(collection, fun, [])
   end
@@ -718,6 +748,7 @@ defmodule Enum do
       Enum.take [1,2,3], 0  #=> []
 
   """
+  @spec take(t, non_neg_integer), do: t
   def take(collection, count) do
     elem split(collection, count), 0
   end
@@ -732,6 +763,7 @@ defmodule Enum do
       #=> [1, 2]
 
   """
+  @spec take_while(t, fun(element, do: boolean)), do: t
   def take_while(collection, fun) when is_list(collection) do
     do_take_while(collection, fun)
   end
@@ -745,19 +777,9 @@ defmodule Enum do
     end
   end
 
-  @doc """
-  Iterates the given function n times, passing values
-  from 0 to n - 1.
-
-  ## Examples
-
-      Enum.times 3, fn(x) -> IO.inspect x end
-      0
-      1
-      2
-
-  """
+  @doc false
   def times(times, function) when times >= 0 do
+    IO.write "[WARNING] Enum.times/2 is deprecated, please use ranges instead\n#{Exception.formatted_stacktrace}"
     case is_function(function, 0) do
       true ->
         do_times_0(times, 1, function)
@@ -767,18 +789,9 @@ defmodule Enum do
     times
   end
 
-  @doc """
-  Iterates the given function n times, passing values from 1
-  to n. Also has an accumulator similar to reduce to store the
-  value between computations.
-
-  ## Examples
-
-      Enum.times 5, 0, fn(x, acc) -> acc + x end
-      #=> 15
-
-  """
+  @doc false
   def times(times, acc, function) when times >= 0 do
+    IO.write "[WARNING] Enum.times/3 is deprecated, please use ranges instead\n#{Exception.formatted_stacktrace}"
     do_times_2(times, 1, function, acc)
   end
 
@@ -788,6 +801,7 @@ defmodule Enum do
   dictated by the first enum. In case the second list is shorter,
   values are filled with nil.
   """
+  @spec zip(t, t), do: [{any, any}]
   def zip(coll1, coll2) when is_list(coll1) do
     do_zip(coll1, iterator(coll2))
   end

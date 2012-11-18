@@ -71,7 +71,7 @@ defmodule Mix.Tasks.Escriptize do
     end
 
     set_perms(filename)
-    Mix.Shell.info "Generated escript #{filename}"
+    Mix.shell.info "Generated escript #{filename}"
   end
 
   defp set_perms(filename) do
@@ -112,8 +112,11 @@ defmodule Mix.Tasks.Escriptize do
 
         def main(args) do
           case :application.start(:elixir) do
-            :ok -> @module.main(args)
-            _   -> IO.puts :stderr, "Elixir is not in the code path, aborting."
+            :ok ->
+              Kernel.CLI.run fn -> @module.main(args) end, true
+            _   ->
+              IO.puts :stderr, "Elixir is not in the code path, aborting."
+              System.halt(1)
           end
         end
       end
