@@ -45,6 +45,10 @@ defmodule StringTest do
     assert String.rstrip("") == ""
     assert String.rstrip("   abc  ") == "   abc"
     assert String.rstrip("   abc a") == "   abc a"
+    assert String.rstrip("a  abc  a\n\n") == "a  abc  a"
+    assert String.rstrip("a  abc  a\t\n\v\f\r\s") == "a  abc  a"
+    assert String.rstrip("a  abc  a " <> <<31>>) == "a  abc  a"
+    assert String.rstrip("a  abc  a" <> <<194,133>>) == "a  abc  a"
     assert String.rstrip("   abc aa", ?a) == "   abc "
     assert String.rstrip("   abc __", ?_) == "   abc "
   end
@@ -53,12 +57,18 @@ defmodule StringTest do
     assert String.lstrip("") == ""
     assert String.lstrip("   abc  ") == "abc  "
     assert String.lstrip("a  abc  a") == "a  abc  a"
+    assert String.lstrip("\n\na  abc  a") == "a  abc  a"
+    assert String.lstrip("\t\n\v\f\r\sa  abc  a") == "a  abc  a"
+    assert String.lstrip(<<31>> <> " a  abc  a") == "a  abc  a"
+    assert String.lstrip(<<194,133>> <> "a  abc  a") == "a  abc  a"
     assert String.lstrip("__  abc  _", ?_) == "  abc  _"
   end
 
   test :strip do
     assert String.strip("") == ""
     assert String.strip("   abc  ") == "abc"
+    assert String.strip("a  abc  a\n\n") == "a  abc  a"
+    assert String.strip("a  abc  a\t\n\v\f\r\s") == "a  abc  a"
     assert String.strip("___  abc  ___", ?_) == "  abc  "
   end
 
@@ -152,7 +162,7 @@ defmodule StringTest do
     assert String.at("л", 10) == nil
     assert String.at("elixir", -1) == "r"
     assert String.at("がガちゃ", -2) == "ち"
-    assert String.at("л", -3) == ""
+    assert String.at("л", -3) == nil
     assert String.at("Ā̀stute", 1) == "s"
     assert String.at("elixir",6) == nil
   end

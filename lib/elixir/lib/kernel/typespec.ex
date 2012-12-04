@@ -6,6 +6,81 @@ defmodule Kernel.Typespec do
   `@callback` available in modules are handled by the equivalent
   macros defined by this module.
 
+  ## Defining a type
+
+  @type type_name :: type
+  @typep type_name :: type
+  @opaque type_name :: type
+
+  For more details, see documentation for deftype, deftypep and defopaque in
+  Kernel.Typespec
+
+  ## Defining a specification
+
+  @spec function_name(type, type) :: type
+  @callback function_name(type, type) :: type
+
+  For more details, see documentation for defspec and defcallback in
+  Kernel.Typespec
+
+  ## Types
+
+  The type syntax provided by Elixir is fairly similar to the one
+  in Erlang.
+
+  Most of the built-in types provided in Erlang (for example, `pid()`)
+  are expressed the same way: `pid()` or simply `pid`. Parametrized types
+  are also supported: `list(integer())` and so are remote types: `Enum.t`.
+
+  Certain data type shortcuts ([...], <<>> and {...}) are supported as well.
+
+  Main differences lie in how bit strings and functions are defined:
+
+  ### Bit Strings
+
+  Bit string with a base size of 3:
+
+      <<_ :: 3>>
+
+  Bit string with a unit size of 8:
+
+      <<_ :: _ * 8>>
+
+  ### Functions
+
+  Any function:
+
+      (fun(...) -> any)
+      or
+      ((...) -> any)
+      or
+      (... -> any)
+
+  Function with arity of zero:
+  
+      (fun() -> type)
+      or
+      (() -> type)
+
+  Function with some arity:
+  
+      (fun(type, type) -> type)
+      or
+      ((type, type) -> type)
+      or
+      (type, type -> type)
+
+  ## Notes
+
+  Elixir discourages the use of type `string()` as it might be confused
+  with binaries which are referred to as "strings" in Elixir (as opposed to 
+  character lists). In order to use the type that is called `string()` in Erlang,
+  one has to use the `char_list()` type which is a synonym to `string()`. If yu
+  use `string()`, you'll get a warning from the compiler.
+
+  If you want to refer to the "string" type (the one operated by functions in the
+  String module), use `String.t()` type instead.
+
   See http://www.erlang.org/doc/reference_manual/typespec.html
   for more information.
   """
@@ -55,19 +130,34 @@ defmodule Kernel.Typespec do
     end
   end
 
+  @doc false
+  defmacro defspec(spec, [do: block]) do
+    IO.write "[WARNING] @spec f(...), do: type is deprecated, use @spec f(...) :: type\n#{Exception.env_stacktrace(__CALLER__)}"
+    quote do
+      Kernel.Typespec.defspec(:spec, (quote line: :keep, do: unquote(spec) :: unquote(block)), __ENV__)
+    end
+  end
+
   @doc """
   Defines a spec.
   This macro is the one responsible to handle the attribute @spec.
 
   ## Examples
 
-      @spec add(number, number), do: number
+      @spec add(number, number) :: number
 
   """
-  defmacro defspec(spec, block) do
+  defmacro defspec(spec) do
     quote do
-      Kernel.Typespec.defspec(:spec, (quote line: :keep, do: unquote spec),
-        (quote line: :keep, do: unquote block), __ENV__)
+      Kernel.Typespec.defspec(:spec, (quote line: :keep, do: unquote spec), __ENV__)
+    end
+  end
+
+  @doc false
+  defmacro defcallback(spec, [do: block]) do
+    IO.write "[WARNING] @callback f(...), do: type is deprecated, use @callback f(...) :: type\n#{Exception.env_stacktrace(__CALLER__)}"
+    quote do
+      Kernel.Typespec.defspec(:callback, (quote line: :keep, do: unquote(spec) :: unquote(block)), __ENV__)
     end
   end
 
@@ -77,13 +167,12 @@ defmodule Kernel.Typespec do
 
   ## Examples
 
-      @callback add(number, number), do: number
+      @callback add(number, number) :: number
 
   """
-  defmacro defcallback(spec, block) do
+  defmacro defcallback(spec) do
     quote do
-      Kernel.Typespec.defspec(:callback, (quote line: :keep, do: unquote spec),
-        (quote line: :keep, do: unquote block), __ENV__)
+      Kernel.Typespec.defspec(:callback, (quote line: :keep, do: unquote(spec)), __ENV__)
     end
   end
 
@@ -101,11 +190,8 @@ defmodule Kernel.Typespec do
       end
 
     Module.compile_typespec module, kind, type
-
-    if export do
+    if export, do:
       Module.compile_typespec module, :export_type, [{ name, length(vars) }]
-    end
-
     type
   end
 
@@ -154,15 +240,26 @@ defmodule Kernel.Typespec do
 
   @doc """
   Converts a spec clause back to Elixir AST.
-  Returns a 2-items tuple with the spec arguments and return result.
   """
-  def spec_to_ast({ :type, _line, :fun, [{:type, _, :product, args},result] }) do
+  def spec_to_ast(name, { :type, line, :fun, [{:type, _, :product, args},result] }) do
     args = lc arg inlist args, do: typespec_to_ast(arg)
-    { args, typespec_to_ast(result) }
+    { :::, line, [{ name, line, args }, typespec_to_ast(result)] }
   end
 
-  def spec_to_ast({ :type, _, :fun, [] }) do
-    { [], quote do: term }
+  def spec_to_ast(name, { :type, line, :fun, [] }) do
+    { :::, line, [{ name, line, [] }, quote(do: term)] }
+  end
+
+  def spec_to_ast(name, { :type, line, :bounded_fun, [{ :type, _, :fun, [{ :type, _, :product, args }, result] }, constraints] }) do
+    [h|t] =
+      lc {:type, line, :constraint, [{:atom, _, :is_subtype}, [var, type]]} inlist constraints do
+        { :is_subtype, line, [typespec_to_ast(var), typespec_to_ast(type)] }
+      end
+
+    args = lc arg inlist args, do: typespec_to_ast(arg)
+    guards = Enum.reduce t, h, fn(x, acc) -> { :and, line, [acc, x] } end
+
+    { :::, line, [{ :when, line, [{ name, line, args }, guards] }, typespec_to_ast(result)] }
   end
 
   @doc """
@@ -174,6 +271,7 @@ defmodule Kernel.Typespec do
     type = { :{}, 0, [record|fields] }
     quote do: unquote(record)(unquote_splicing(args)) :: unquote(type)
   end
+
   def type_to_ast({ name, type, args }) do
     args = lc arg inlist args, do: typespec_to_ast(arg)
     quote do: unquote(name)(unquote_splicing(args)) :: unquote(typespec_to_ast(type))
@@ -290,12 +388,31 @@ defmodule Kernel.Typespec do
   end
 
   @doc false
-  def defspec(type, { name, line, args }, [do: return], caller) do
+  def defspec(type, {:::, _, [{ :when, _, [{ name, line, args }, constraints_guard] }, return] }, caller) do
     if is_atom(args), do: args = []
-    spec  = { :type, line, :fun, fn_args(line, args, return, [], caller) }
-    code  = { { name, Kernel.length(args) }, spec }
+    constraints = guard_to_constraints(constraints_guard, caller)
+    spec = { :type, line, :fun, fn_args(line, args, return, Keyword.keys(constraints), caller) }
+    spec = { :type, line, :bounded_fun, [spec, Keyword.values(constraints)] }
+    code = { { name, Kernel.length(args) }, spec }
     Module.compile_typespec(caller.module, type, code)
     code
+  end
+
+  def defspec(type, {:::, _, [{ name, line, args }, return]}, caller) do
+    if is_atom(args), do: args = []
+    spec = { :type, line, :fun, fn_args(line, args, return, [], caller) }
+    code = { { name, Kernel.length(args) }, spec }
+    Module.compile_typespec(caller.module, type, code)
+    code
+  end
+
+  defp guard_to_constraints({ :is_subtype, line, [{ name, _, _ }, type] }, caller) do
+    contraints = [{ :atom, line, :is_subtype }, [{:var, line, name}, typespec(type, [], caller)]]
+    [{ name, { :type, line, :constraint, contraints } }]
+  end
+
+  defp guard_to_constraints({ :and, _, [left, right] }, caller) do
+    guard_to_constraints(left, caller) ++ guard_to_constraints(right, caller)
   end
 
   ## To AST conversion
@@ -329,11 +446,15 @@ defmodule Kernel.Typespec do
 
   defp typespec_to_ast({ :type, line, :fun, [{:type, _, :product, args},result] }) do
     args = lc arg inlist args, do: typespec_to_ast(arg)
-    { :fun, line, args ++ [[do: typespec_to_ast(result)]] }
+    { :"->", line, [{args, typespec_to_ast(result)}] }
+  end
+
+  defp typespec_to_ast({ :type, line, :fun, [args, result] }) do
+    { :"->", line, [{[typespec_to_ast(args)], typespec_to_ast(result)}] }
   end
 
   defp typespec_to_ast({ :type, line, :fun, [] }) do
-    { :fun, line, [] }
+    typespec_to_ast({ :type, line, :fun, [{:type, line, :any}, {:type,line,:any, []} ] })
   end
 
   defp typespec_to_ast({ :type, line, name, args }) do
@@ -342,7 +463,19 @@ defmodule Kernel.Typespec do
   end
 
   defp typespec_to_ast({ :var, line, var }) do
+    var =
+    case atom_to_binary(var) do
+      <<"_", c :: [binary, size(1)], rest :: binary>> -> 
+        binary_to_atom("_#{String.downcase(c)}#{rest}")
+      <<c :: [binary, size(1)], rest :: binary>> ->
+        binary_to_atom("#{String.downcase(c)}#{rest}")
+    end
     { var, line, nil }
+  end
+
+  # special shortcut(s)
+  defp typespec_to_ast({ :remote_type, line, [{:atom, _, :elixir}, {:atom, _, :char_list}, []] }) do
+    typespec_to_ast({:type, line, :char_list, []})
   end
 
   defp typespec_to_ast({ :remote_type, line, [mod, name, args] }) do
@@ -361,10 +494,19 @@ defmodule Kernel.Typespec do
     typespec_to_ast({ :ann_type, line, [{ :var, line1, name }, type] })
   end
 
+  defp typespec_to_ast({:type, _, :any}) do
+    quote do: ...
+  end
+
+  defp typespec_to_ast({:paren_type, _, [type]}) do
+    typespec_to_ast(type)
+  end
 
   defp typespec_to_ast({ t, _line, atom }) when is_atom(t) do
     atom
   end
+
+  defp typespec_to_ast(other), do: other
 
   ## From AST conversion
 
@@ -403,6 +545,19 @@ defmodule Kernel.Typespec do
     typespec(atom, vars, caller)
   end
 
+  # Handle funs
+  defp typespec({:fun, line, args}, vars, caller) when is_list(args) do
+    IO.write "[WARNING] fun() type is deprecated, use (... -> type) instead\n#{Exception.env_stacktrace(caller)}"
+    typespec({:"->", line, [{args, quote do: any}]}, vars, caller)
+  end
+  defp typespec({:"->", line, [{[{:fun, _, arguments}], return}]}, vars, caller) when is_list(arguments) do
+    typespec({:"->", line, [{arguments, return}]}, vars, caller)
+  end
+  defp typespec({:"->", line, [{arguments, return}]}, vars, caller) when is_list(arguments) do
+    args = fn_args(line, arguments, return, vars, caller)
+    { :type, line, :fun, args }
+  end
+
   # Handle type operator
   defp typespec({:"::", line, [var, expr] }, vars, caller) do
     left  = typespec(var, [elem(var, 0)|vars], caller)
@@ -425,7 +580,7 @@ defmodule Kernel.Typespec do
   # Handle remote calls
   defp typespec({{:., line, [remote, name]}, _, args}, vars, caller) do
     remote = Macro.expand remote, caller
-    unless is_atom(remote), do: raise(ArgumentError, message: "Invalid remote in typespec")
+    unless is_atom(remote), do: raise ArgumentError, message: "invalid remote in typespec"
     remote_type({typespec(remote, vars, caller), line, typespec(name, vars, caller), args}, vars, caller)
   end
 
@@ -443,18 +598,6 @@ defmodule Kernel.Typespec do
     { :type, line, :tuple, args }
   end
 
-  # Handle funs
-  defp typespec({:fun, line, arguments}, vars, caller) when is_list(arguments) do
-    args =
-      case :lists.reverse(arguments) do
-        [[{:do,h}]|t] -> fn_args(line, :lists.reverse(t), h, vars, caller)
-        [] -> []
-        _  -> [fn_args(line, arguments, vars, caller)]
-      end
-
-    { :type, line, :fun, args }
-  end
-
   # Handle variables or local calls
   defp typespec({name, line, atom}, vars, caller) when is_atom(atom) do
     if List.member?(vars, name) do
@@ -466,7 +609,8 @@ defmodule Kernel.Typespec do
 
   # Handle local calls
   defp typespec({:string, line, arguments}, vars, caller) do
-    IO.write "#{caller.file}:#{caller.line}: warning: string() type use is discouraged. For character lists,  use char_list() type, for strings, String.t()\n"
+    IO.write "warning: string() type use is discouraged. For character lists, use " <>
+      "char_list() type, for strings, String.t()\n#{Exception.env_stacktrace(caller)}"
     arguments = lc arg inlist arguments, do: typespec(arg, vars, caller)
     { :type, line, :string, arguments }
   end
@@ -517,7 +661,10 @@ defmodule Kernel.Typespec do
   defp collect_union(v), do: [v]
 
   defp fn_args(line, args, return, vars, caller) do
-    [fn_args(line, args, vars, caller), typespec(return, vars, caller)]
+    case [fn_args(line, args, vars, caller), typespec(return, vars, caller)] do
+      [{:type,_,:any},{:type,_,:any,[]}] -> []
+      x -> x
+    end
   end
 
   defp fn_args(line, [{:"...", _, _}], _vars, _caller) do

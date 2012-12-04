@@ -15,7 +15,26 @@ defmodule Mix.Tasks.Compile.AppTest do
     end
 
     def application do
-      [hello: 'beautiful']
+      [maxT: :infinity]
+    end
+  end
+
+  defmodule InvalidProject do
+    def project do
+      [app: :invalid_project, version: "0.3.0"]
+    end
+
+    def application do
+      case Process.get(:error) do
+        :modules -> [modules: :invalid]
+        :maxT -> [maxT: :invalid]
+        :registered -> [registered: ["invalid"]]
+        :included_applications -> [included_applications: ["invalid"]]
+        :applications -> [applications: ["invalid"]]
+        :env -> [env: [:a]]
+        :mod -> [mod: {Mod}]
+        :start_phases -> [start_phases: [:invalid]]
+      end
     end
   end
 
@@ -47,10 +66,28 @@ defmodule Mix.Tasks.Compile.AppTest do
       Mix.Tasks.Compile.App.run([])
       contents = File.read!("ebin/custom_project.app")
       assert contents =~ %r/0.2.0/
-      assert contents =~ %r/{hello,"beautiful"}/
+      assert contents =~ %r/{maxT,infinity}/
     end
   after
     purge [A, B, C]
+    Mix.Project.pop
+  end
+
+  test "application properties validation" do
+    Mix.Project.push InvalidProject
+
+    in_fixture "no_mixfile", fn ->
+      lc error inlist [:modules, :maxT, :registered, :included_applications,
+                   :applications, :env, :mod, :start_phases] do
+        Process.put(:error, error)
+        assert e = Mix.Error[] = catch_error(Mix.Tasks.Compile.App.run([]))
+        assert e.message =~ %r/:#{error}/
+        assert e.message =~ %r/#{inspect InvalidProject.application[error]}/
+      end
+      Process.delete(:error)
+    end
+  after
+    purge [A, B, C]  
     Mix.Project.pop
   end
 

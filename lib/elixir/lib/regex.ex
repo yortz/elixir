@@ -16,7 +16,7 @@ defmodule Regex do
   The re module provides several options, the one available in Elixir, followed by
   their shortcut in parenthesis, are:
 
-  * unicode (u) - used when you want to match against specific unicode characters
+  * unicode (u) - enable unicode specific patterns like \p
   * caseless (i) - add case insensitivity
   * dotall (s) - causes dot to match newlines and also set newline to anycrlf.
     The new line setting can be overwritten by setting `(*CR)` or `(*LF)` or
@@ -149,7 +149,7 @@ defmodule Regex do
   def captures(regex(groups: groups) = regex, string, options // []) do
     unless captures = Keyword.get(options, :capture) do
       captures = if groups do
-        List.sort(groups)
+        Enum.sort(groups)
       else
         raise "Regex was not compiled with g"
       end
@@ -218,7 +218,7 @@ defmodule Regex do
   def scan(regex, string, options // [])
 
   def scan(regex(re_pattern: compiled), string, options) do
-    return = options[:return] || return_for(string)
+    return  = Keyword.get(options, :return, return_for(string))
     options = [{ :capture, :all, return }, :global]
     case :re.run(string, compiled, options) do
       :nomatch -> []
@@ -236,13 +236,13 @@ defmodule Regex do
   def split(regex(re_pattern: compiled), string, options) do
     parts =
       cond do
-        options[:global] == false -> 2
-        p = options[:parts]       -> p
-        true                      -> :infinity
+        Keyword.get(options, :global) == false -> 2
+        p = Keyword.get(options, :parts)       -> p
+        true                                   -> :infinity
       end
 
-    return = options[:return] || return_for(string)
-    opts   = [{ :return, return }, { :parts, parts }]
+    return = Keyword.get(options, :return, return_for(string))
+    opts   = [return: return, parts: parts]
     :re.split(string, compiled, opts)
   end
 
@@ -265,8 +265,8 @@ defmodule Regex do
 
   """
   def replace(regex(re_pattern: compiled), string, replacement, options // []) do
-    opts   = if options[:global] != false, do: [:global], else: []
-    return = options[:return] || return_for(string)
+    opts   = if Keyword.get(options, :global) != false, do: [:global], else: []
+    return = Keyword.get(options, :return, return_for(string))
     opts   = [{ :return, return }|opts]
     :re.replace(string, compiled, replacement, opts)
   end

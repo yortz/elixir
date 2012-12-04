@@ -20,8 +20,28 @@ defmodule KernelTest do
     refute x([])
   end
 
+  test :paren do
+    assert nil?(())
+    assert [ 1, (), 3 ] == [1, nil, 3 ]
+    assert [do: ()] == [do: nil]
+    assert { 1, (), 3 } == { 1, nil, 3 }
+  end
+
   test :__info__ do
-    assert { :in, 2 } in Kernel.__info__(:macros)
+    assert { :in, 2 } inlist Kernel.__info__(:macros)
+  end
+
+  test :macro_exported? do
+    assert macro_exported?(Kernel, :in, 2) == true
+    assert macro_exported?(Kernel, :def, 1) == true
+    assert macro_exported?(Kernel, :def, 2) == true
+    assert macro_exported?(Kernel, :def, 3) == false
+    assert macro_exported?(Kernel, :def, 4) == true
+    assert macro_exported?(Kernel, :no_such_macro, 2) == false
+  end
+
+  test :debug_info do
+    assert :debug_info inlist Kernel.__info__(:compile)[:options]
   end
 
   defp x(value) when value in [1,2,3], do: true
@@ -96,10 +116,20 @@ defmodule KernelTest do
       assert function(:erlang, :atom_to_list, 1).(:a) == 'a'
     end
 
+    test :remote_syntax_function do
+      assert function(:erlang.atom_to_list/1) ==
+             function(:erlang, :atom_to_list, 1)
+      assert function(Enum.map/2) == function(Enum, :map, 2)
+    end
+
     test :retrieve_local_function do
       assert is_function(function(:atl, 1))
       assert :erlang.fun_info(function(:atl, 1), :arity) == {:arity, 1}
       assert function(:atl, 1).(:a) == 'a'
+    end
+
+    test :local_syntax_function do
+      assert function(atl/1).(:a) == 'a'
     end
 
     test :retrieve_imported_function do

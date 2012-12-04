@@ -1,7 +1,8 @@
-defmodule IEx.Loop do
+defmodule IEx.Server do
   @moduledoc false
 
   def start(config) do
+    IO.puts "Interactive Elixir (#{System.version}) - press Ctrl+C to exit (type h() ENTER for help)"
     Process.put :iex_history, []
     { _, _, scope } = :elixir.eval('import IEx.Helpers', [], 0, config.scope)
     do_loop(config.scope(scope))
@@ -21,7 +22,7 @@ defmodule IEx.Loop do
 
         config = config.result(result)
         update_history(config.cache(code).scope(nil))
-        config.increment_counter.cache('').binding(new_binding).scope(scope)
+        config.update_counter(&1+1).cache('').binding(new_binding).scope(scope)
       rescue
         TokenMissingError ->
           config.cache(code)

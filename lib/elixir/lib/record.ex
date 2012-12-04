@@ -65,27 +65,26 @@ defmodule Record do
       end
 
   """
-  def deffunctions(values, opts // [], env) do
-    values     = lc value inlist values, do: convert_value(value)
-    escaped    = Macro.escape(values)
-    extensions = Keyword.get(opts, :extensions, Record.Extensions)
+  def deffunctions(values, _opts // [], env) do
+    values  = lc value inlist values, do: convert_value(value)
+    escaped = Macro.escape(values)
 
     contents = [
       reflection(escaped),
       initializer(escaped),
       indexes(escaped),
-      readers(values, 1, []),
       conversions(values),
-      writers(values, 1, []),
       updater(values),
-      extensions(values, 1, [], extensions)
+      extensions(values, 1, [], Record.Extensions),
+      accessors(values),
     ]
+
+    contents = [quote(do: @__record__ unquote(escaped))|contents]
 
     # Special case for bootstraping purposes
     if env == Macro.Env do
-      :elixir_module.eval_quoted(env, contents, [], [])
+      Module.eval_quoted(env, contents, [], [])
     else
-      contents = [quote(do: @__record__ unquote(escaped))|contents]
       Module.eval_quoted(env.module, contents, [], env.location)
     end
   end
@@ -93,23 +92,21 @@ defmodule Record do
   @doc """
   Defines types and specs for the record.
   """
-  def deftypes(values, types, opts // [], env) do
+  def deftypes(values, types, _opts // [], env) do
     types  = types || []
     values = lc value inlist values do
       { name, default } = convert_value(value)
       { name, default, find_spec(types, name) }
     end
 
-    extensions = Keyword.get(opts, :extensions, Record.Extensions)
-
     contents = [
       core_specs(values),
-      accessor_specs(values, []),
-      extensions_specs(values, [], extensions)
+      accessor_specs(values, 1, [])
     ]
 
-    # Special case for bootstraping purposes
-    if :erlang.function_exported(Module, :eval_quoted, 2) do
+    if env == Macro.Env do
+      Module.eval_quoted(env, contents, [], [])
+    else
       Module.eval_quoted(env.module, contents, [], env.location)
     end
   end
@@ -155,6 +152,34 @@ defmodule Record do
     end
 
     Module.eval_quoted(env.module, contents, [], env.location)
+  end
+
+  ## Callbacks
+
+  # Store all optimizable fields in the record as well
+  @doc false
+  defmacro __before_compile__(_) do
+    quote do
+      def __record__(:optimizable), do: @record_optimizable
+    end
+  end
+
+  # Store fields that can be optimized and that cannot be
+  # optimized as they are overriden
+  @doc false
+  def __on_definition__(env, kind, name, args, _guards, _body) do
+    tuple     = { name, length(args) }
+    module    = env.module
+    functions = Module.get_attribute(module, :record_optimizable)
+
+    functions =
+      if kind in [:def] and Module.get_attribute(module, :record_optimized) do
+        [tuple|functions]
+      else
+        List.delete(functions, tuple)
+      end
+
+    Module.put_attribute(module, :record_optimizable, functions)
   end
 
   # Implements the access macro used by records.
@@ -389,7 +414,7 @@ defmodule Record do
     end
   end
 
-  # Implement readers. For a declaration like:
+  # Implement accessors. For a declaration like:
   #
   #     defrecord FileInfo, atime: nil, mtime: nil
   #
@@ -403,24 +428,6 @@ defmodule Record do
   #       elem(record, 2)
   #     end
   #
-  defp readers([{ key, _default }|t], i, acc) do
-    contents = quote do
-      def unquote(key).(record) do
-        :erlang.element(unquote(i + 1), record)
-      end
-    end
-
-    readers(t, i + 1, [contents | acc])
-  end
-
-  defp readers([], _i, acc), do: acc
-
-  # Implement writers. For a declaration like:
-  #
-  #     defrecord FileInfo, atime: nil, mtime: nil
-  #
-  # It will define four methods:
-  #
   #     def :atime.(value, record) do
   #       setelem(record, 1, value)
   #     end
@@ -429,17 +436,51 @@ defmodule Record do
   #       setelem(record, 2, value)
   #     end
   #
-  defp writers([{ key, _default }|t], i, acc) do
+  #     def :atime.(callback, record) do
+  #       setelem(record, 1, callback.(elem(record, 1)))
+  #     end
+  #
+  #     def :mtime.(callback, record) do
+  #       setelem(record, 2, callback.(elem(record, 2)))
+  #     end
+  #
+  defp accessors(values) do
+    [ quote do
+        @record_optimized true
+        @record_optimizable []
+        @before_compile { unquote(__MODULE__), :__before_compile__ }
+        @on_definition { unquote(__MODULE__), :__on_definition__ }
+      end | accessors(values, 1) ]
+  end
+
+  defp accessors([{ :__exception__, _ }|t], 1) do
+    accessors(t, 2)
+  end
+
+  defp accessors([{ key, _default }|t], i) do
+    update = binary_to_atom "update_" <> atom_to_binary(key)
+
     contents = quote do
+      def unquote(key).(record) do
+        :erlang.element(unquote(i + 1), record)
+      end
+
       def unquote(key).(value, record) do
         :erlang.setelement(unquote(i + 1), record, value)
       end
+
+      def unquote(update).(function, record) do
+        :erlang.setelement(unquote(i + 1), record,
+          function.(:erlang.element(unquote(i + 1), record)))
+      end
     end
 
-    writers(t, i + 1, [contents | acc])
+    [contents|accessors(t, i + 1)]
   end
 
-  defp writers([], _i, acc), do: acc
+  defp accessors([], _i) do
+    [quote do: @record_optimized false]
+  end
 
   # Define an updater method that receives a
   # keyword list and updates the record.
@@ -483,30 +524,31 @@ defmodule Record do
         @type t :: { __MODULE__, unquote_splicing(types) }
       end
 
-      @spec new, do: t
-      @spec new(Keyword.t | tuple), do: t
-      @spec to_keywords(t), do: Keyword.t
-      @spec update(Keyword.t, t), do: t
-      @spec __index__(atom), do: non_neg_integer | nil
+      @spec new :: t
+      @spec new(Keyword.t | tuple) :: t
+      @spec to_keywords(t) :: Keyword.t
+      @spec update(Keyword.t, t) :: t
+      @spec __index__(atom) :: non_neg_integer | nil
     end
   end
 
-  defp accessor_specs([{ key, _default, spec }|t], acc) do
+  defp accessor_specs([{ :__exception__, _, _ }|t], 1, acc) do
+    accessor_specs(t, 2, acc)
+  end
+
+  defp accessor_specs([{ key, _default, spec }|t], i, acc) do
+    update = binary_to_atom "update_" <> atom_to_binary(key)
+
     contents = quote do
-      @spec unquote(key)(t), do: unquote(spec)
-      @spec unquote(key)(unquote(spec), t), do: t
+      @spec unquote(key)(t) :: unquote(spec)
+      @spec unquote(key)(unquote(spec), t) :: t
+      @spec unquote(update)((unquote(spec) -> unquote(spec)), t) :: t
     end
-    accessor_specs(t, [contents | acc])
+
+    accessor_specs(t, i + 1, [contents | acc])
   end
 
-  defp accessor_specs([], acc), do: acc
-
-  defp extensions_specs([{ key, default, spec }|t], acc, extensions) do
-    specs = extensions.specs_for(key, default, spec)
-    extensions_specs(t, [specs | acc], extensions)
-  end
-
-  defp extensions_specs([], acc, _), do: acc
+  defp accessor_specs([], _i, acc), do: acc
 
   ## Helpers
 
@@ -517,7 +559,17 @@ defmodule Record do
   defp is_keyword_tuple(_), do: false
 
   defp convert_value(atom) when is_atom(atom), do: { atom, nil }
-  defp convert_value(other), do: other
+
+  defp convert_value({ atom, other }) when is_atom(atom) and is_function(other), do:
+    raise ArgumentError, message: "record field default value #{inspect atom} cannot be a function"
+
+  defp convert_value({ atom, other }) when is_atom(atom) and (is_reference(other) or is_pid(other) or is_port(other)), do:
+    raise ArgumentError, message: "record field default value #{inspect atom} cannot be a reference, pid or port"
+
+  defp convert_value({ atom, _ } = tuple) when is_atom(atom), do: tuple
+
+  defp convert_value({ field, _ }), do:
+    raise ArgumentError, message: "record field name has to be an atom, got #{inspect field}"
 
   defp find_index([{ k, _ }|_], k, i), do: i
   defp find_index([{ _, _ }|t], k, i), do: find_index(t, k, i + 1)
@@ -552,23 +604,7 @@ defmodule Record.Extensions do
   # Function definition
 
   def functions_for(key, default, i) do
-    [ default_for(key, default, i),
-      extension_for(key, default, i) ]
-  end
-
-  defp default_for(:__exception__, _default, _i) do
-    nil
-  end
-
-  defp default_for(key, _default, i) do
-    update  = prefix("update_", key)
-
-    quote do
-      def unquote(update).(function, record) do
-        current = :erlang.element(unquote(i + 1), record)
-        :erlang.setelement(unquote(i + 1), record, function.(current))
-      end
-    end
+    extension_for(key, default, i)
   end
 
   defp extension_for(key, default, i) when is_list(default) do
@@ -577,11 +613,13 @@ defmodule Record.Extensions do
 
     quote do
       def unquote(prepend).(value, record) do
+        IO.write "[WARNING] record default-based generated function #{unquote(prepend)} is deprecated\n#{Exception.formatted_stacktrace}"
         current = :erlang.element(unquote(i + 1), record)
         :erlang.setelement(unquote(i + 1), record, value ++ current)
       end
 
       def unquote(merge).(value, record) do
+        IO.write "[WARNING] record default-based generated function #{unquote(merge)} is deprecated\n#{Exception.formatted_stacktrace}"
         current = :erlang.element(unquote(i + 1), record)
         :erlang.setelement(unquote(i + 1), record, Keyword.merge(current, value))
       end
@@ -593,6 +631,7 @@ defmodule Record.Extensions do
 
     quote do
       def unquote(increment).(value // 1, record) do
+        IO.write "[WARNING] record default-based generated function #{unquote(increment)} is deprecated\n#{Exception.formatted_stacktrace}"
         current = :erlang.element(unquote(i + 1), record)
         :erlang.setelement(unquote(i + 1), record, current + value)
       end
@@ -604,6 +643,7 @@ defmodule Record.Extensions do
 
     quote do
       def unquote(toggle).(record) do
+        IO.write "[WARNING] record default-based generated function #{unquote(toggle)} is deprecated\n#{Exception.formatted_stacktrace}"
         current = :erlang.element(unquote(i + 1), record)
         :erlang.setelement(unquote(i + 1), record, not current)
        end
@@ -611,53 +651,6 @@ defmodule Record.Extensions do
   end
 
   defp extension_for(_, _, _), do: nil
-
-  # Specs definition
-
-  def specs_for(key, default, spec) do
-    [ default_specs_for(key, default, spec),
-      extension_specs_for(key, default, spec) ]
-  end
-
-  defp default_specs_for(:__exception__, _default, _spec) do
-    nil
-  end
-
-  defp default_specs_for(key, _default, spec) do
-    update = prefix("update_", key)
-
-    quote do
-      @spec unquote(update)(fun(unquote(spec), do: unquote(spec)), t), do: t
-    end
-  end
-
-  defp extension_specs_for(key, default, _spec) when is_list(default) do
-    prepend = prefix("prepend_", key)
-    merge   = prefix("merge_", key)
-
-    quote do
-      @spec unquote(prepend)(list, t), do: t
-      @spec unquote(merge)(Keyword.t, t), do: t
-    end
-  end
-
-  defp extension_specs_for(key, default, _spec) when is_number(default) do
-    increment = prefix("increment_", key)
-
-    quote do
-      @spec unquote(increment)(number, t), do: t
-    end
-  end
-
-  defp extension_specs_for(key, default, _spec) when is_boolean(default) do
-    toggle = prefix("toggle_", key)
-
-    quote do
-      @spec unquote(toggle)(t), do: t
-    end
-  end
-
-  defp extension_specs_for(_, _, _), do: nil
 
   # Helpers
 

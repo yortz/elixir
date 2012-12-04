@@ -56,6 +56,12 @@ translate({ function, Line, [[{do,{ '->',_,Pairs}}]] }, S) ->
   assert_no_assign_or_guard_scope(Line, 'function', S),
   elixir_translator:translate_fn(Line, Pairs, S);
 
+translate({ function, Line, [{ '/', _, [{{ '.', _ ,[M, F] }, _ , [] }, A]}] }, S) ->
+  translate({ function, Line, [M, F, A] }, S);
+
+translate({ function, Line, [{ '/', _, [{F, _, Q}, A]}] }, S) when is_atom(Q) ->
+  translate({ function, Line, [F, A] }, S);
+
 translate({ function, Line, [_] }, S) ->
   assert_no_assign_or_guard_scope(Line, 'function', S),
   syntax_error(Line, S#elixir_scope.file, "invalid args for function");
@@ -215,13 +221,21 @@ translate({Kind, Line, [Call]}, S) when ?FUNS(Kind) ->
 translate({Kind, Line, [Call, Expr]}, S) when ?FUNS(Kind) ->
   assert_module_scope(Line, Kind, S),
   assert_no_function_scope(Line, Kind, S),
+
   { TCall, Guards } = elixir_clauses:extract_guards(Call),
-  { Name, Args }    = elixir_clauses:extract_args(TCall),
+  { Name, Args }    = case elixir_clauses:extract_args(TCall) of
+    error -> syntax_error(Line, S#elixir_scope.file,
+               "invalid syntax in ~s ~s", [Kind, 'Elixir.Macro':to_binary(TCall)]);
+    Tuple -> Tuple
+  end,
+
   assert_no_aliases_name(Line, Name, Args, S),
+
   TName             = elixir_tree_helpers:abstract_syntax(Name),
   TArgs             = elixir_tree_helpers:abstract_syntax(Args),
   TGuards           = elixir_tree_helpers:abstract_syntax(Guards),
   TExpr             = elixir_tree_helpers:abstract_syntax(Expr),
+
   { elixir_def:wrap_definition(Kind, Line, TName, TArgs, TGuards, TExpr, S), S };
 
 translate({Kind, Line, [Name, Args, Guards, Expr]}, S) when ?FUNS(Kind) ->
@@ -277,6 +291,10 @@ translate_in(Line, Left, Right, S) ->
       lists:foldr(fun(X, Acc) ->
         { op, Line, 'orelse', { op, Line, '==', Var, X }, Acc }
       end, { op, Line, '==', Var, H }, T);
+    { string, _, [H|T] } ->
+      lists:foldl(fun(X, Acc) ->
+        { op, Line, 'orelse', { op, Line, '==', Var, { integer, Line, X } }, Acc }
+      end, { op, Line, '==', Var, { integer, Line, H } }, T);
     { tuple, _, [{ atom, _, 'Elixir.Range' }, Start, End] } ->
       case { Start, End } of
         { { K1, _, StartInt }, { K2, _, EndInt } } when ?IN_TYPES(K1), ?IN_TYPES(K2), StartInt =< EndInt ->

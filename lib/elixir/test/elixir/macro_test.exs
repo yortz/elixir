@@ -141,9 +141,17 @@ defmodule MacroTest do
     assert Macro.to_binary(quote do: foo.bar.([1, 2, 3])) == "foo.bar().([1, 2, 3])"
   end
 
+  test :atom_call_to_binary do
+    assert Macro.to_binary(quote do: :foo.(1, 2, 3)) == ":foo.(1, 2, 3)"
+  end
+
   test :aliases_call_to_binary do
     assert Macro.to_binary(quote do: Foo.Bar.baz(1, 2, 3)) == "Foo.Bar.baz(1, 2, 3)"
     assert Macro.to_binary(quote do: Foo.Bar.baz([1, 2, 3])) == "Foo.Bar.baz([1, 2, 3])"
+  end
+
+  test :arrow_to_binary do
+    assert Macro.to_binary(quote do: foo(1, (2 -> 3))) == "foo(1, (2 -> 3))"
   end
 
   test :blocks_to_binary do
@@ -183,9 +191,24 @@ defmodule MacroTest do
   end
 
   test :fn_to_binary do
-    assert Macro.to_binary(quote do: (fn(x) -> x + 1 end)) <> "\n" == """
+    assert Macro.to_binary(quote do: (() -> x)) == "(() -> x)"
+    assert Macro.to_binary(quote do: (fn -> 1 + 2 end)) == "fn -> 1 + 2 end"
+    assert Macro.to_binary(quote do: (fn(x) -> x + 1 end)) == "fn x -> x + 1 end"
+
+    assert Macro.to_binary(quote do: (fn(x) -> y = x + 1; y end)) <> "\n" == """
     fn x ->
-      x + 1
+      y = (x + 1)
+      y
+    end
+    """
+
+    assert Macro.to_binary(quote do: (fn(x) -> y = x + 1; y; (z) -> z end)) <> "\n" == """
+    fn
+      x ->
+        y = (x + 1)
+        y
+      z ->
+        z
     end
     """
   end
@@ -222,6 +245,8 @@ defmodule MacroTest do
   end
 
   test :unary_ops_to_binary do
+    assert Macro.to_binary(quote do: not 1) == "not 1"
+    assert Macro.to_binary(quote do: not foo) == "not foo"
     assert Macro.to_binary(quote do: -1) == "-1"
     assert Macro.to_binary(quote do: @foo(bar)) == "@foo(bar)"
   end
@@ -247,5 +272,15 @@ defmodule MacroTest do
    assert Macro.safe_term(quote do: 1+1)   == { :unsafe, quote do: 1 + 1 }
    assert Macro.safe_term(quote do: [1+1]) == { :unsafe, quote do: 1 + 1 }
    assert Macro.safe_term(quote do: {1+1}) == { :unsafe, quote do: 1 + 1 }
+  end
+
+  ## extract_args
+
+  test :extract_args do
+    assert Macro.extract_args(quote do: foo)        == { :foo, [] }
+    assert Macro.extract_args(quote do: foo())      == { :foo, [] }
+    assert Macro.extract_args(quote do: :foo.())    == { :foo, [] }
+    assert Macro.extract_args(quote do: foo(1,2,3)) == { :foo, [1,2,3] }
+    assert Macro.extract_args(quote do: 1.(1,2,3))  == :error
   end
 end

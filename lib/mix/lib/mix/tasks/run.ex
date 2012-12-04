@@ -9,6 +9,12 @@ defmodule Mix.Tasks.Run do
   Before running the code, it invokes the prepare task
   which defaults to compile and load your project.
 
+  ## Command line options
+
+  * `--require`, `-r` - Requires a file before running the command
+  * `--parallel-require`, `-pr` - Requires a file in parallel
+  * `--no-halt` - Does not halt the system after running the command
+
   ## Examples
 
       mix run Hello.world
@@ -32,9 +38,11 @@ defmodule Mix.Tasks.Run do
 
     Mix.Task.run Mix.project[:prepare_task], args
     Code.eval Enum.join(head, " ")
+
+    if opts[:no_halt], do: :timer.sleep(:infinity)
   end
 
   defp filter_patterns(pattern) do
-    Enum.filter(List.uniq(File.wildcard(pattern)), File.regular?(&1))
+    Enum.filter(Enum.uniq(File.wildcard(pattern)), File.regular?(&1))
   end
 end

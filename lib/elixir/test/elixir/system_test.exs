@@ -24,9 +24,9 @@ defmodule SystemTest do
   end
 
   test :env do
-    assert System.get_env("SYSTEM_ENV_TEST_VAR") == nil
-    System.put_env('SYSTEM_ENV_TEST_VAR', 'SAMPLE')
-    assert System.get_env("SYSTEM_ENV_TEST_VAR") == "SAMPLE"
+    assert System.get_env("SYSTEM_ELIXIR_ENV_TEST_VAR") == nil
+    System.put_env('SYSTEM_ELIXIR_ENV_TEST_VAR', 'SAMPLE')
+    assert System.get_env("SYSTEM_ELIXIR_ENV_TEST_VAR") == "SAMPLE"
   end
 
   test :cmd do

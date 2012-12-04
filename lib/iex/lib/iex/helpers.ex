@@ -12,13 +12,15 @@ defmodule IEx.Helpers do
   There are many other helpers available:
 
   * `c/2` - compiles a file in the given path
-  * `h/0`,`h/1`, `h/2` - prints help/documentation
-  * `t/1`, `t/3` — prints type information
-  * `s/1`, `s/3` — prints spec information
+  * `h/0`, `h/1` - prints help/documentation
+  * `t/1` — prints type information
+  * `s/1` — prints spec information
   * `m/0` - prints loaded modules
-  * `r/0` - recompiles and reloads the given module's source file
+  * `r/0`, `r/1` - recompiles and reloads the given module's source file
+  * `l/1` - loads given module beam code by purging the current version
   * `v/0` - prints all commands and values
   * `v/1` - retrieves nth value from console
+  * `flush/0` — flush all messages sent to the shell
 
   Help for functions in this module can be consulted
   directly from the command line, as an example, try:
@@ -54,7 +56,7 @@ defmodule IEx.Helpers do
   """
   def m do
     all    = Enum.map :code.all_loaded, fn { mod, file } -> { inspect(mod), file } end
-    sorted = List.sort(all)
+    sorted = Enum.sort all
     size   = Enum.reduce sorted, 0, fn({ mod, _ }, acc) -> max(byte_size(mod), acc) end
     format = "~-#{size}s ~s~n"
 
@@ -79,7 +81,7 @@ defmodule IEx.Helpers do
   Shows the documentation for IEx.Helpers.
   """
   def h() do
-    h(IEx.Helpers, :moduledoc)
+    h(IEx.Helpers, [])
   end
 
   @doc """
@@ -96,52 +98,55 @@ defmodule IEx.Helpers do
 
       h receive/1
       h Enum.all?/2
+      h Enum.all?
 
   """
-  defmacro h({ :/, _, [{ fun, _, nil }, arity] }) do
-    quote do
-      h(unquote(fun), unquote(arity))
-    end
-  end
-
   defmacro h({ :/, _, [{ { :., _, [mod, fun] }, _, [] }, arity] }) do
     quote do
       h(unquote(mod), unquote(fun), unquote(arity))
     end
   end
 
-  defmacro h(other) do
+  defmacro h({ { :., _, [mod, fun] }, _, [] }) do
     quote do
-      h(unquote(other), :moduledoc)
+      h(unquote(mod), unquote(fun))
     end
   end
 
-  @doc """
-  Prints the documentation for the given function and arity.
+  defmacro h({ :/, _, [{ fun, _, args }, arity] }) when args == [] or is_atom(args) do
+    quote do
+      h(unquote(fun), unquote(arity))
+    end
+  end
 
-  The function may either be a function defined inside `IEx.Helpers`
-  or in `Kernel`. To see functions from other module, use
-  `h/3` instead.
+  defmacro h({ name, _, args }) when args == [] or is_atom(args) do
+    quote do
+      h(unquote(__MODULE__), unquote(name))
+      h(Kernel, unquote(name))
+    end
+  end
 
-  ## Examples
+  defmacro h(other) do
+    quote do
+      h(unquote(other), [])
+    end
+  end
 
-      h(:h, 2)
-      #=> Prints documentation for this function
-
-  """
+  @doc false
   def h(:h, 1) do
     h(__MODULE__, :h, 1)
   end
 
   def h(function, arity) when is_atom(function) and is_integer(arity) do
-    if function_exported?(__MODULE__, function, arity) do
+    if function_exported?(__MODULE__, function, arity) or
+       macro_exported?(__MODULE__, function, arity) do
       h(__MODULE__, function, arity)
     else
       h(Kernel, function, arity)
     end
   end
 
-  def h(module, :moduledoc) when is_atom(module) do
+  def h(module, []) when is_atom(module) do
     case Code.ensure_loaded(module) do
       { :module, _ } ->
         case module.__info__(:moduledoc) do
@@ -158,9 +163,20 @@ defmodule IEx.Helpers do
     end
   end
 
-  @doc """
-  Shows the documentation for the `function/arity` in `module`.
-  """
+  def h(module, function) when is_atom(module) and is_atom(function) do
+    lc {{f, arity}, _line, _type, _args, doc } inlist module.__info__(:docs),
+       f == function and doc != false do
+      h(module, function, arity)
+    end
+    :ok
+  end
+
+  def h(_, _) do
+    IO.puts "Invalid h helper argument"
+    h()
+  end
+
+  @doc false
   def h(module, function, arity) when is_atom(module) and is_atom(function) and is_integer(arity) do
     if docs = module.__info__(:docs) do
       doc =
@@ -223,6 +239,7 @@ defmodule IEx.Helpers do
 
       t(Enum)
       t(Enum.t/0)
+      t(Enum.t)
 
   """
   defmacro t({ :/, _, [{ { :., _, [mod, fun] }, _, [] }, arity] }) do
@@ -231,15 +248,34 @@ defmodule IEx.Helpers do
     end
   end
 
-  defmacro t(module) do
+  defmacro t({ { :., _, [mod, fun] }, _, [] }) do
     quote do
-      t(unquote(module), :all)
+      t(unquote(mod), unquote(fun))
     end
   end
 
+  defmacro t(module) do
+    quote do
+      t(unquote(module), [])
+    end
+  end
 
   @doc false
-  def t(module, :all) do
+  def t(module, type) when is_atom(type) do
+    types = lc {_, {t, _, _args}} = typespec inlist Kernel.Typespec.beam_types(module), 
+               t == type do
+      print_type(typespec)
+      typespec
+    end
+
+    if types == [] do
+       IO.puts "No types for #{inspect module}.#{type} have been found"
+    end
+
+    :ok
+  end
+
+  def t(module, []) do
     types = lc type inlist Kernel.Typespec.beam_types(module), do: print_type(type)
 
     if types == [] do
@@ -270,6 +306,10 @@ defmodule IEx.Helpers do
   ## Examples
 
       s(Enum)
+      s(Enum.all?)
+      s(Enum.all?/2)
+      s(list_to_atom)
+      s(list_to_atom/1)
 
   """
   defmacro s({ :/, _, [{ { :., _, [mod, fun] }, _, [] }, arity] }) do
@@ -278,15 +318,47 @@ defmodule IEx.Helpers do
     end
   end
 
+  defmacro s({ { :., _, [mod, fun] }, _, [] }) do
+    quote do
+      s(unquote(mod), unquote(fun))
+    end
+  end
+
+  defmacro s({ fun, _, args }) when args == [] or is_atom(args) do
+    quote do
+      s(Kernel, unquote(fun))
+    end
+  end
+
+  defmacro s({ :/, _, [{ fun, _, args }, arity] }) when args == [] or is_atom(args) do
+    quote do
+      s(Kernel, unquote(fun), unquote(arity))
+    end    
+  end
+
   defmacro s(module) do
     quote do
-      s(unquote(module), :all)
+      s(unquote(module), [])
     end
   end
 
   @doc false
-  def s(module, :all) do
-    specs = lc spec inlist Kernel.Typespec.beam_specs(module), do: print_spec(spec)
+  def s(module, function) when is_atom(function) do
+    specs = lc {_kind, {{f, _arity}, _spec}} = spec inlist beam_specs(module),
+               f == function do
+      print_spec(spec)
+      spec
+    end
+
+    if specs == [] do
+      IO.puts "No specs for #{inspect module}.#{function} have been found"
+    end
+
+    :ok
+  end
+
+  def s(module, []) do
+    specs = lc spec inlist beam_specs(module), do: print_spec(spec)
 
     if specs == [] do
       IO.puts "No specs for #{inspect module} have been found"
@@ -295,25 +367,25 @@ defmodule IEx.Helpers do
     :ok
   end
 
-  @doc """
-  Prints the specs for a given function.
-
-  ## Examples
-
-      s(Enum.all?/2)
-      s(Enum.t/0)
-
-  """
+  @doc false
   def s(module, function, arity) do
-    spec = List.keyfind(Kernel.Typespec.beam_specs(module), { function, arity }, 0)
-
-    if spec do
+    specs = lc {_kind, {{f, a}, _spec}} = spec inlist beam_specs(module),
+               f == function and a == arity do
       print_spec(spec)
-    else
-      IO.puts "No specs for #{inspect module}.#{function}/#{arity} have been found"
+      spec
+    end
+
+    if specs == [] do
+      IO.puts "No specs for #{inspect module}.#{function} have been found"
     end
 
     :ok
+  end
+
+  defp beam_specs(module) do
+    specs = Enum.map(Kernel.Typespec.beam_specs(module), {:spec, &1})
+    callbacks = Enum.map(Kernel.Typespec.beam_callbacks(module), {:callback, &1})
+    List.concat(specs, callbacks)
   end
 
   defp print_type({ kind, type }) do
@@ -322,12 +394,10 @@ defmodule IEx.Helpers do
     true
   end
 
-  defp print_spec({ { name, _arity }, specs }) do
+  defp print_spec({kind, { { name, _arity }, specs }}) do
     Enum.each specs, fn(spec) ->
-      { args, result } = Kernel.Typespec.spec_to_ast(spec)
-      bin_args   = Macro.to_binary { name, 0, args }
-      bin_result = Macro.to_binary result
-      IO.puts "@spec #{bin_args}, do: #{bin_result}"
+      binary = Macro.to_binary Kernel.Typespec.spec_to_ast(name, spec)
+      IO.puts "@#{kind} #{binary}"
     end
     true
   end
@@ -368,6 +438,27 @@ defmodule IEx.Helpers do
     else
       :nosource
     end
+  end
+
+  @doc """
+  Purges and reloads specified module
+  """
+  def l(module) do
+   :code.purge(module)
+   :code.load_file(module)
+  end
+
+  @doc """
+  Flushes all messages sent to the shell and prints them out
+  """
+  def flush do
+    receive do
+      msg ->
+        IO.inspect(msg)
+        flush
+    after 0 ->
+      :ok
+    end  
   end
 
   defp iex_reloaded do

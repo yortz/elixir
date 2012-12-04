@@ -189,9 +189,9 @@ defmodule FileTest do
 
         { :ok, files } = File.cp_r(src, dest)
         assert length(files) == 8
-        assert tmp_path("tmp/cp_r/a") in files
-        assert tmp_path("tmp/cp_r/c") in files
-        assert tmp_path("tmp/cp_r/a/1.txt") in files
+        assert tmp_path("tmp/cp_r/a") inlist files
+        assert tmp_path("tmp/cp_r/c") inlist files
+        assert tmp_path("tmp/cp_r/a/1.txt") inlist files
 
         assert { :ok, 'certainly/invalid' } = :file.read_link(tmp_path("tmp/cp_r/c"))
 
@@ -878,8 +878,8 @@ defmodule FileTest do
 
       { :ok, files } = File.rm_rf(fixture)
       assert length(files) == 8
-      assert fixture in files
-      assert tmp_path("tmp/a/1.txt") in files
+      assert fixture inlist files
+      assert tmp_path("tmp/a/1.txt") inlist files
 
       refute File.exists?(tmp_path("tmp/a/1.txt"))
       refute File.exists?(tmp_path("tmp/a/a/2.txt"))
@@ -912,8 +912,8 @@ defmodule FileTest do
 
       { :ok, files } = File.rm_rf(fixture)
       assert length(files) == 8
-      assert fixture in files
-      assert (tmp_path("tmp/a/1.txt") /> to_char_list) in files
+      assert fixture inlist files
+      assert (tmp_path("tmp/a/1.txt") /> to_char_list) inlist files
 
       refute File.exists?(tmp_path("tmp/a/1.txt"))
       refute File.exists?(tmp_path("tmp/a/a/2.txt"))
@@ -948,8 +948,8 @@ defmodule FileTest do
 
       files = File.rm_rf!(fixture)
       assert length(files) == 8
-      assert fixture in files
-      assert tmp_path("tmp/a/1.txt") in files
+      assert fixture inlist files
+      assert tmp_path("tmp/a/1.txt") inlist files
 
       refute File.exists?(tmp_path("tmp/a/1.txt"))
       refute File.exists?(tmp_path("tmp/a/a/2.txt"))
@@ -992,7 +992,7 @@ defmodule FileTest do
       iterator = File.iterator(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.puts target, Regex.replace(%r/"/, line, "'")
+          IO.write target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }
@@ -1009,7 +1009,7 @@ defmodule FileTest do
       { :ok, iterator } = File.iterator(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.puts target, Regex.replace(%r/"/, line, "'")
+          IO.write target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }
@@ -1026,7 +1026,58 @@ defmodule FileTest do
       iterator = File.iterator!(src)
       File.open dest, [:write], fn(target) ->
         Enum.each iterator, fn(line) ->
-          IO.puts target, Regex.replace(%r/"/, line, "'")
+          IO.write target, Regex.replace(%r/"/, line, "'")
+        end
+      end
+      assert File.read(dest) == { :ok, "FOO\n" }
+    after
+      File.rm(dest)
+    end
+  end
+
+  test :biniterator do
+    src  = File.open! fixture_path("foo.txt")
+    dest = tmp_path("tmp_test.txt")
+
+    try do
+      iterator = File.biniterator(src)
+      File.open dest, [:write], fn(target) ->
+        Enum.each iterator, fn(line) ->
+          IO.write target, Regex.replace(%r/"/, line, "'")
+        end
+      end
+      assert File.read(dest) == { :ok, "FOO\n" }
+    after
+      File.rm(dest)
+    end
+  end
+
+  test :biniterator_with_path do
+    src  = fixture_path("foo.txt")
+    dest = tmp_path("tmp_test.txt")
+
+    try do
+      { :ok, iterator } = File.biniterator(src)
+      File.open dest, [:write], fn(target) ->
+        Enum.each iterator, fn(line) ->
+          IO.write target, Regex.replace(%r/"/, line, "'")
+        end
+      end
+      assert File.read(dest) == { :ok, "FOO\n" }
+    after
+      File.rm(dest)
+    end
+  end
+
+  test :biniterator! do
+    src  = fixture_path("foo.txt")
+    dest = tmp_path("tmp_test.txt")
+
+    try do
+      iterator = File.biniterator!(src)
+      File.open dest, [:write], fn(target) ->
+        Enum.each iterator, fn(line) ->
+          IO.write target, Regex.replace(%r/"/, line, "'")
         end
       end
       assert File.read(dest) == { :ok, "FOO\n" }

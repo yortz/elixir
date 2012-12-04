@@ -123,23 +123,28 @@ defmodule Typespec.Test.Type do
 
   test "@type with a fun" do
     spec = test_module do
-      @type mytype :: fun
+      @type mytype :: (... -> any)
     end
     assert {:mytype,{:type,_,:fun, []},[]} = spec
   end
 
   test "@type with a fun with arguments and return type" do
-    spec = test_module do
-      @type mytype :: fun(integer, integer, do: integer)
+    {spec1, spec2} = test_module do
+      t1 = @type mytype :: (integer, integer -> integer)
+      t2 = @type mytype2 :: (fun(integer, integer) -> integer)
+      {t1, t2}
     end
     assert {:mytype,{:type,_,:fun, [{:type, _, :product,
              [{:type, _, :integer, []}, {:type, _, :integer, []}]},
-             {:type, _, :integer, []}]},[]} = spec
+             {:type, _, :integer, []}]},[]} = spec1
+    assert {:mytype2,{:type,_,:fun, [{:type, _, :product,
+             [{:type, _, :integer, []}, {:type, _, :integer, []}]},
+             {:type, _, :integer, []}]},[]} = spec2
   end
 
   test "@type with a fun with no arguments and return type" do
     spec = test_module do
-      @type mytype :: fun(do: integer)
+      @type mytype :: (() -> integer)
     end
     assert {:mytype,{:type,_,:fun, [{:type, _, :product, []},
              {:type, _, :integer, []}]}, []} = spec
@@ -147,7 +152,7 @@ defmodule Typespec.Test.Type do
 
   test "@type with a fun with any arity and return type" do
     spec = test_module do
-      @type mytype :: fun(..., do: integer)
+      @type mytype :: (... -> integer)
     end
     assert {:mytype,{:type,_,:fun, [{:type, _, :any},
              {:type, _, :integer, []}]}, []} = spec
@@ -186,7 +191,7 @@ defmodule Typespec.Test.Type do
   test "@type with annotations" do
     {spec1, spec2} = test_module do
       t1 = @type mytype :: named :: integer
-      t2 = @type mytype1 :: fun(a :: integer, do: integer)
+      t2 = @type mytype1 :: (a :: integer -> integer)
       {t1,t2}
     end
     assert {:mytype, {:ann_type, _, [{:var, _, :named}, {:type, _, :integer, []}]}, []} = spec1
@@ -224,9 +229,9 @@ defmodule Typespec.Test.Type do
       def myfun(x), do: x
       def myfun(), do: :ok
       def myfun(x,y), do: {x,y}
-      t1 = @spec myfun(integer), do: integer
-      t2 = @spec myfun(), do: integer
-      t3 = @spec myfun(integer, integer), do: {integer, integer}
+      t1 = @spec myfun(integer) :: integer
+      t2 = @spec myfun() :: integer
+      t3 = @spec myfun(integer, integer) :: {integer, integer}
       {t1,t2,t3}
     end
     assert {{:myfun,1},{:type,_,:fun,[{:type,_,:product,[{:type,_,:integer,[]}]},{:type,_,:integer,[]}]}} = spec1
@@ -234,11 +239,19 @@ defmodule Typespec.Test.Type do
     assert {{:myfun,2},{:type,_,:fun,[{:type,_,:product,[{:type,_,:integer,[]},{:type,_,:integer,[]}]},{:type,_,:tuple,[{:type,_,:integer,[]},{:type,_,:integer,[]}]}]}} = spec3
   end
 
+  test "@spec(spec) with guards" do
+    spec1 = test_module do
+      def myfun(x), do: x
+      @spec myfun(x) when is_subtype(x, integer) :: boolean
+    end
+    assert {{:myfun,1},{:type,_,:bounded_fun,[{:type,_,:fun,[{:type,_,:product,[{:var,_,:x}]},{:type,_,:boolean,[]}]},[{:type,_,:constraint,[{:atom,_,:is_subtype},[{:var,_,:x},{:type,_,:integer,[]}]]}]]}} = spec1
+  end
+
   test "@callback(callback)" do
     {spec1, spec2, spec3} = test_module do
-      t1 = @callback myfun(integer), do: integer
-      t2 = @callback myfun(), do: integer
-      t3 = @callback myfun(integer, integer), do: {integer, integer}
+      t1 = @callback myfun(integer) :: integer
+      t2 = @callback myfun() :: integer
+      t3 = @callback myfun(integer, integer) :: {integer, integer}
       {t1,t2,t3}
     end
     assert {{:myfun,1},{:type,_,:fun,[{:type,_,:product,[{:type,_,:integer,[]}]},{:type,_,:integer,[]}]}} = spec1
@@ -249,22 +262,22 @@ defmodule Typespec.Test.Type do
   test "@spec + @callback" do
     { specs, callbacks } = test_module do
       def myfun(x), do: x
-      @spec myfun(integer), do: integer
-      @spec myfun(char_list),  do: char_list
-      @callback cb(integer), do: integer
+      @spec myfun(integer)   :: integer
+      @spec myfun(char_list) :: char_list
+      @callback cb(integer)  :: integer
       { @spec, @callback }
     end
 
     assert [
       { {:cb, 1}, {:type,_,:fun,[{:type,_,:product,[{:type,_,:integer,[]}]},{:type,_,:integer,[]}]} }
-    ] = List.sort(callbacks)
+    ] = Enum.sort(callbacks)
 
     assert [
       { {:myfun,1}, {:type,_,:fun,[{:type,_,:product,[{:type,_,:integer,[]}]},{:type,_,:integer,[]}]} },
       { {:myfun,1}, {:type,_,:fun,[{:type,_,:product,[
                       {:remote_type, _, [{:atom, _, :elixir},{:atom, _, :char_list}, []]}]},
                       {:remote_type, _, [{:atom, _, :elixir},{:atom, _, :char_list}, []]}]} }
-    ] = List.sort(specs)
+    ] = Enum.sort(specs)
   end
 
   # Conversion to AST
@@ -282,7 +295,9 @@ defmodule Typespec.Test.Type do
       (quote do: @type binary_type2() :: <<_ :: 3 * 8>>),
       (quote do: @type binary_type3() :: <<_ :: 3>>),
       (quote do: @type tuple_type() :: {integer()}),
-      (quote do: @type ftype() :: fun() | fun(do: integer()) | fun(integer(), do: integer())),
+      (quote do: @type ftype() :: (() -> any()) | (() -> integer()) | ((integer() -> integer()))),
+      (quote do: @type cl() :: char_list()),
+      (quote do: @type vaf() :: (... -> any())),
     ]
 
     types = test_module do
@@ -309,13 +324,21 @@ defmodule Typespec.Test.Type do
                         { :type, 0, :integer, [] } },
                     ],
                     []}
-    assert Kernel.Typespec.type_to_ast(record_type) == quote hygiene: false, do: my_record() :: {:my_record, field1 :: atom(), field2 :: integer() }
+    assert Kernel.Typespec.type_to_ast(record_type) ==
+      quote(hygiene: false, do: my_record() :: {:my_record, field1 :: atom(), field2 :: integer() })
+  end
+
+  test "type_to_ast for paren_type" do 
+    type = {:my_type, {:paren_type, 0, [{:type, 0, :integer, []}]}, []}
+    assert Kernel.Typespec.type_to_ast(type) ==
+      quote(hygiene: false, do: my_type() :: integer())
   end
 
   test "spec_to_ast" do
     specs = [
-      (quote do: @spec a(), do: integer()),
-      (quote do: @spec a(atom()), do: integer()),
+      (quote do: @spec a() :: integer()),
+      (quote do: @spec a(atom()) :: integer()),
+      (quote do: @spec a(b) when is_subtype(b, integer()) :: integer()),
     ]
 
     compiled = test_module do
@@ -325,9 +348,8 @@ defmodule Typespec.Test.Type do
       Enum.reverse @spec
     end
 
-    lc { { { name, _ }, spec }, definition } inlist Enum.zip(compiled, specs) do
-      { args, result } = Kernel.Typespec.spec_to_ast(spec)
-      quoted = quote do: @spec unquote(name)(unquote_splicing(args)), do: unquote(result)
+    lc { { { _, _ }, spec }, definition } inlist Enum.zip(compiled, specs) do
+      quoted = quote do: @spec unquote(Kernel.Typespec.spec_to_ast(:a, spec))
       assert Macro.to_binary(quoted) == Macro.to_binary(definition)
     end
   end
@@ -338,8 +360,8 @@ defmodule Typespec.Test.Type do
     Code.compiler_options debug_info: true
 
     { :module, T, binary, _ } = defmodule T do
-      @spec a, do: any
-      def a,   do: nil
+      @spec a :: any
+      def a, do: nil
     end
 
     :code.delete(T)
@@ -356,7 +378,7 @@ defmodule Typespec.Test.Type do
     { :module, T, binary, _ } = defmodule T do
       @type a :: any
       @typep b :: any
-      @spec t(b), do: b
+      @spec t(b) :: b
       def t(b), do: b
       @opaque c :: any
     end

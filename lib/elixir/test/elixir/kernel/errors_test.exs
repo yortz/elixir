@@ -167,6 +167,11 @@ defmodule Kernel.ErrorsTest do
       format_rescue 'defmodule Foo, do: (defmodule Elixir.Foo, do: true)'
   end
 
+  test :invalid_definition do
+    assert "nofile:1: invalid syntax in def 1.(hello)" ==
+      format_rescue 'defmodule Foo, do: (def 1.(hello), do: true)'
+  end
+
   test :duplicated_bitstring_size do
     assert "nofile:1: duplicated size definition for bitstring" == format_rescue '<<1 :: [size(12), size(13)]>>'
   end
@@ -232,6 +237,16 @@ defmodule Kernel.ErrorsTest do
   test :unbound_cond do
     assert "unbound variable _ inside cond. If you want the last clause to match, you probably meant to use true ->" ==
       format_rescue 'cond do _ -> true end'
+  end
+
+  test :fun_different_arities do
+    assert "nofile:1: cannot mix clauses with different arities in function definition" ==
+      format_rescue 'fn x -> x; x, y -> x + y end'
+  end
+
+  test :new_line_error do
+    assert "nofile:3: syntax error before: newline" ==
+      format_rescue 'if true do\n  foo = [],\n  baz\nend'
   end
 
   test :macros_error_stacktrace do

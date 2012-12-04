@@ -269,10 +269,10 @@ tokenize([$:,T|Rest], Line, Scope, Tokens) when ?comp1(T); ?op1(T); T == $&; T =
 % End of line
 
 tokenize(";" ++ Rest, Line, Scope, []) ->
-  tokenize(Rest, Line, Scope, eol(Line, $;, []));
+  tokenize(Rest, Line, Scope, eol(Line, ';', []));
 
 tokenize(";" ++ Rest, Line, Scope, [Top|Tokens]) when element(1, Top) /= eol ->
-  tokenize(Rest, Line, Scope, eol(Line, $;, [Top|Tokens]));
+  tokenize(Rest, Line, Scope, eol(Line, ';', [Top|Tokens]));
 
 tokenize("\\\n" ++ Rest, Line, Scope, Tokens) ->
   tokenize(Rest, Line + 1, Scope, Tokens);
@@ -281,10 +281,10 @@ tokenize("\\\r\n" ++ Rest, Line, Scope, Tokens) ->
   tokenize(Rest, Line + 1, Scope, Tokens);
 
 tokenize("\n" ++ Rest, Line, Scope, Tokens) ->
-  tokenize(Rest, Line + 1, Scope, eol(Line, $\n, Tokens));
+  tokenize(Rest, Line + 1, Scope, eol(Line, newline, Tokens));
 
 tokenize("\r\n" ++ Rest, Line, Scope, Tokens) ->
-  tokenize(Rest, Line + 1, Scope, eol(Line, $\n, Tokens));
+  tokenize(Rest, Line + 1, Scope, eol(Line, newline, Tokens));
 
 % Stand-alone tokens
 
@@ -702,7 +702,7 @@ next_is_block([$d,$o|_]) ->
 next_is_block(_) ->
   false.
 
-add_token_with_nl(Left, [{eol,_,$\n}|T]) -> [Left|T];
+add_token_with_nl(Left, [{eol,_,newline}|T]) -> [Left|T];
 add_token_with_nl(Left, T) -> [Left|T].
 
 % Error handling
@@ -729,7 +729,7 @@ handle_terminator(Token, #scope{terminators=Terminators} = Scope) ->
     New -> Scope#scope{terminators=New}
   end.
 
-check_terminator({ S, Line }, Terminators) when S == 'fn'; S == 'fn_paren' ->
+check_terminator({ S, Line }, Terminators) when S == 'fn' ->
   [{ fn, Line }|Terminators];
 
 check_terminator({ S, _ } = New, Terminators) when
@@ -770,9 +770,6 @@ terminator('{')  -> '}';
 terminator('<<') -> '>>'.
 
 % Keywords check
-handle_keyword(Line, paren_identifier, fn, Tokens) ->
-  [{ 'fn_paren', Line }|Tokens];
-
 handle_keyword(Line, Identifier, Atom, [{ '.', _ }|_] = Tokens) ->
   [{ Identifier, Line, Atom }|Tokens];
 

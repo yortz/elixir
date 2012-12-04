@@ -35,6 +35,10 @@ defmodule Regex.BinaryTest do
     assert Regex.opts(Regex.compile!("foo", "u")) == "u"
   end
 
+  test :unicode do
+    assert ("josé" =~ %r"\p{Latin}$"u) == 3
+  end
+
   test :groups do
     assert Regex.groups(%r/(?<FOO>foo)/g) == [:FOO]
     assert Regex.groups(Regex.compile!("foo")) == nil

@@ -8,15 +8,22 @@
   at_exit=[],
   pool=[],
   counter=0,
-  compiler_options=[{docs,true}]
+  compiler_options=[{docs,true},{debug_info,true}],
+  waiting=[]
 }).
 
 start_link() ->
   { ok, _ } = gen_server:start_link({local, elixir_code_server}, ?MODULE, [], []).
 
 init(_args) ->
-  process_flag(trap_exit, true),
   { ok, #elixir_code_server{} }.
+
+handle_call({ wait_until_finished, Pid }, _, Config) ->
+  Waiting = Config#elixir_code_server.waiting,
+  case is_list(Waiting) of
+    true  -> { reply, wait, Config#elixir_code_server{waiting=[Pid|Waiting]} };
+    false -> { reply, ok, Config }
+  end;
 
 handle_call({ acquire, Path }, From, Config) ->
   Current = Config#elixir_code_server.loaded,
@@ -47,6 +54,9 @@ handle_call(loaded, _From, Config) ->
 handle_call(at_exit, _From, Config) ->
   { reply, Config#elixir_code_server.at_exit, Config };
 
+handle_call(flush_at_exit, _From, Config) ->
+  { reply, Config#elixir_code_server.at_exit, Config#elixir_code_server{at_exit=[]} };
+
 handle_call(argv, _From, Config) ->
   { reply, Config#elixir_code_server.argv, Config };
 
@@ -64,6 +74,11 @@ handle_call(retrieve_module_name, _From, Config) ->
 
 handle_call(_Request, _From, Config) ->
   { reply, undef, Config }.
+
+handle_cast(finished, Config) ->
+  Waiting = Config#elixir_code_server.waiting,
+  [Pid ! { elixir_code_server, finished } || Pid <- lists:reverse(Waiting)],
+  { noreply, Config#elixir_code_server{waiting=done} };
 
 handle_cast({ loaded, Path }, Config) ->
   Current = Config#elixir_code_server.loaded,
@@ -93,9 +108,7 @@ handle_cast(_Request, Config) ->
 handle_info(_Request, Config) ->
   { noreply, Config }.
 
-terminate(Reason, Config) ->
-  io:format("[FATAL] ~p crashed:\n~p~n", [?MODULE, Reason]),
-  io:format("[FATAL] ~p snapshot:\n~p~n", [?MODULE, Config]),
+terminate(_Reason, _Config) ->
   ok.
 
 code_change(_Old, Config, _Extra) ->

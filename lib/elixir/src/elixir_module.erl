@@ -40,18 +40,10 @@ docs_table(Module) ->
 %% will be passed to the invoked function.
 
 translate(Line, Ref, Block, S) ->
-  MetaBlock = elixir_tree_helpers:abstract_syntax(Block),
-  MetaS     = elixir_scope:serialize(S),
+  MetaBlock       = elixir_tree_helpers:abstract_syntax(Block),
+  { MetaS, Vars } = elixir_scope:serialize_with_vars(Line, S),
 
-  Vars = orddict:fold(fun(Key, Value, { Acc, Counter }) ->
-    { { cons, Line, { tuple, Line, [
-      { atom, Line, Key },
-      { atom, Line, ?ELIXIR_ATOM_CONCAT(["_@", Counter]) },
-      { var,  Line, Value }
-    ] }, Acc }, Counter + 1 }
-  end, { { nil, Line }, 0 }, S#elixir_scope.vars),
-
-  Args = [{integer, Line, Line}, Ref, MetaBlock, element(1, Vars), MetaS],
+  Args = [{integer, Line, Line}, Ref, MetaBlock, Vars, MetaS],
   ?ELIXIR_WRAP_CALL(Line, ?MODULE, compile, Args).
 
 %% The compilation hook.
@@ -92,8 +84,8 @@ compile(Line, Other, _Block, _Vars, #elixir_scope{file=File}) ->
   elixir_errors:form_error(Line, File, ?MODULE, { invalid_module, Other });
 
 compile(Line, Module, Block, Vars, RawS) ->
-  Dict = [{ X, Y } || { X, Y, _ } <- Vars],
-  S = elixir_scope:deserialize(RawS, Dict),
+  Dict = [{ { Name, Kind }, Value } || { Name, Kind, Value, _ } <- Vars],
+  S = elixir_scope:deserialize_with_vars(RawS, Dict),
   compile(Line, Module, Block, Vars, S).
 
 %% Hook that builds both attribute and functions and set up common hooks.
@@ -144,7 +136,12 @@ eval_form(Line, Module, Block, Vars, RawS) ->
   Value.
 
 %% Return the form with exports and function declarations.
-functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Functions, C) ->
+functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, RawFunctions, C) ->
+  Functions = case elixir_compiler:get_opt(internal, C) of
+    true  -> RawFunctions;
+    false -> record_rewrite_functions(RawFunctions)
+  end,
+
   { FinalExport, FinalFunctions } =
     add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C),
 
@@ -154,6 +151,17 @@ functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Fu
   { FinalExport ++ Private, [
     {attribute, Line, export, lists:sort(FinalExport)} | FinalFunctions
   ] }.
+
+record_rewrite_functions(Functions) ->
+  lists:map(fun
+    ({ function, Line, Name, Arity, Clauses }) ->
+      Rewriten = [begin
+        { C, _, _ } = 'Elixir.Kernel.RecordRewriter':optimize_clause(Clause),
+        C
+      end || Clause <- Clauses],
+      { function, Line, Name, Arity, Rewriten };
+    (Other) -> Other
+  end, Functions).
 
 %% Add attributes handling to the form
 
@@ -196,7 +204,9 @@ specs_form(Line, Module, Defmacro, DefmacropWithLine, Forms, C) ->
   end.
 
 specs_attributes(Line, Type, Forms, Specs) ->
-  Keys = lists:ukeysort(1, Specs),
+  Keys = lists:foldl(fun({ Tuple, Value }, Acc) ->
+                       lists:keystore(Tuple, 1, Acc, { Tuple, Value } )
+                     end, [], Specs),
   lists:foldl(fun({ Tuple, _ }, Acc) ->
     Values = [V || { K, V } <- Specs, K == Tuple],
     [{ attribute, Line, Type, { Tuple, Values } }|Acc]
@@ -262,50 +272,50 @@ add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C) ->
     true  -> elixir_errors:form_error(Line, File, ?MODULE, {internal_function_overridden, Pair});
     false ->
       Docs = elixir_compiler:get_opt(docs, C),
-      Contents = { function, Line, '__info__', 1, [
-        functions_clause(Line, Def),
-        macros_clause(Line, Module, Def, Defmacro),
-        docs_clause(Line, Module, Docs),
+      Contents = { function, 0, '__info__', 1, [
+        functions_clause(Def),
+        macros_clause(Module, Def, Defmacro),
+        docs_clause(Module, Docs),
         moduledoc_clause(Line, Module, Docs),
-        module_clause(Line, Module),
-        else_clause(Line)
+        module_clause(Module),
+        else_clause()
       ] },
       { [Pair|Export], [Contents|Functions] }
   end.
 
-functions_clause(Line, Def) ->
+functions_clause(Def) ->
   All = ordsets:add_element({'__info__',1}, Def),
-  { clause, Line, [{ atom, Line, functions }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
+  { clause, 0, [{ atom, 0, functions }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
 
-macros_clause(Line, Module, Def, Defmacro) ->
+macros_clause(Module, Def, Defmacro) ->
   All = handle_builtin_macros(Module, Def, Defmacro),
-  { clause, Line, [{ atom, Line, macros }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
+  { clause, 0, [{ atom, 0, macros }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
 
 handle_builtin_macros('Elixir.Kernel', Def, Defmacro) ->
   ordsets:subtract(ordsets:union(Defmacro,
     elixir_dispatch:in_erlang_macros()), Def);
 handle_builtin_macros(_, _Def, Defmacro) -> Defmacro.
 
-module_clause(Line, Module) ->
-  { clause, Line, [{ atom, Line, module }], [], [{ atom, Line, Module }] }.
+module_clause(Module) ->
+  { clause, 0, [{ atom, 0, module }], [], [{ atom, 0, Module }] }.
 
-docs_clause(Line, Module, true) ->
+docs_clause(Module, true) ->
   Docs = ordsets:from_list(ets:tab2list(docs_table(Module))),
-  { clause, Line, [{ atom, Line, docs }], [], [elixir_tree_helpers:abstract_syntax(Docs)] };
+  { clause, 0, [{ atom, 0, docs }], [], [elixir_tree_helpers:abstract_syntax(Docs)] };
 
-docs_clause(Line, _Module, _) ->
-  { clause, Line, [{ atom, Line, docs }], [], [{ atom, Line, nil }] }.
+docs_clause(_Module, _) ->
+  { clause, 0, [{ atom, 0, docs }], [], [{ atom, 0, nil }] }.
 
 moduledoc_clause(Line, Module, true) ->
   Docs = 'Elixir.Module':get_attribute(Module, moduledoc),
-  { clause, Line, [{ atom, Line, moduledoc }], [], [elixir_tree_helpers:abstract_syntax({ Line, Docs })] };
+  { clause, 0, [{ atom, 0, moduledoc }], [], [elixir_tree_helpers:abstract_syntax({ Line, Docs })] };
 
-moduledoc_clause(Line, _Module, _) ->
-  { clause, Line, [{ atom, Line, moduledoc }], [], [{ atom, Line, nil }] }.
+moduledoc_clause(_Line, _Module, _) ->
+  { clause, 0, [{ atom, 0, moduledoc }], [], [{ atom, 0, nil }] }.
 
-else_clause(Line) ->
-  Info = { call, Line, { atom, Line, module_info }, [{ var, Line, atom }] },
-  { clause, Line, [{ var, Line, atom }], [], [Info] }.
+else_clause() ->
+  Info = { call, 0, { atom, 0, module_info }, [{ var, 0, atom }] },
+  { clause, 0, [{ var, 0, atom }], [], [Info] }.
 
 % HELPERS
 

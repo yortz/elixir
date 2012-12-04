@@ -12,10 +12,10 @@ defmodule Behaviour do
         use Behaviour
 
         @doc "Parses the given URL"
-        defcallback parse(uri_info :: URI.Info.t), do: URI.Info.t
+        defcallback parse(uri_info :: URI.Info.t) :: URI.Info.t
 
         @doc "Defines a default port"
-        defcallback default_port(), do: integer
+        defcallback default_port() :: integer
       end
 
   And then a specific module may use it as:
@@ -46,10 +46,28 @@ defmodule Behaviour do
   Defines a callback according to the given type specification.
   """
   defmacro defcallback(fun, do: return) do
-    { name, args } = :elixir_clauses.extract_args(fun)
+    IO.write "[WARNING] defcallback(fun, do: return) is deprecated, please use defcallback(fun :: return) instead\n#{Exception.env_stacktrace(__CALLER__)}"
+    do_defcallback(fun, return, __CALLER__)
+  end
+
+  defmacro defcallback({ :::, _, [fun, return] }) do
+    do_defcallback(fun, return, __CALLER__)
+  end
+
+  defmacro defcallback(fun) do
+    do_defcallback(fun, quote(do: term), __CALLER__)
+  end
+
+  defp do_defcallback(fun, return, caller) do
+    case Macro.extract_args(fun) do
+      { name, args } -> :ok
+      :error ->
+        raise ArgumentError, message: "invalid syntax in defcallback #{Macro.to_binary(fun)}"
+    end
+
     arity = length(args)
 
-    Enum.each args, (function do
+    Enum.each args, fn
       { :::, _, [left, right] } ->
         ensure_not_default(left)
         ensure_not_default(right)
@@ -57,11 +75,11 @@ defmodule Behaviour do
       other ->
         ensure_not_default(other)
         other
-    end)
+    end
 
     quote do
-      @callback unquote(name)(unquote_splicing(args)), do: unquote(return)
-      Behaviour.store_docs __MODULE__, unquote(__CALLER__.line), unquote(name), unquote(arity)
+      @callback unquote(name)(unquote_splicing(args)) :: unquote(return)
+      Behaviour.store_docs __MODULE__, unquote(caller.line), unquote(name), unquote(arity)
     end
   end
 
@@ -79,35 +97,8 @@ defmodule Behaviour do
   end
 
   @doc false
-  defmacro defcallback(fun) do
-    IO.write "[WARNING] Behaviour.defcallback/1 is deprecated, please use defcallback/2 instead\n#{Exception.formatted_stacktrace}"
-
-    { name, args } = :elixir_clauses.extract_args(fun)
-    length = length(args)
-
-    { args, defaults } = Enum.map_reduce(args, 0, function do
-      { ://, _, [expr, _] }, acc ->
-        { expr, acc + 1 }
-      expr, acc ->
-        { expr, acc }
-    end)
-
-    attributes = Enum.map (length - defaults)..length, fn(i) ->
-      quote do
-        @__behaviour_callbacks { unquote(name), unquote(i) }
-      end
-    end
-
-    quote do
-      __block__ unquote(attributes)
-      def unquote(name)(unquote_splicing(args))
-    end
-  end
-
-  @doc false
   defmacro __using__(_) do
     quote do
-      Module.register_attribute(__MODULE__, :__behaviour_callbacks, accumulate: true)
       Module.register_attribute(__MODULE__, :__behaviour_docs, accumulate: true)
       @before_compile unquote(__MODULE__)
       import unquote(__MODULE__)
@@ -117,13 +108,6 @@ defmodule Behaviour do
   @doc false
   defmacro __before_compile__(_) do
     quote do
-      if @__behaviour_callbacks != [] do
-        @doc false
-        def behaviour_info(:callbacks) do
-          @__behaviour_callbacks
-        end
-      end
-
       @doc false
       def __behaviour__(:callbacks) do
         __MODULE__.behaviour_info(:callbacks)

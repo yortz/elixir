@@ -30,6 +30,28 @@ defmodule Macro do
   end
 
   @doc """
+  Receives an expresion representing a possible definition
+  and extracts its arguments. It returns a tuple with the
+  function name and the arguments list or `:error` if not
+  a valid call syntax.
+
+  This is useful for macros that want to provide the same
+  arguments syntax available in def/defp/defmacro and friends.
+
+  ## Examples
+
+      extract_args(quote do: foo)        == { :foo, [] }
+      extract_args(quote do: foo())      == { :foo, [] }
+      extract_args(quote do: :foo.())    == { :foo, [] }
+      extract_args(quote do: foo(1,2,3)) == { :foo, [1,2,3] }
+      extract_args(quote do: 1.(1,2,3))  == :error
+
+  """
+  def extract_args(expr) do
+    :elixir_clauses.extract_args(expr)
+  end
+
+  @doc """
   Recursively escapes the given value so it can be inserted
   into a syntax tree. Structures that are valid syntax nodes
   (like atoms, integers, binaries) are represented by themselves.
@@ -111,6 +133,11 @@ defmodule Macro do
   Octals will by default be escaped unless the map function
   returns false for ?0.
 
+  ## Hex
+
+  Octals will by default be escaped unless the map function
+  returns false for ?x.
+
   ## Examples
 
   Using the unescape_map defined above is easy:
@@ -126,7 +153,7 @@ defmodule Macro do
   Unescape the given tokens according to the default map.
   Check `unescape/1` and `unescape/2` for more information
   about unescaping. Only tokens that are binaries are
-  unescaped, all others are ignored. This method is useful
+  unescaped, all others are ignored. This function is useful
   when implementing your own sigils. Check the implementation
   of `Kernel.__b__` for examples.
   """
@@ -189,13 +216,28 @@ defmodule Macro do
   end
 
   # Fn keyword
-  def to_binary({ :fn, _, [[do: block]] }) do
+  def to_binary({ :fn, _, [[do: { :->, _, [{_,tuple}] } = arrow]] })
+      when not is_tuple(tuple) or elem(tuple, 0) != :__block__ do
+    "fn " <> arrow_to_binary(arrow) <> " end"
+  end
+
+  def to_binary({ :fn, _, [[do: { :->, _, [_] } = block]] }) do
     "fn " <> block_to_binary(block) <> "\nend"
+  end
+
+  def to_binary({ :fn, _, [[do: block]] }) do
+    block = adjust_new_lines block_to_binary(block), "\n  "
+    "fn\n  " <> block <> "\nend"
   end
 
   # Partial call
   def to_binary({ :&, _, [num] }) do
     "&#{num}"
+  end
+
+  # left -> right
+  def to_binary({ :->, _, _ } = arrow) do
+    "(" <> arrow_to_binary(arrow, true) <> ")"
   end
 
   # Binary ops
@@ -204,6 +246,10 @@ defmodule Macro do
   end
 
   # Unary ops
+  def to_binary({ :not, _, [arg] })  do
+    "not " <> to_binary(arg)
+  end
+
   def to_binary({ op, _, [arg] }) when op in unary_ops do
     atom_to_binary(op, :utf8) <> to_binary(arg)
   end
@@ -267,8 +313,8 @@ defmodule Macro do
 
   defp block_to_binary({ :->, _, exprs }) do
     Enum.map_join(exprs, "\n", fn({ left, right }) ->
-      left = Enum.map_join(left, ", ", to_binary(&1))
-      left <> " ->\n  " <> adjust_new_lines block_to_binary(right), "\n  "
+      left = comma_join_or_empty_paren(left, false)
+      left <> "->\n  " <> adjust_new_lines block_to_binary(right), "\n  "
     end)
   end
 
@@ -283,6 +329,20 @@ defmodule Macro do
   end
 
   defp op_to_binary(expr), do: to_binary(expr)
+
+  defp arrow_to_binary({ :->, _, pairs }, paren // false) do
+    Enum.map_join(pairs, "; ", fn({ left, right }) ->
+      left = comma_join_or_empty_paren(left, paren)
+      left <> "-> " <> to_binary(right)
+    end)
+  end
+
+  defp comma_join_or_empty_paren([], true),  do: "() "
+  defp comma_join_or_empty_paren([], false), do: ""
+
+  defp comma_join_or_empty_paren(left, _) do
+    Enum.map_join(left, ", ", to_binary(&1)) <> " "
+  end
 
   defp adjust_new_lines(block, replacement) do
     bc <<x>> inbits block do
@@ -300,6 +360,7 @@ defmodule Macro do
   * Macros (local or remote);
   * Aliases are expanded (if possible) and return atoms;
   * All pseudo-variables (__FILE__, __MODULE__, etc);
+  * Module attributes reader (@foo);
 
   In case the expression cannot be expanded, it returns the expression itself.
 

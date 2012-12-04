@@ -1,9 +1,10 @@
-REBAR:=$(shell echo `pwd`/rebar)
-ELIXIRC:=bin/elixirc --debug-info --ignore-module-conflict $(ELIXIRC_OPTS)
-ERLC:=erlc -I lib/elixir/include
-ERL:=erl -I lib/elixir/include -noshell -env ERL_LIBS $ERL_LIBS:lib
-VERSION:=0.7.1
-RELEASE_FLAG:=.release
+REBAR := $(shell echo `pwd`/rebar)
+ELIXIRC := bin/elixirc --ignore-module-conflict $(ELIXIRC_OPTS)
+ERLC := erlc -I lib/elixir/include
+ERL := erl -I lib/elixir/include -noshell -env ERL_LIBS $ERL_LIBS:lib
+VERSION := 0.7.2
+RELEASE_FLAG := .release
+INSTALL_PATH := /usr/local
 
 .PHONY: 1
 .NOTPARALLEL: compile
@@ -14,7 +15,7 @@ define APP_TEMPLATE
 $(1): lib/$(1)/ebin/Elixir-$(2).beam lib/$(1)/ebin/$(1).app
 
 lib/$(1)/ebin/$(1).app:
-	@ cd lib/$(1) && ../../bin/elixir ../../bin/mix compile.app
+	@ cd lib/$(1) && ../../bin/mix compile.app
 
 lib/$(1)/ebin/Elixir-$(2).beam: $(wildcard lib/$(1)/lib/*.ex) $(wildcard lib/$(1)/lib/*/*.ex) $(wildcard lib/$(1)/lib/*/*/*.ex)
 	@ echo "==> $(1) (compile)"
@@ -68,6 +69,17 @@ $(eval $(call APP_TEMPLATE,eex,EEx))
 $(eval $(call APP_TEMPLATE,mix,Mix))
 $(eval $(call APP_TEMPLATE,iex,IEx))
 
+install: compile
+	@ echo "==> elixir (install)"
+	for dir in lib/*; do \
+		install -m755 -d $(INSTALL_PATH)/lib/elixir/$$dir/ebin; \
+		install -m644 $$dir/ebin/* $(INSTALL_PATH)/lib/elixir/$$dir/ebin; \
+	done
+	install -m755 -d $(INSTALL_PATH)/lib/elixir/bin
+	install -m755 $(filter-out %.bat, $(wildcard bin/*)) $(INSTALL_PATH)/lib/elixir/bin
+	install -m755 -d $(INSTALL_PATH)/bin
+	ln -sf $(INSTALL_PATH)/lib/elixir/bin/* $(INSTALL_PATH)/bin
+
 clean:
 	@ cd lib/elixir && $(REBAR) clean
 	rm -rf $(RELEASE_FLAG)
@@ -77,14 +89,10 @@ clean:
 	rm -rf lib/mix/test/fixtures/git_repo
 	rm -rf lib/mix/tmp
 
-#==> Release tasks (modules compiled with --debug-info and --docs)
+#==> Release tasks
 
 $(RELEASE_FLAG): compile
 	touch $(RELEASE_FLAG)
-
-zip: $(RELEASE_FLAG)
-	rm -rf v$(VERSION).zip
-	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel
 
 docs: $(RELEASE_FLAG)
 	mkdir -p ebin
@@ -92,6 +100,10 @@ docs: $(RELEASE_FLAG)
 	cp -R -f lib/*/ebin/*.beam ./ebin
 	bin/elixir ../exdoc/bin/exdoc
 	rm -rf ebin
+
+release_zip: $(RELEASE_FLAG)
+	rm -rf v$(VERSION).zip
+	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel
 
 release_docs: docs
 	cd ../elixir-lang.github.com && git checkout master

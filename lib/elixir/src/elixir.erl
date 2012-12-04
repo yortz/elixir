@@ -1,6 +1,6 @@
 -module(elixir).
 -behaviour(application).
--export([main/1, start_cli/0, start_app/0,
+-export([main/1, start_cli/0,
   scope_for_eval/1, eval/2, eval/3, eval/4,
   eval_quoted/2, eval_quoted/3, eval_quoted/4,
   eval_forms/3]).
@@ -16,9 +16,12 @@
 -export([start/2, stop/1, config_change/3]).
 
 start(_Type, _Args) ->
-  %% Set the shell to unicode so printing inside files work
-  io:setopts(standard_io, [{encoding,unicode}]),
-  io:setopts(standard_error, [{encoding,unicode}]),
+  %% Set the shell to unicode so printing inside scripts work
+  %% Those can take a while, so let's do it in a new process
+  spawn(fun() ->
+    io:setopts(standard_io, [{encoding,unicode}]),
+    io:setopts(standard_error, [{encoding,unicode}])
+  end),
   elixir_sup:start_link([]).
 
 stop(_S) ->
@@ -30,25 +33,14 @@ config_change(_Changed, _New, _Remove) ->
 %% escript entry point
 
 main(Args) ->
-  start_app(),
-  'Elixir.Kernel.CLI':process_argv(Args).
-
-%% ELIXIR ENTRY POINTS
-
-% Start the Elixir app. This is the proper way to boot Elixir from
-% inside an Erlang process.
-
-start_app() ->
-  case lists:keyfind(?MODULE, 1, application:loaded_applications()) of
-    false -> application:start(?MODULE);
-    _ -> ok
-  end.
+  application:start(?MODULE),
+  'Elixir.Kernel.CLI':main(Args).
 
 % Boot and process given options. Invoked by Elixir's script.
 
 start_cli() ->
-  start_app(),
-  'Elixir.Kernel.CLI':process_argv(init:get_plain_arguments()).
+  application:start(?MODULE),
+  'Elixir.Kernel.CLI':main(init:get_plain_arguments()).
 
 %% EVAL HOOKS
 
@@ -125,7 +117,6 @@ eval_forms(Tree, Binding, RawScope) ->
   Scope = RawScope#elixir_scope{
     vars=binding_dict(Binding),
     temp_vars=[],
-    quote_vars=[],
     clause_vars=nil,
     counter=[]
   },
@@ -143,7 +134,8 @@ to_binary(Bin)  when is_binary(Bin) -> Bin;
 to_binary(List) when is_list(List) -> list_to_binary(List).
 
 binding_dict(List) -> binding_dict(List, orddict:new()).
-binding_dict([{H,_}|T], Dict) -> binding_dict(T, orddict:store(H, H, Dict));
+binding_dict([{{H,Kind},_}|T], Dict) -> binding_dict(T, orddict:store({ H, Kind }, H, Dict));
+binding_dict([{H,_}|T], Dict) -> binding_dict(T, orddict:store({ H, nil }, H, Dict));
 binding_dict([], Dict) -> Dict.
 
 final_binding(Binding, Vars) -> final_binding(Binding, [], Binding, Vars).
@@ -152,7 +144,7 @@ final_binding([{Var,_}|T], Acc, Binding, Vars) ->
     true  ->
       final_binding(T, Acc, Binding, Vars);
     false ->
-      RealName = orddict:fetch(Var, Vars),
+      RealName  = orddict:fetch({ Var, nil }, Vars),
       RealValue = proplists:get_value(RealName, Binding, nil),
       final_binding(T, [{Var, RealValue}|Acc], Binding, Vars)
   end;

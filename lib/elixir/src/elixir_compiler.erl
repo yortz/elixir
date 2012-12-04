@@ -27,7 +27,7 @@ string(Contents, File) when is_list(Contents), is_binary(File) ->
   try
     put(elixir_compiled, []),
     Forms = elixir_translator:'forms!'(Contents, 1, File, []),
-    eval_forms(Forms, 1, File, [], elixir:scope_for_eval([{file,File}])),
+    eval_forms(Forms, 1, [], elixir:scope_for_eval([{file,File}])),
     lists:reverse(get(elixir_compiled))
   after
     put(elixir_compiled, Previous)
@@ -49,32 +49,17 @@ file_to_path(File, Path) when is_binary(File), is_binary(Path) ->
 
 %% Evaluates the contents/forms by compiling them to an Erlang module.
 
-eval_forms(Forms, Line, Vars, #elixir_scope{module=nil} = S) ->
-  eval_forms(Forms, Line, nil, Vars, S);
-
-eval_forms(Forms, Line, Vars, #elixir_scope{module=Value} = S) ->
-  eval_forms(Forms, Line, Value, Vars, S).
-
-eval_forms(Forms, Line, Value, Vars, S) ->
-  case (Value == nil) andalso allows_fast_compilation(Forms) of
-    true  -> eval_compilation(Forms, Vars, S);
-    false -> code_loading_compilation(Forms, Line, Value, Vars, S)
-  end.
-
-eval_compilation(Forms, Vars, S) ->
-  Binding = [{ Var, Value } || { _, Var, Value } <- Vars],
-  { Result, _Binding, FS } = elixir:eval_forms(Forms, [{'_@MODULE',nil}|Binding], S),
-  { Result, FS }.
-
-code_loading_compilation(Forms, Line, Value, Vars, S) ->
+eval_forms(Forms, Line, Vars, S) ->
   { Module, I } = retrieve_module_name(),
   { Exprs, FS } = elixir_translator:translate(Forms, S),
   ModuleForm    = module_form(Exprs, Line, S#elixir_scope.file, Module, Vars),
 
-  Args = [X || { _, _, X } <- Vars],
+  Args = [X || { _, _, _, X } <- Vars],
 
-  { module(ModuleForm, S#elixir_scope.file, [], true, fun(_, _) ->
-    Res = Module:'BOOTSTRAP'(Value, Args),
+  %% Pass { native, false } to speed up bootstrap
+  %% process when native is set to true
+  { module(ModuleForm, S#elixir_scope.file, [{native,false}], true, fun(_, _) ->
+    Res = Module:'BOOTSTRAP'(S#elixir_scope.module, Args),
     code:delete(Module),
     case code:soft_purge(Module) of
       true  -> return_module_name(I);
@@ -112,8 +97,8 @@ module(Forms, File, Options, Bootstrap, Callback) when
 %% Invoked from the Makefile.
 
 core() ->
-  elixir:start_app(),
-  gen_server:call(elixir_code_server, { compiler_options, [{docs,false},{internal,true},{debug_info,true}] }),
+  application:start(elixir),
+  gen_server:call(elixir_code_server, { compiler_options, [{docs,false},{internal,true}] }),
   [core_file(File) || File <- core_main()].
 
 %% HELPERS
@@ -125,7 +110,7 @@ no_auto_import() ->
 module_form(Exprs, Line, File, Module, Vars) when
     is_binary(File), is_list(Exprs), is_integer(Line), is_atom(Module) ->
 
-  Cons = lists:foldr(fun({ _, Var, _ }, Acc) ->
+  Cons = lists:foldr(fun({ _, _, Var, _ }, Acc) ->
     { cons, Line, { var, Line, Var }, Acc }
   end, { nil, Line }, Vars),
 
@@ -139,12 +124,6 @@ module_form(Exprs, Line, File, Module, Vars) when
       { clause, Line, Args, [], Exprs }
     ] }
   ].
-
-%% Fast compilation is available?
-
-allows_fast_compilation([{defmodule,_,_}|T]) -> allows_fast_compilation(T);
-allows_fast_compilation([]) -> true;
-allows_fast_compilation(_) -> false.
 
 %% Generate module names from code server.
 
@@ -180,11 +159,11 @@ core_main() ->
     "lib/elixir/lib/keyword.ex",
     "lib/elixir/lib/list.ex",
     "lib/elixir/lib/kernel/typespec.ex",    
+    "lib/elixir/lib/module.ex",
     "lib/elixir/lib/record.ex",
     "lib/elixir/lib/record/extractor.ex",
     "lib/elixir/lib/macro.ex",
     "lib/elixir/lib/macro/env.ex",
-    "lib/elixir/lib/module.ex",
     "lib/elixir/lib/code.ex",
     "lib/elixir/lib/protocol.ex",
     "lib/elixir/lib/enum.ex",
@@ -199,7 +178,8 @@ core_main() ->
     "lib/elixir/lib/system.ex",
     "lib/elixir/lib/kernel/cli.ex",
     "lib/elixir/lib/kernel/error_handler.ex",
-    "lib/elixir/lib/kernel/parallel_compiler.ex"
+    "lib/elixir/lib/kernel/parallel_compiler.ex",
+    "lib/elixir/lib/kernel/record_rewriter.ex"
   ].
 
 %% ERROR HANDLING
