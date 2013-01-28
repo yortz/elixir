@@ -12,37 +12,55 @@ defmodule Kernel.ParallelRequire do
   can be optionally given as argument.
   """
   def files(files, callback // default_callback) do
-    spawn_requires(files, [], callback, [])
+    schedulers = :erlang.system_info(:schedulers_online)
+    spawn_requires(files, [], callback, schedulers, [])
   end
 
-  defp spawn_requires([], [], _callback, result),     do: result
-  defp spawn_requires([], waiting, callback, result), do: wait_for_messages([], waiting, callback, result)
+  defp spawn_requires([], [], _callback, _schedulers, result), do: result
 
-  defp spawn_requires(files, waiting, callback, result) when length(waiting) >= 4 do
-    wait_for_messages(files, waiting, callback, result)
+  defp spawn_requires([], waiting, callback, schedulers, result) do
+    wait_for_messages([], waiting, callback, schedulers, result)
   end
 
-  defp spawn_requires([h|t], waiting, callback, result) do
+  defp spawn_requires(files, waiting, callback, schedulers, result) when length(waiting) >= schedulers do
+    wait_for_messages(files, waiting, callback, schedulers, result)
+  end
+
+  defp spawn_requires([h|t], waiting, callback, schedulers, result) do
     parent = self
 
-    child  = spawn_link fn ->
+    compiler_pid    = :erlang.get(:elixir_compiler_pid)
+    ensure_compiled = :erlang.get(:elixir_ensure_compiled)
+    { :error_handler, handler } = :erlang.process_info(parent, :error_handler)
+
+    child = spawn_link fn ->
+      if compiler_pid != :undefined do
+        :erlang.put(:elixir_compiler_pid, compiler_pid)
+      end
+
+      if ensure_compiled != :undefined do
+        :erlang.put(:elixir_ensure_compiled, ensure_compiled)
+      end
+
+      :erlang.process_flag(:error_handler, handler)
+
       try do
         new = Code.require_file(h)
-        callback.(h)
-        parent <- { :required, self, new }
+        parent <- { :required, self, new, h }
       catch
         kind, reason ->
           parent <- { :failure, self, kind, reason, System.stacktrace }
       end
     end
 
-    spawn_requires(t, [child|waiting], callback, result)
+    spawn_requires(t, [child|waiting], callback, schedulers, result)
   end
 
-  defp wait_for_messages(files, waiting, callback, result) do
+  defp wait_for_messages(files, waiting, callback, schedulers, result) do
     receive do
-      { :required, child, new } ->
-        spawn_requires(files, List.delete(waiting, child), callback, (new || []) ++ result)
+      { :required, child, new, file } ->
+        callback.(file)
+        spawn_requires(files, List.delete(waiting, child), callback, schedulers, (new || []) ++ result)
       { :failure, _child, kind, reason, stacktrace } ->
         :erlang.raise(kind, reason, stacktrace)
     end

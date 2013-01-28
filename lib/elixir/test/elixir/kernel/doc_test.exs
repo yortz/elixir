@@ -4,14 +4,14 @@ defmodule Kernel.DocTest do
   use ExUnit.Case
 
   test :compiled_docs do
-    path = File.expand_path("../../fixtures/compiled_with_docs.ex", __FILE__)
+    path = Path.expand("../../fixtures/compiled_with_docs.ex", __FILE__)
 
     try do
       Code.load_file path
 
       expected = [
-        {{:example,1},5,:def,[{:var,6,nil}],"Some example"},
-        {{:nodoc,1},8,:def,[{:"//",8,[{:var,8,nil},0]}],nil}
+        {{:example,1},5,:def,[{:var,[line: 6],nil}],"Some example"},
+        {{:nodoc,1},8,:def,[{:"//",[line: 8],[{:var,[line: 8],nil},0]}],nil}
       ]
 
       assert CompiledWithDocs.__info__(:docs) == expected
@@ -23,7 +23,7 @@ defmodule Kernel.DocTest do
   end
 
   test :compiled_without_docs do
-    path = File.expand_path("../../fixtures/compiled_with_docs.ex", __FILE__)
+    path = Path.expand("../../fixtures/compiled_with_docs.ex", __FILE__)
 
     try do
       Code.compiler_options(docs: false)

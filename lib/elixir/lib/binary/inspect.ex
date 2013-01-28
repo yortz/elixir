@@ -11,7 +11,7 @@ defprotocol Binary.Inspect do
   printing.
   """
 
-  @only [BitString, List, Tuple, Atom, Number, Any]
+  @only [BitString, List, Tuple, Atom, Number, Function, PID, Port, Reference]
 
   def inspect(thing, opts)
 end
@@ -67,11 +67,12 @@ defmodule Binary.Inspect.Utils do
   end
 
   defp do_escape(<<h, t :: binary>>, char) when
-    h == ?#  or h == ?\b or
-    h == ?\d or h == ?\e or
-    h == ?\f or h == ?\n or
-    h == ?\r or h == ?\\ or
-    h == ?\t or h == ?\v do
+    h == ?#  or h == ?\a or
+    h == ?\b or h == ?\d or
+    h == ?\e or h == ?\f or
+    h == ?\n or h == ?\r or
+    h == ?\\ or h == ?\t or
+    h == ?\v do
     [?\\, escape_map(h) | do_escape(t, char)]
   end
 
@@ -84,6 +85,7 @@ defmodule Binary.Inspect.Utils do
   end
 
   defp escape_map(?#),  do: ?#
+  defp escape_map(?\a), do: ?a
   defp escape_map(?\b), do: ?b
   defp escape_map(?\d), do: ?d
   defp escape_map(?\e), do: ?e
@@ -287,7 +289,7 @@ defimpl Binary.Inspect, for: List do
     printable?(cs)
   end
 
-  defp printable?([c|cs]) when c in [?\n, ?\r, ?\t, ?\v, ?\b, ?\f, ?\e] do
+  defp printable?([c|cs]) when c in [?\n, ?\r, ?\t, ?\v, ?\b, ?\f, ?\e, ?\a] do
     printable?(cs)
   end
 
@@ -415,18 +417,43 @@ defimpl Binary.Inspect, for: Regex do
   end
 end
 
-defimpl Binary.Inspect, for: Any do
+defimpl Binary.Inspect, for: Function do
   @moduledoc """
-  For all other terms not implemented, we use the default
-  Erlang representation.
-
-  ## Examples
-
-      inspect Process.self #=> "<0.35.0>"
-
+  Inspect functions, when possible, in a literal form.
   """
 
-  def inspect(thing, _) do
-    iolist_to_binary :io_lib.format('~p', [thing])
+  def inspect(function, _opts) do
+    fun_info = :erlang.fun_info(function)
+    if fun_info[:type] == :external and fun_info[:env] == [] do
+      "function(#{Kernel.inspect(fun_info[:module])}.#{fun_info[:name]}/#{fun_info[:arity]})"
+    else
+      '#Fun' ++ rest = :erlang.fun_to_list(function)
+      "#Function" <> list_to_binary(rest)
+    end
+  end
+end
+
+defimpl Binary.Inspect, for: PID do
+  @moduledoc "Inspect PIDs"
+
+  def inspect(pid, _) do
+    "#PID" <> list_to_binary pid_to_list(pid)
+  end
+end
+
+defimpl Binary.Inspect, for: Port do
+  @moduledoc "Inspect ports"
+
+  def inspect(port, _) do
+    list_to_binary :erlang.port_to_list(port)
+  end
+end
+
+defimpl Binary.Inspect, for: Reference do
+  @moduledoc "Inspect references"
+
+  def inspect(ref, _) do
+    '#Ref' ++ rest = :erlang.ref_to_list(ref)
+    "#Reference" <> list_to_binary(rest)
   end
 end

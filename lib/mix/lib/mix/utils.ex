@@ -15,11 +15,11 @@ defmodule Mix.Utils do
   """
 
   @doc """
-  Gets the user home attempting to consider OS system diferences.
+  Gets the mix home. It defaults to `~/.mix` unless the
+  MIX_HOME environment variable is set.
   """
-  def user_home do
-    System.get_env("MIX_HOME") || System.get_env("HOME") || System.get_env("USERPROFILE") ||
-      raise Mix.Error, message: "Nor MIX_HOME, HOME or USERPROFILE env variables were set"
+  def mix_home do
+    System.get_env("MIX_HOME") || Path.expand("~/.mix")
   end
 
   @doc """
@@ -70,9 +70,17 @@ defmodule Mix.Utils do
     last_modifieds = Enum.map(targets, last_modified(&1))
 
     Enum.filter sources, fn(source) ->
-      source_stat = File.stat!(source).mtime
+      source_stat = source_mtime(source)
       Enum.any?(last_modifieds, source_stat > &1)
     end
+  end
+
+  defp source_mtime({ _, { { _, _, _ }, { _, _, _ } } = source }) do
+    source
+  end
+
+  defp source_mtime(source) do
+    File.stat!(source).mtime
   end
 
   defp last_modified(path) do
@@ -105,7 +113,7 @@ defmodule Mix.Utils do
   It ignores files which start with "."
   """
   def extract_files(paths, _pattern) when is_binary(paths) do
-    File.wildcard(paths) /> exclude_files
+    Path.wildcard(paths) |> exclude_files
   end
 
   def extract_files(paths, exts) when is_list(exts) do
@@ -114,13 +122,13 @@ defmodule Mix.Utils do
 
   def extract_files(paths, pattern) do
     files = List.concat(lc path inlist paths do
-      if File.regular?(path), do: [path], else: File.wildcard("#{path}/**/#{pattern}")
+      if File.regular?(path), do: [path], else: Path.wildcard("#{path}/**/#{pattern}")
     end)
-    files /> exclude_files /> Enum.uniq
+    files |> exclude_files |> Enum.uniq
   end
 
   defp exclude_files(files) do
-    filter = fn(x) -> not match?("." <> _, File.basename(x)) end
+    filter = fn(x) -> not match?("." <> _, Path.basename(x)) end
     Enum.filter files, filter
   end
 
@@ -272,12 +280,12 @@ defmodule Mix.Utils do
 
   def module_name_to_command(module, nesting) do
     t = Regex.split(%r/\./, to_binary(module))
-    t /> Enum.drop(nesting) /> Enum.map(first_to_lower(&1)) /> Enum.join(".")
+    t |> Enum.drop(nesting) |> Enum.map(first_to_lower(&1)) |> Enum.join(".")
   end
 
   @doc """
   Takes a command and converts it to a module name format.
-  
+
   ## Examples
 
       command_to_module_name("compile.elixir")
@@ -285,8 +293,8 @@ defmodule Mix.Utils do
 
   """
   def command_to_module_name(s) do
-    Regex.split(%r/\./, to_binary(s)) />
-      Enum.map(first_to_upper(&1)) />
+    Regex.split(%r/\./, to_binary(s)) |>
+      Enum.map(first_to_upper(&1)) |>
       Enum.join(".")
   end
 

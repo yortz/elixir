@@ -69,8 +69,16 @@ defmodule Mix.UtilsTest do
   end
 
   test :extract_files do
-    files = Mix.Utils.extract_files [File.join(fixture_path, "extract")], "*.ex"
+    files = Mix.Utils.extract_files [Path.join(fixture_path, "extract")], "*.ex"
     assert length(files) == 1
-    assert File.basename(hd(files)) == "a.ex"
+    assert Path.basename(hd(files)) == "a.ex"
+  end
+
+  test :extract_stale do
+    time = { { 2030, 1, 1 }, { 0, 0, 0 } }
+    assert Mix.Utils.extract_stale([{ "hello", time }], [__FILE__]) == [{ "hello", time }]
+
+    time = { { 2000, 1, 1 }, { 0, 0, 0 } }
+    assert Mix.Utils.extract_stale([{ "hello", time }], [__FILE__]) == []
   end
 end

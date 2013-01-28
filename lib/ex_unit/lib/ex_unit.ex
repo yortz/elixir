@@ -37,34 +37,46 @@ defmodule ExUnit do
 
   Check ExUnit.Assertions for assertions documentation.
 
-  """
+  ## User config
 
-  @doc """
-  Start ExUnit. Required to be invoked before loading
-  any file that uses ExUnit.Case. Check `configure/1`
-  to see the supported options.
-
-  This function will also try to read a user config from the following
-  locations, in this order:
+  When started, ExUnit automatically reads a user configuration
+  from the following locations, in this order:
 
   * $EXUNIT_CONFIG environment variable
   * $HOME/.ex_unit.exs
 
-  If none found, no user config will be read. 
+  If none found, no user config will be read.
 
   User config is an elixir file which should return a keyword list
-  with ex_unit options. Please note that explicit options passed to start/1 
-  will take precedence over user options.
+  with ex_unit options. Please note that explicit options passed
+  to start/1 or configure/1 will take precedence over user options.
 
-  # User config example (~/.ex_unit.exs)
-
-    [formatter: ExUnit.Formatter.ANSI]
+      # User config example (~/.ex_unit.exs)
+      [formatter: ExUnit.Formatter.ANSI]
 
   """
+
+  use Application.Behaviour
+
+  @doc false
+  def start(_type, []) do
+    ExUnit.Sup.start_link(user_options)
+  end
+
+  @doc """
+  Starts up ExUnit and automatically set it up to run
+  tests at the VM exit. It accepts a set of options to
+  configure `ExUnit` (the same ones accepted by `configure/1`).
+
+  In case you want to run tests manually, skip calling this
+  function and rely on `configure/1` and `run/0` instead.
+  """
   def start(options // []) do
-    options = Keyword.merge(user_options, options)    
-    ExUnit.Server.start_link
+    :application.start(:elixir)
+    :application.start(:ex_unit)
+
     configure(options)
+
     System.at_exit fn
       0 ->
         failures = ExUnit.run
@@ -82,7 +94,7 @@ defmodule ExUnit do
   def user_options(user_config // nil) do
     user_config = user_config ||
       System.get_env("EXUNIT_CONFIG") ||
-      File.join(System.get_env("HOME"), ".ex_unit.exs")
+      Path.join(System.get_env("HOME"), ".ex_unit.exs")
 
     case File.read(user_config) do
       { :ok, contents } ->
@@ -94,14 +106,17 @@ defmodule ExUnit do
   end
 
   @doc """
-  Configure ExUnit.
+  Configures ExUnit.
 
   ## Options
 
   ExUnit supports the following options given to start:
 
-  * `:formatter` - The formatter that will print results
-  * `:max_cases` - Maximum number of cases to run in parallel
+  * `:formatter` - The formatter that will print results.
+                   Defaults to `ExUnit.CLIFormatter`;
+
+  * `:max_cases` - Maximum number of cases to run in parallel.
+                   Defaults to `:erlang.system_info(:schedulers_online)`;
 
   """
   def configure(options) do
@@ -109,7 +124,7 @@ defmodule ExUnit do
   end
 
   @doc """
-  Register a callback to be invoked every time a
+  Registers a callback to be invoked every time a
   new ExUnit process is spawned.
   """
   def after_spawn(callback) do
@@ -117,10 +132,13 @@ defmodule ExUnit do
   end
 
   @doc """
-  API used to run the tests. A developer does not
-  need to call it directly.
+  API used to run the tests. It is invoked automatically
+  if ExUnit is started via `ExUnit.start`.
+
+  Returns the number of failures.
   """
   def run do
-    ExUnit.Runner.run ExUnit.Server.options
+    { async, sync } = ExUnit.Server.cases
+    ExUnit.Runner.run async, sync, ExUnit.Server.options
   end
 end

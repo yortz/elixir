@@ -23,6 +23,10 @@ defmodule CodeTest do
     assert Code.eval("one", [], delegate_locals_to: __MODULE__) == { 1, [] }
   end
 
+  test :eval_with_requires do
+    assert Code.eval("Kernel.if true, do: :ok", [], requires: [Z, Kernel]) == { :ok, [] }
+  end
+
   test :eval_quoted do
     assert Code.eval_quoted(quote(do: 1 + 2)) == { 3, [] }
     assert CodeTest.Sample.eval_quoted_info() == { CodeTest.Sample, "sample.ex", 13 }
@@ -44,7 +48,7 @@ defmodule CodeTest do
   end
 
   test :path_manipulation do
-    path = File.expand_path("../binary", __FILE__)
+    path = Path.expand("../binary", __FILE__)
     Code.prepend_path path
     assert binary_to_list(path) inlist :code.get_path
 
@@ -57,7 +61,8 @@ defmodule CodeTest do
   end
 
   test :string_to_ast do
-    assert { :ok, quote line: 1, do: 1 + 2 } = Code.string_to_ast("1 + 2")
+    assert Code.string_to_ast("1 + 2") == { :ok, quote hygiene: false, line: 1, do: 1 + 2 }
+    assert Code.string_to_ast("1 + 2; 3 + 4") == { :ok, quote hygiene: false, line: 1, do: (1 + 2; 3 + 4) }
     assert { :error, _ } = Code.string_to_ast("a.1")
   end
 
@@ -67,7 +72,7 @@ defmodule CodeTest do
   end
 
   test :string_to_ast! do
-    assert Code.string_to_ast!("1 + 2") == quote line: 1, do: 1 + 2
+    assert Code.string_to_ast!("1 + 2") == quote hygiene: false, line: 1, do: 1 + 2
 
     assert_raise SyntaxError, fn ->
       Code.string_to_ast!("a.1")

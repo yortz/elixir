@@ -19,14 +19,8 @@ defmodule Mix.Tasks.Deps.Compile do
   The compilation can be customized by passing a `compile` option
   in the dependency:
 
-      { :some_dependency, "0.1.0", git: "...", compile: :compile_some_dependency }
+      { :some_dependency, "0.1.0", git: "...", compile: "command to compile" }
 
-  If the compile option is an atom, it will invoke the given atom
-  in the current project passing the app name as argument. Except
-  if the atom is `:noop`, where nothing is done.
-
-  If a binary, it is considered to be command line instructions
-  which mix will use to shell out.
   """
 
   import Mix.Deps, only: [all: 0, available?: 1, by_name!: 1, format_dep: 1]
@@ -49,17 +43,17 @@ defmodule Mix.Tasks.Deps.Compile do
       check_unavailable!(app, status)
       shell.info "* Compiling #{app}"
 
-      deps_path = opts[:path]
-      ebin = File.join(deps_path, "ebin") /> binary_to_list
+      deps_path = opts[:dest]
+      ebin = Path.join(deps_path, "ebin") |> binary_to_list
 
       # Avoid compilation conflicts
-      :code.del_path(ebin /> File.expand_path)
+      :code.del_path(ebin |> Path.expand)
 
-      root_path = File.expand_path(Mix.project[:deps_path])
+      root_path = Path.expand(Mix.project[:deps_path])
 
       config = [
         deps_path: root_path,
-        lockfile:  File.expand_path(Mix.project[:lockfile])
+        root_lockfile:  Path.expand(Mix.project[:lockfile])
       ]
 
       File.cd! deps_path, fn ->
@@ -75,6 +69,8 @@ defmodule Mix.Tasks.Deps.Compile do
 
       Code.prepend_path ebin
     end
+
+    Mix.Deps.Lock.touch
   end
 
   defp mix?,   do: File.regular?("mix.exs")
@@ -90,7 +86,7 @@ defmodule Mix.Tasks.Deps.Compile do
     :ok
   end
 
-  defp do_mix(Mix.Dep[opts: opts, project: project], config) do
+  defp do_mix(Mix.Dep[app: app, opts: opts, project: project], config) do
     env       = opts[:env] || :prod
     old_env   = Mix.env
     old_tasks = Mix.Task.clear
@@ -100,6 +96,11 @@ defmodule Mix.Tasks.Deps.Compile do
       Mix.Project.post_config(config)
       Mix.Project.push project
       Mix.Task.run "compile", ["--no-deps"]
+    catch
+      kind, reason ->
+        Mix.shell.error "could not compile dependency #{app}, mix compile failed. " <>
+          "In case you want to recompile this dependency, please run: mix deps.compile #{app}"
+        :erlang.raise(kind, reason, System.stacktrace)
     after
       Mix.env(old_env)
       Mix.Project.pop
@@ -110,7 +111,8 @@ defmodule Mix.Tasks.Deps.Compile do
   defp do_command(app, command, extra // "") do
     if System.find_executable(command) do
       if Mix.shell.cmd("#{command} #{extra}") != 0 do
-        raise Mix.Error, message: "could not compile dependency #{app}, #{command} command failed"
+        raise Mix.Error, message: "could not compile dependency #{app}, #{command} command failed. " <>
+          "In case you want to recompile this dependency, please run: mix deps.compile #{app}"
       end
     else
       raise Mix.Error, message: "could not find executable #{command} to compile " <>
@@ -118,17 +120,14 @@ defmodule Mix.Tasks.Deps.Compile do
     end
   end
 
-  defp do_compile(_, :noop) do
+  defp do_compile(_, false) do
     :ok
   end
 
-  defp do_compile(app, atom) when is_atom(atom) do
-    apply Mix.Project.get!, atom, [app]
-  end
-
-  defp do_compile(app, command) do
+  defp do_compile(app, command) when is_binary(command) do
     if Mix.shell.cmd(command) != 0 do
-      raise Mix.Error, message: "could not compile dependency #{app}, custom #{command} command failed"
+      raise Mix.Error, message: "could not compile dependency #{app}, custom #{command} command failed." <>
+        "In case you want to recompile this dependency, please run: mix deps.compile #{app}"
     end
   end
 end

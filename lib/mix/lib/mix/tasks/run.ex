@@ -14,6 +14,8 @@ defmodule Mix.Tasks.Run do
   * `--require`, `-r` - Requires a file before running the command
   * `--parallel-require`, `-pr` - Requires a file in parallel
   * `--no-halt` - Does not halt the system after running the command
+  * `--no-compile` - Do not compile even if files require compilation;
+  * `--no-start` - Do not start applications after compilation;
 
   ## Examples
 
@@ -28,9 +30,9 @@ defmodule Mix.Tasks.Run do
     Enum.each opts, fn({ key, value }) ->
       case key do
         :parallel_require ->
-          value /> filter_patterns /> Kernel.ParallelRequire.files
+          value |> filter_patterns |> Kernel.ParallelRequire.files
         :require ->
-          value /> filter_patterns /> Enum.each Code.require_file(&1)
+          value |> filter_patterns |> Enum.each Code.require_file(&1)
         _ ->
           :ok
       end
@@ -43,6 +45,6 @@ defmodule Mix.Tasks.Run do
   end
 
   defp filter_patterns(pattern) do
-    Enum.filter(Enum.uniq(File.wildcard(pattern)), File.regular?(&1))
+    Enum.filter(Enum.uniq(Path.wildcard(pattern)), File.regular?(&1))
   end
 end

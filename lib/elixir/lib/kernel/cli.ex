@@ -8,23 +8,23 @@ defmodule Kernel.CLI do
 
   # This is the API invoked by Elixir boot process.
   @doc false
-  def main(options) do
-    { config, argv } = process_argv(options, Kernel.CLI.Config.new)
-
+  def main(argv) do
     argv = lc arg inlist argv, do: list_to_binary(arg)
-    :gen_server.call(:elixir_code_server, { :argv, argv })
+
+    { config, argv } = process_argv(argv, Kernel.CLI.Config.new)
+    :elixir_code_server.cast({ :argv, argv })
 
     run fn ->
       Enum.map Enum.reverse(config.commands), process_command(&1, config)
-      :gen_server.cast(:elixir_code_server, :finished)
+      :elixir_code_server.cast(:finished)
     end, config.halt
   end
 
   @doc """
-  Wait until the CLI finishes procesing options.
+  Wait until the CLI finishes processing options.
   """
   def wait_until_finished do
-    case :gen_server.call(:elixir_code_server, { :wait_until_finished, self }) do
+    case :elixir_code_server.call({ :wait_until_finished, self }) do
       :wait ->
         receive do
           { :elixir_code_server, :finished } -> :ok
@@ -53,7 +53,7 @@ defmodule Kernel.CLI do
         at_exit(1)
         trace = System.stacktrace
         IO.puts :stderr, "** (#{inspect exception.__record__(:name)}) #{exception.message}"
-        IO.puts Exception.formatted_stacktrace(trace)
+        IO.puts Exception.format_stacktrace(trace)
         System.halt(1)
     catch
       :exit, reason when is_integer(reason) ->
@@ -66,7 +66,7 @@ defmodule Kernel.CLI do
         at_exit(1)
         trace = System.stacktrace
         IO.puts :stderr, "** (#{kind}) #{inspect(reason)}"
-        IO.puts Exception.formatted_stacktrace(trace)
+        IO.puts Exception.format_stacktrace(trace)
         System.halt(1)
     end
   end
@@ -74,7 +74,7 @@ defmodule Kernel.CLI do
   ## Private
 
   defp at_exit(status) do
-    hooks = :gen_server.call(:elixir_code_server, :flush_at_exit)
+    hooks = :elixir_code_server.call(:flush_at_exit)
 
     lc hook inlist hooks do
       try do
@@ -83,12 +83,12 @@ defmodule Kernel.CLI do
         exception ->
           trace = System.stacktrace
           IO.puts :stderr, "** (#{inspect exception.__record__(:name)}) #{exception.message}"
-          IO.puts Exception.formatted_stacktrace(trace)
+          IO.puts Exception.format_stacktrace(trace)
       catch
         kind, reason ->
           trace = System.stacktrace
           IO.puts :stderr, "** #{kind} #{inspect(reason)}"
-          IO.puts Exception.formatted_stacktrace(trace)
+          IO.puts Exception.format_stacktrace(trace)
       end
     end
 
@@ -98,7 +98,7 @@ defmodule Kernel.CLI do
   end
 
   defp invalid_option(option) do
-    IO.puts(:stderr, "Unknown option #{list_to_binary(option)}")
+    IO.puts(:stderr, "Unknown option #{option}")
     System.halt(1)
   end
 
@@ -113,43 +113,44 @@ defmodule Kernel.CLI do
 
   # Process shared options
 
-  defp process_shared(['-v'|t], config) do
+  defp process_shared(["-v"|t], config) do
     IO.puts "Elixir #{System.version}"
     process_shared t, config
   end
 
-  defp process_shared(['--no-halt'|t], config) do
+  defp process_shared(["--app",h|t], config) do
+    process_shared t, config.update_commands [{:app,h}|&1]
+  end
+
+  defp process_shared(["--no-halt"|t], config) do
     process_shared t, config.halt(false)
   end
 
-  defp process_shared(['-e',h|t], config) do
+  defp process_shared(["-e",h|t], config) do
     process_shared t, config.update_commands [{:eval,h}|&1]
   end
 
-  defp process_shared(['-pa',h|t], config) do
-    Enum.each File.wildcard(File.expand_path(h)), Code.prepend_path(&1)
+  defp process_shared(["-pa",h|t], config) do
+    Enum.each Path.wildcard(Path.expand(h)), Code.prepend_path(&1)
     process_shared t, config
   end
 
-  defp process_shared(['-pz',h|t], config) do
-    Enum.each File.wildcard(File.expand_path(h)), Code.append_path(&1)
+  defp process_shared(["-pz",h|t], config) do
+    Enum.each Path.wildcard(Path.expand(h)), Code.append_path(&1)
     process_shared t, config
   end
 
-  defp process_shared(['-r',h|t], config) do
-    h = list_to_binary(h)
-    config = Enum.reduce File.wildcard(h), config, fn path, config ->
+  defp process_shared(["-r",h|t], config) do
+    process_shared t, Enum.reduce(Path.wildcard(h), config, fn path, config ->
       config.update_commands [{:require,path}|&1]
-    end
-    process_shared t, config
+    end)
   end
 
-  defp process_shared(['-pr',h|t], config) do
-    h = list_to_binary(h)
+  defp process_shared(["-pr",h|t], config) do
     process_shared t, config.update_commands [{:parallel_require,h}|&1]
   end
 
-  defp process_shared([erl,_|t], config) when erl in ['--erl', '--sname', '--remsh', '--name'] do
+  defp process_shared([erl,_|t], config) when erl in ["--erl", "--sname", "--remsh", "--name"] do
     process_shared t, config
   end
 
@@ -159,19 +160,18 @@ defmodule Kernel.CLI do
 
   # Process init options
 
-  defp process_argv(['--'|t], config) do
+  defp process_argv(["--"|t], config) do
     { config, t }
   end
 
-  defp process_argv(['--compile'|t], config) do
+  defp process_argv(["--compile"|t], config) do
     process_compiler t, config
   end
 
-  defp process_argv(['-S',h|t], config) do
+  defp process_argv(["-S",h|t], config) do
     exec = System.find_executable(h)
     if exec do
-      bin = list_to_binary(exec)
-      { config.update_commands([{:require,bin}|&1]), t }
+      { config.update_commands([{:require,exec}|&1]), t }
     else
       IO.puts(:stderr, "Could not find executable #{h}")
       System.halt(1)
@@ -180,11 +180,10 @@ defmodule Kernel.CLI do
 
   defp process_argv([h|t] = list, config) do
     case h do
-      '-' ++ _ ->
+      "-" <> _ ->
         shared_option? list, config, process_argv(&1, &2)
       _ ->
-        bin = list_to_binary(h)
-        { config.update_commands([{:require,bin}|&1]), t }
+        { config.update_commands([{:require,h}|&1]), t }
     end
   end
 
@@ -194,32 +193,31 @@ defmodule Kernel.CLI do
 
   # Process compiler options
 
-  defp process_compiler(['--'|t], config) do
+  defp process_compiler(["--"|t], config) do
     { config, t }
   end
 
-  defp process_compiler(['-o',h|t], config) do
-    process_compiler t, config.output(list_to_binary(h))
+  defp process_compiler(["-o",h|t], config) do
+    process_compiler t, config.output(h)
   end
 
-  defp process_compiler(['--no-docs'|t], config) do
+  defp process_compiler(["--no-docs"|t], config) do
     process_compiler t, config.update_compiler_options([{:docs,false}|&1])
   end
 
-  defp process_compiler(['--no-debug-info'|t], config) do
+  defp process_compiler(["--no-debug-info"|t], config) do
     process_compiler t, config.update_compiler_options([{:debug_info,false}|&1])
   end
 
-  defp process_compiler(['--ignore-module-conflict'|t], config) do
+  defp process_compiler(["--ignore-module-conflict"|t], config) do
     process_compiler t, config.update_compiler_options([{:ignore_module_conflict,true}|&1])
   end
 
   defp process_compiler([h|t] = list, config) do
     case h do
-      '-' ++ _ ->
+      "-" <> _ ->
         shared_option? list, config, process_compiler(&1, &2)
       _ ->
-        h = list_to_binary(h)
         pattern = if File.dir?(h), do: "#{h}/**/*.ex", else: h
         process_compiler t, config.update_compile [pattern|&1]
     end
@@ -231,8 +229,18 @@ defmodule Kernel.CLI do
 
   # Process commands
 
-  defp process_command({:eval, expr}, _config) when is_list(expr) do
-    :elixir.eval(expr, [])
+  defp process_command({:eval, expr}, _config) when is_binary(expr) do
+    Code.eval(expr, [])
+  end
+
+  defp process_command({:app, app}, _config) when is_binary(app) do
+    case Application.Behaviour.start(binary_to_atom(app)) do
+      { :error, reason } ->
+        IO.puts(:stderr, "Could not start application #{app}: #{inspect reason}")
+        System.halt(1)
+      :ok ->
+        :ok
+    end
   end
 
   defp process_command({:require, file}, _config) when is_binary(file) do
@@ -240,7 +248,7 @@ defmodule Kernel.CLI do
   end
 
   defp process_command({:parallel_require, pattern}, _config) when is_binary(pattern) do
-    files = File.wildcard(pattern)
+    files = Path.wildcard(pattern)
     files = Enum.uniq(files)
     files = Enum.filter files, File.regular?(&1)
     Kernel.ParallelRequire.files(files)
@@ -249,7 +257,7 @@ defmodule Kernel.CLI do
   defp process_command({:compile, patterns}, config) do
     File.mkdir_p(config.output)
 
-    files = Enum.map patterns, File.wildcard(&1)
+    files = Enum.map patterns, Path.wildcard(&1)
     files = Enum.uniq(List.concat(files))
     files = Enum.filter files, File.regular?(&1)
 

@@ -54,7 +54,8 @@ defmodule Kernel.RecordRewriter do
 
   defp record_field_info(function) do
     case atom_to_list(function) do
-      'update_' ++ field -> { :update, list_to_atom(field) }
+      'update' -> nil
+      'update_' ++ field -> nil
       _ -> { :accessor, function }
     end
   end
@@ -62,13 +63,21 @@ defmodule Kernel.RecordRewriter do
   defp optimize_call(line, { record, _ } = res, left, { :atom, _, function }, args) do
     case record_fields(record) do
       { fields, optimizable } ->
-        if List.member?(optimizable, { function, length(args) + 1 }) do
-          { kind, field } = record_field_info(function)
-          if index = Enum.find_index(fields, field == &1) do
-            optimize_call(line, res, kind, field, index, left, args)
+        opt_call =
+          if List.member?(optimizable, { function, length(args) + 1 }) do
+            case record_field_info(function) do
+              { kind, field } ->
+                if index = Enum.find_index(fields, field == &1) do
+                  optimize_record_accessor_call(line, res, kind, field, index, left, args)
+                end
+              nil ->
+                optimize_record_other_call(line, record, res, function, left, args)
+            end
           end
-        end
-      nil -> nil
+
+        opt_call || optimize_record_other_call(line, record, nil, function, left, args)
+      nil ->
+        nil
     end
   end
 
@@ -76,7 +85,7 @@ defmodule Kernel.RecordRewriter do
     nil
   end
 
-  defp optimize_call(line, _res, :accessor, _field, index, left, []) do
+  defp optimize_record_accessor_call(line, _res, :accessor, _field, index, left, []) do
     call = { :call, line,
       { :remote, line, { :atom, 0, :erlang }, { :atom, 0, :element } },
       [{ :integer, 0, index + 2 }, left]
@@ -84,7 +93,7 @@ defmodule Kernel.RecordRewriter do
     { call, nil }
   end
 
-  defp optimize_call(line, res, :accessor, _field, index, left, [arg]) do
+  defp optimize_record_accessor_call(line, res, :accessor, _field, index, left, [arg]) do
     call = { :call, line,
       { :remote, line, { :atom, 0, :erlang }, { :atom, 0, :setelement } },
       [{ :integer, 0, index + 2 }, left, arg]
@@ -92,10 +101,10 @@ defmodule Kernel.RecordRewriter do
     { call, res }
   end
 
-  defp optimize_call(line, res, :update, field, _index, left, args) do
+  defp optimize_record_other_call(line, record, res, function, left, args) do
     call = { :call, line,
-      { :remote, line, left, { :atom, 0, :"update_#{field}" } },
-      args
+      { :remote, line, { :atom, line, record }, { :atom, 0, function } },
+      args ++ [left]
     }
     { call, res }
   end
@@ -220,15 +229,18 @@ defmodule Kernel.RecordRewriter do
     { { :receive, line, clauses, after_key, after_value }, dict, res }
   end
 
-  defp optimize_expr({ :try, line, body, [], clauses, try_after }, dict) do
-    tuples  = lc clause inlist clauses, do: optimize_clause(clause, dict)
-    clauses = lc { clause, _, _ } inlist tuples, do: clause
+  defp optimize_expr({ :try, line, body, elses, catches, try_after }, dict) do
+    tuples  = lc clause inlist catches, do: optimize_clause(clause, dict)
+    catches = lc { clause, _, _ } inlist tuples, do: clause
+
+    tuples  = lc clause inlist elses, do: optimize_clause(clause, dict)
+    elses   = lc { clause, _, _ } inlist tuples, do: clause
 
     { body, _, res } = optimize_body(body, dict, [])
     res = join_result(tuples, res)
 
     { try_after, _, _ } = optimize_body(try_after, dict, [])
-    { { :try, line, body, [], clauses, try_after }, dict, res }
+    { { :try, line, body, elses, catches, try_after }, dict, res }
   end
 
   defp optimize_expr({ :fun, line, { :function, module, name, arity } }, dict) do

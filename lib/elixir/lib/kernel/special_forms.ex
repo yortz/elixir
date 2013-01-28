@@ -1,8 +1,12 @@
 defmodule Kernel.SpecialForms do
   @moduledoc """
-  In this module we define Elixir special forms. Those are called
-  special forms because they cannot be overridden by the developer
-  and sometimes have lexical scope (like `alias`, `import`, etc).
+  In this module we define Elixir special forms. Special forms
+  cannot be overriden by the developer and are the basic
+  building blocks of Elixir code.
+
+  Some of those forms are lexical (like `alias`, `import`, etc).
+  The macros `{}`, `[]` and `<<>>` are also special forms used
+  to define data structures, respectively tuples, lists and binaries.
 
   This module also documents Elixir's pseudo variables (`__MODULE__`,
   `__FILE__`, `__ENV__` and `__CALLER__`). Pseudo variables return
@@ -22,6 +26,7 @@ defmodule Kernel.SpecialForms do
 
       :{}.(1,2,3)
       { 1, 2, 3 }
+
   """
   defmacro :{}.(args)
 
@@ -32,6 +37,7 @@ defmodule Kernel.SpecialForms do
 
       :[].(1,2,3)
       [ 1, 2, 3 ]
+
   """
   defmacro :[].(args)
 
@@ -42,6 +48,123 @@ defmodule Kernel.SpecialForms do
 
       :<<>>.(1,2,3)
       << 1, 2, 3 >>
+
+  ## Bitstring types
+
+  A bitstring may contain many parts and those may have
+  specific types. Most of the time, Elixir will figure out
+  the part's type and won't require any work from you:
+
+      <<102, "oo">>
+      #=> "foo"
+
+  Above we have two parts: the first is an integer and the
+  second is a binary. If we use any other Elixir expression,
+  Elixir can no longer guess the type:
+
+      rest = "oo"
+      <<102, rest>>
+      #=> ** (ArgumentError) argument error
+
+  When a variable or expression is given as a binary part,
+  Elixir defaults the type of that part to an unsigned
+  little-endian integer. In the example above, since we haven't
+  specified a type, Elixir expected an integer but we passed a
+  binary, resulting in `ArgumentError`. We can solve this by
+  explicitly tagging it as a binary:
+
+      <<102, rest :: binary>>
+
+  The type can be integer, float, binary, bytes, bitstring,
+  bits, utf8, utf16 or utf32, e.g.:
+
+      <<102 :: float, rest :: binary>>
+
+  Integer can be any arbitrary precision integer. A float is an
+  IEEE 754 binary32 or binary64 floating point number. A bitstring
+  is an arbitrary series of bits. A binary is a special case of
+  bitstring that has a total size divisible by 8.
+
+  The utf8, utf16, and utf32 types are for UTF code points.
+
+  The bits type is an alias for bitstring. The bytes type is an
+  alias for binary.
+
+  The signedness can also be given as signed or unsigned. The
+  signedness only matters for matching. If unspecified, it
+  defaults to unsigned. Example:
+
+      <<-100 :: signed, rest :: binary>> = <<-100, "foo">>
+      #=> <<156,102,111,111>>
+
+  This match would have failed if we did not specify that the
+  value -100 is signed. If we're matching into a variable instead
+  of a value, the signedness won't be checked; rather, the number
+  will simply be interpreted as having the given (or implied)
+  signedness, e.g.:
+
+      <<val, rest :: binary>> = <<-100, "foo">>
+      val
+      #=> 156
+
+  Here, `val` is interpreted as unsigned.
+
+  Signedness is only relevant on integers.
+
+  The endianness of a part can be big, little or native (the
+  latter meaning it will be resolved at VM load time). Passing
+  many options can be done by giving a list:
+
+      <<102 :: [integer, native], rest :: binary>>
+
+  Or:
+
+      <<102 :: [unsigned, big, integer], rest :: binary>>
+
+  And so on.
+
+  Endianness only makes sense for integers and some UTF code
+  point types (utf16 and utf32).
+
+  Finally, we can also specify size and unit for each part. The
+  unit is multiplied by the size to give the effective size of
+  the part:
+
+      <<102, rest :: [size(2), unit(8)]>> = "foo"
+      "foo"
+
+      <<102, rest :: size(16)>> = "foo"
+      "foo"
+
+      <<102, rest :: size(32)>> = "foo"
+      ** (MatchError) no match of right hand side value: "foo"
+
+  In the example above, the first two expressions matches
+  because the string "foo" takes 24 bits and we are matching
+  against a part of 24 bits as well, 8 of which are taken by
+  the integer 102 and the remaining 16 bits are specified on
+  the rest. On the last example, we expect a rest with size 32,
+  which won't match.
+
+  Size and unit are not applicable to utf8, utf16, and utf32.
+
+  The default size for integers is 8. For floats, it is 64. For
+  binaries, it is the size of the binary. Only the last binary
+  in a binary match can use the default size (all others must
+  have their size specified explicitly). Bitstrings do not have
+  a default size.
+
+  Size can also be specified using a syntax shortcut. Instead of
+  writing `size(8)`, one can write just `8` and it will be interpreted
+  as `size(8)`
+
+      << 1 :: 3 >> == << 1 :: size(3) >> #=> true
+
+  The default unit for integers, floats, and bitstrings is 1. For
+  binaries, it is 8.
+
+  For floats, unit * size must result in 32 or 64, corresponding
+  to binary32 and binary64, respectively.
   """
   defmacro :<<>>.(args)
 
@@ -209,13 +332,13 @@ defmodule Kernel.SpecialForms do
   ## Examples
 
       quote do: sum(1, 2, 3)
-      #=> { :sum, 0, [1, 2, 3] }
+      #=> { :sum, [], [1, 2, 3] }
 
-  ## Homoiconicity
+  ## Explanation
 
-  Elixir is an homoiconic language. Any Elixir program can be
-  represented using its own data structures. The building block
-  of Elixir homoiconicity is a tuple with three elements, for example:
+  Any Elixir code can be represented using Elixir data structures.
+  The building block of Elixir homoiconicity is a tuple with three
+  elements, for example:
 
       { :sum, 1, [1, 2, 3] }
 
@@ -227,8 +350,20 @@ defmodule Kernel.SpecialForms do
   * The second element of the tuple is always an integer
     representing the line number;
   * The third element of the tuple are the arguments for the
-    function call. The third argument may be an atom, meaning
-    that it may be a variable.
+    function call. The third argument may be an atom, which is
+    usually a variable (or a local call);
+
+  ## Options
+
+  * `:hygiene` - When false, disables hygiene for variables, aliases and imports;
+  * `:unquote` - When false, disables unquoting. Useful when you have a quote
+                 inside another quote and want to control which quote is
+                 able to unquote;
+  * `:location` - When set to `:keep`, keeps the current line and file on quotes.
+                  Read the Stacktrace information section below for more information;
+  * `:expand_aliases` - When false, do not expand aliases;
+  * `:expand_imports` - When false, do not expand imports;
+  * `:var_context` - The context for quoted variables. Defaults to the current module;
 
   ## Macro literals
 
@@ -244,9 +379,21 @@ defmodule Kernel.SpecialForms do
 
   ## Hygiene
 
-  Elixir macros are hygienic regarding to variables. This means
-  a variable defined in a macro cannot affect the scope where
-  the macro is included. Consider the following example:
+  Elixir macros are hygienic. This means aliases and imports
+  defined inside the quoted often refer to the context that
+  defined the macro.
+
+  Furthermore, variables inside quote are also hygienic. That
+  said, a variable defined in a macro cannot affect the scope
+  where the macro is included.
+
+  The option `hygiene` can turn off all the hygiene mechanisms
+  defined below. However, they can also be changed in a one by
+  one basis.
+
+  ### Hygiene in variables
+
+  Consider the following example:
 
       defmodule Hygiene do
         defmacro no_interference do
@@ -261,10 +408,10 @@ defmodule Kernel.SpecialForms do
       a #=> 10
 
   In the example above, `a` returns 10 even if the macro
-  is apparently setting it to 1 because the variables defined
-  in the macro does not affect the context the macro is
-  executed. If you want to set or get a variable, you can do
-  it with the help of the `var!` macro:
+  is apparently setting it to 1 because variables defined
+  in the macro does not affect the context the macro is executed.
+  If you want to set or get a variable in the user context, you
+  can do it with the help of the `var!` macro:
 
       defmodule NoHygiene do
         defmacro interference do
@@ -278,29 +425,125 @@ defmodule Kernel.SpecialForms do
       NoHygiene.interference
       a #=> 1
 
-  Notice that aliases are not hygienic in Elixir, ambiguity
-  must be solved by prepending Elixir:
+  It is important to understand that quoted variables are scoped
+  to the module they are defined. That said, even if two modules
+  define the same quoted variable `a`, their values are going
+  to be independent:
 
-      quote do
-        Elixir.Foo #=> Access the root Foo
-        Foo        #=> Access the Foo alias in the current module
-                       (if any is set), then fallback to Elixir.Foo
+      defmodule Hygiene1 do
+        defmacro var1 do
+          quote do: a = 1
+        end
       end
 
-  ## Options
+      defmodule Hygiene2 do
+        defmacro var2 do
+          quote do: a = 2
+        end
+      end
 
-  * `:hygiene` - When false, disables hygiene;
-  * `:unquote` - When false, disables unquoting. Useful when you have a quote
-    inside another quote and want to control which quote is able to unquote;
-  * `:location` - When set to `:keep`, keeps the current line and file on quotes.
-                  Read the Stacktrace information section below for more information;
+  Calling macros `var1` and `var2` are not going to change their
+  each other values for `a`. This is useful because quoted
+  variables from different modules cannot conflict. If you desire
+  to explicitly access a variable from another module, we can once
+  again use `var!` macro, but explicitly passing a second argument:
+
+      # Access the variable a from Hygiene1
+      quote do: var!(a, Hygiene1) = 2
+
+  Another option is to set the `var_context` option, affecting
+  all variables in the block:
+
+      quote var_context: Hygiene1, do: a = 2
+
+  ### Hygiene in aliases
+
+  Aliases inside quote are expanded by default.
+  Consider the following example:
+
+      defmodule Hygiene do
+        alias HashDict, as: D
+
+        defmacro no_interference do
+          quote do: D.new
+        end
+      end
+
+      require Hygiene
+      Hygiene.no_interference #=> HashDict[]
+
+  Notice that, even though the alias `D` is not available
+  in the context the macro is expanded, the code above works
+  because `D` was expanded when the quote was generated.
+
+  There are two ways to disable this behaviour. By giving
+  the `expand_aliases` equals to false to quote or by using
+  the `alias!` macro inside the quote:
+
+      defmodule NoHygiene do
+        defmacro interference do
+          quote do: alias!(D).new
+        end
+      end
+
+      require NoHygiene
+      NoHygiene.interference #=> UndefinedFunctionError
+
+  ## Hygiene in imports
+
+  Similar to aliases, imports in Elixir hygienic. Consider the
+  following code:
+
+      defmodule Hygiene do
+        defmacrop get_size do
+          quote do
+            size("hello")
+          end
+        end
+
+        def return_size do
+          import Kernel, except: [size: 1]
+          get_size
+        end
+      end
+
+      Hygiene.return_size #=> 5
+
+  Notice how `return_size` returns 5 even though the `size/1`
+  function is not imported.
+
+  Elixir is smart enough to delay the resolution to the latest
+  moment possible. So, if you call `size("hello")` inside quote,
+  but no `size/1` function is available, it is then expanded on
+  the caller:
+
+      defmodule Lazy do
+        defmacrop get_size do
+          import Kernel, except: [size: 1]
+
+          quote do
+            size([a: 1, b: 2])
+          end
+        end
+
+        def return_size do
+          import Kernel, except: [size: 1]
+          import Dict, only: [size: 1]
+          get_size
+        end
+      end
+
+      Lazy.return_size #=> 2
+
+  As in aliases, imports expansion can be explicitly disabled
+  via the `expand_imports` option.
 
   ## Stacktrace information
 
   One of Elixir goals is to provide proper stacktrace whenever there is an
   exception. In order to work properly with macros, the default behavior
-  in quote is to set the line to 0. When a macro is invoked and the quoted
-  expressions is expanded, 0 is replaced by the line of the call site.
+  in quote is to not set a line. When a macro is invoked and the quoted
+  expressions is expanded, the call site line is inserted.
 
   This is a good behavior for the majority of the cases, except if the macro
   is defining new functions. Consider this example:
@@ -313,8 +556,8 @@ defmodule Kernel.SpecialForms do
   However, if there is an exception in any of these functions, we want
   the stacktrace to point to the `GenServer.Behaviour` and not the line
   that calls `use GenServer.Behaviour`. For this reason, there is an
-  option called `:location` that when set to `:keep` keeps these proper
-  semantics:
+  option called `:location` that when set to `:keep` keeps the original
+  line and file lines instead of setting them to 0:
 
       quote location: :keep do
         def handle_call(request, _from, state) do
@@ -324,10 +567,32 @@ defmodule Kernel.SpecialForms do
 
   It is important to warn though that `location: :keep` evaluates the
   code as if it was defined inside `GenServer.Behaviour` file, in
-  particular, the macro `__FILE__` will always point to
-  `GenServer.Behaviour` file.
+  particular, the macro `__FILE__` and exceptions happening inside
+  the quote will always point to `GenServer.Behaviour` file.
   """
   defmacro quote(opts, do: contents)
+
+  @doc """
+  When used inside quoting, marks that the variable should
+  not be hygienized. The argument can be either a variable
+  node (i.e. a tuple with three elements where the last
+  one is an atom) or an atom representing the variable name.
+  Check `quote/2` for more information.
+  """
+  defmacro var!(var)
+
+  @doc """
+  Defines a variable in the given context.
+  Check `quote/2` for more information.
+  """
+  defmacro var!(var, context)
+
+  @doc """
+  When used inside quoting, marks that the alias should not
+  be hygienezed. This means the alias will be expanded when
+  the macro is expanded.
+  """
+  defmacro alias!(alias)
 
   @doc """
   Unquotes the given expression from inside a macro.
@@ -343,13 +608,13 @@ defmodule Kernel.SpecialForms do
 
   Which would then return:
 
-      { :sum, 0, [1, { :value, 0, quoted }, 3] }
+      { :sum, [], [1, { :value, [], quoted }, 3] }
 
   Which is not the expected result. For this, we use unquote:
 
       value = 13
       quote do: sum(1, unquote(value), 3)
-      #=> { :sum, 0, [1, 13, 3] }
+      #=> { :sum, [], [1, 13, 3] }
 
   """
   defmacro unquote(expr)
@@ -362,7 +627,7 @@ defmodule Kernel.SpecialForms do
 
       values = [2,3,4]
       quote do: sum(1, unquote_splicing(values), 5)
-      #=> { :sum, 0, [1, 2, 3, 4, 5] }
+      #=> { :sum, [], [1, 2, 3, 4, 5] }
 
   """
   defmacro unquote_splicing(expr)
@@ -428,7 +693,7 @@ defmodule Kernel.SpecialForms do
   and should not be invoked directly:
 
       quote do: (1; 2; 3)
-      #=> { :__block__, 0, [1,2,3] }
+      #=> { :__block__, [], [1,2,3] }
 
   """
   defmacro __block__(args)
@@ -451,17 +716,17 @@ defmodule Kernel.SpecialForms do
   It is usually compiled to an atom:
 
       quote do: Foo.Bar
-      { :__aliases__, 0, [:Foo,:Bar] }
+      { :__aliases__, [], [:Foo,:Bar] }
 
   Elixir represents `Foo.Bar` as `__aliases__` so calls can be
   unambiguously identified by the operator `:.`. For example:
 
       quote do: Foo.bar
-      {{:.,0,[{:__aliases__,0,[:Foo]},:bar]},0,[]}
+      {{:.,[],[{:__aliases__,[],[:Foo]},:bar]},[],[]}
 
   Whenever an expression iterator sees a `:.` as the tuple key,
-  it can be sure that it represents a call and the second element
-  of the arguments list is an atom.
+  it can be sure that it represents a call and the second argument
+  is the list is an atom.
 
   On the other hand, aliases holds some properties:
 
@@ -474,7 +739,7 @@ defmodule Kernel.SpecialForms do
   4) When the head element of aliases is not an atom, it is expanded at runtime:
 
         quote do: some_var.Foo
-        {:__aliases__,0,[{:some_var,0,:quoted},:Bar]}
+        {:__aliases__,[],[{:some_var,[],:quoted},:Bar]}
 
      Since `some_var` is not available at compilation time, the compiler
      expands such expression to:

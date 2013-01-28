@@ -35,8 +35,8 @@ defmodule Mix.Deps.Project do
   defp with_scm_and_status({ app, req, opts }, scms) when is_atom(app) and
       (is_binary(req) or is_regex(req) or req == nil) and is_list(opts) do
 
-    path = File.join(Mix.project[:deps_path], app)
-    opts = Keyword.put(opts, :path, path)
+    path = Path.join(Mix.project[:deps_path], app)
+    opts = Keyword.put(opts, :dest, path)
 
     { scm, opts } = Enum.find_value scms, fn(scm) ->
       (new = scm.accepts_options(opts)) && { scm, new }
@@ -63,14 +63,17 @@ defmodule Mix.Deps.Project do
 
   defp status(scm, app, req, opts) do
     if scm.checked_out? opts do
-      if req do
-        app_path = File.join opts[:path], "ebin/#{app}.app"
-        validate_app_file(app_path, app, req)
-      else
+      opts_app = opts[:app]
+
+      if opts_app == false do
         { :ok, nil }
+      else
+        path = if is_binary(opts_app), do: opts_app, else: "ebin/#{app}.app"
+        path = Path.join(opts[:dest], path)
+        validate_app_file(path, app, req)
       end
     else
-      { :unavailable, opts[:path] }
+      { :unavailable, opts[:dest] }
     end
   end
 
@@ -92,6 +95,7 @@ defmodule Mix.Deps.Project do
     end
   end
 
+  defp vsn_match?(nil, _actual), do: true
   defp vsn_match?(expected, actual) when is_binary(expected), do: actual == expected
   defp vsn_match?(expected, actual) when is_regex(expected),  do: actual =~ expected
 end

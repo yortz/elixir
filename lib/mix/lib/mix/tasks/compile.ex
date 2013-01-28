@@ -18,33 +18,20 @@ defmodule Mix.Tasks.Compile do
 
       [compilers: [:elixir, :mycompiler, :app]]
 
+  ## Command line options
+
+  * `--list` - List all enabled compilers.
+
+  Remaining options are forwarded to underlying compilers.
+
   ## Common configuration
 
   The following options are usually shared by different compilers:
-
-  * `:source_paths` - directories to find source files.
-    Defaults to `["lib"]`, can be configured as:
-
-        [source_paths: ["lib", "other"]]
 
   * `:compile_path` - directory to output compiled files.
     Defaults to `"ebin"`, can be configured as:
 
         [compile_path: "ebin"]
-
-  * `:watch_exts` - extensions to watch in order to trigger
-     a compilation:
-
-        [watch_exts: [:ex, :eex]]
-
-  * `:compile_exts` - extensions to compile whenever there
-    is a change:
-
-        [compile_exts: [:ex]]
-
-  ## Command line options
-
-  * `--list` - List all enabled compilers.
 
   """
   def run(["--list"]) do
@@ -75,29 +62,31 @@ defmodule Mix.Tasks.Compile do
 
   def run(args) do
     Mix.Task.run "loadpaths", args
+    compile_path = Mix.project[:compile_path]
 
-    changed = Enum.reduce get_compilers, false, fn(compiler, acc) ->
-      res = Mix.Task.run "compile.#{compiler}", args
-      acc or res != :noop
-    end
+    changed =
+      Enum.reduce get_compilers, false, fn(compiler, acc) ->
+        res = Mix.Task.run "compile.#{compiler}", args
+        acc or res != :noop
+      end
 
     # If any of the tasks above returns something different
     # than :noop, it means they produced something, so we
     # touch the common target `compile_path`. Notice that
     # we choose :noop since it is also the value returned
     # by a task that we already invoked.
-    if changed, do: File.touch Mix.project[:compile_path]
+    if changed, do: File.touch compile_path
   end
 
   defp get_compilers do
     Mix.project[:compilers] || if Mix.Project.get do
-      [:elixir, :app]
+      [:erlang, :elixir, :app]
     else
-      [:elixir]
+      [:erlang, :elixir]
     end
   end
 
   defp format(expression, args) do
-    :io_lib.format(expression, args) /> iolist_to_binary
+    :io_lib.format(expression, args) |> iolist_to_binary
   end
 end

@@ -31,6 +31,10 @@ defmodule KernelTest do
     assert { :in, 2 } inlist Kernel.__info__(:macros)
   end
 
+  test :__info__not_included do
+    assert not ({ :__info__, 1 } inlist Kernel.__info__(:functions))
+  end
+
   test :macro_exported? do
     assert macro_exported?(Kernel, :in, 2) == true
     assert macro_exported?(Kernel, :def, 1) == true
@@ -42,6 +46,19 @@ defmodule KernelTest do
 
   test :debug_info do
     assert :debug_info inlist Kernel.__info__(:compile)[:options]
+  end
+
+  test :apply do
+    assert apply(Enum, :reverse, [[1|[2,3]]]) == [3,2,1]
+    assert apply(fn x -> x * 2 end, [2]) == 4
+  end
+
+  test :__MODULE__ do
+    assert __MODULE__ == :"Elixir-KernelTest"
+  end
+
+  test :function_from___ENV__ do
+    assert __ENV__.function == { :test_function_from___ENV__, 0 }
   end
 
   defp x(value) when value in [1,2,3], do: true
@@ -182,23 +199,23 @@ defmodule KernelTest do
     use ExUnit.Case, async: true
 
     test :simple do
-      assert [1,[2],3] /> List.flatten == [1,2,3]
+      assert [1,[2],3] |> List.flatten == [1,2,3]
     end
 
     test :nested do
-      assert [1,[2],3] /> List.flatten /> Enum.map(&1 * 2) == [2,4,6]
+      assert [1,[2],3] |> List.flatten |> Enum.map(&1 * 2) == [2,4,6]
     end
 
     test :local do
-      assert [1,[2],3] /> List.flatten /> local == [2,4,6]
+      assert [1,[2],3] |> List.flatten |> local == [2,4,6]
     end
 
     test :map do
-      assert Enum.map([1,2,3], &1 /> twice /> twice) == [4,8,12]
+      assert Enum.map([1,2,3], &1 |> twice |> twice) == [4,8,12]
     end
 
     test :atom do
-      assert __MODULE__ /> :constant == 13
+      assert __MODULE__ |> :constant == 13
     end
 
     def constant, do: 13

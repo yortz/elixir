@@ -1,4 +1,12 @@
-defexception ExUnit.AssertionError, message: "assertion failed"
+defexception ExUnit.AssertionError,  message: "assertion failed"
+
+defexception ExUnit.ExpectationError, expected: nil, actual: nil, reason: "", negation: false, prelude: "Expected" do
+  def message(exception) do
+    "#{exception.prelude} #{inspect exception.expected} to " <>
+      if(exception.negation, do: "not ", else: "") <>
+      "be #{exception.reason} #{inspect exception.actual}"
+  end
+end
 
 defmodule ExUnit.Assertions do
   @moduledoc """
@@ -53,14 +61,14 @@ defmodule ExUnit.Assertions do
 
   """
   defmacro refute(expected) do
-    contents = translate_assertion({ :!, 0, [expected] }, fn ->
+    contents = translate_assertion({ :!, [], [expected] }, fn ->
       quote do
         value = unquote(expected)
         assert !value, "Expected #{inspect value} to be false"
       end
     end)
 
-    { :!, 0, [contents] }
+    { :!, [], [contents] }
   end
 
   ## START HELPERS
@@ -74,55 +82,46 @@ defmodule ExUnit.Assertions do
   end
 
   defp translate_assertion({ :==, _, [left, right] }, _else) do
-    assert_operator :==, left, right, "be equal to (==)"
+    assert_operator :==, left, right, "equal to (==)"
   end
 
   defp translate_assertion({ :<, _, [left, right] }, _else) do
-    assert_operator :<, left, right, "be less than"
+    assert_operator :<, left, right, "less than"
   end
 
   defp translate_assertion({ :>, _, [left, right] }, _else) do
-    assert_operator :>, left, right, "be more than"
+    assert_operator :>, left, right, "more than"
   end
 
   defp translate_assertion({ :<=, _, [left, right] }, _else) do
-    assert_operator :<=, left, right, "be less than or equal to"
+    assert_operator :<=, left, right, "less than or equal to"
   end
 
   defp translate_assertion({ :>=, _, [left, right] }, _else) do
-    assert_operator :>=, left, right, "be more than or equal to"
+    assert_operator :>=, left, right, "more than or equal to"
   end
 
   defp translate_assertion({ :===, _, [left, right] }, _else) do
-    assert_operator :===, left, right, "be equal to (===)"
+    assert_operator :===, left, right, "equal to (===)"
   end
 
   defp translate_assertion({ :!==, _, [left, right] }, _else) do
-    assert_operator :!==, left, right, "be not equal to (!==)"
+    assert_operator :!==, left, right, "not equal to (!==)"
   end
 
   defp translate_assertion({ :!=, _, [left, right] }, _else) do
-    assert_operator :!=, left, right, "be not equal to (!=)"
+    assert_operator :!=, left, right, "not equal to (!=)"
   end
 
   defp translate_assertion({ :=~, _, [left, right] }, _else) do
-    assert_operator :=~, left, right, "match (=~)"
-  end
-
-  defp translate_assertion({ :in, _, [left, right] }, _else) do
-    IO.write "[WARNING] assert(left in right) is deprecated, please use assert(left inlist right)\n#{Exception.formatted_stacktrace}"
-    quote do
-      left  = unquote(left)
-      right = unquote(right)
-      assert(Enum.find(right, &1 == left), "Expected #{inspect left} to be in #{inspect right}")
-    end
+    assert_operator :=~, left, right, "a match (=~) with"
   end
 
   defp translate_assertion({ :inlist, _, [left, right] }, _else) do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert(List.member?(right, left), "Expected #{inspect left} to be in #{inspect right}")
+      assert List.member?(right, left), left, right, reason: "in"
     end
   end
 
@@ -143,17 +142,7 @@ defmodule ExUnit.Assertions do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert(!(left =~ right), "Expected #{inspect left} to not match #{inspect right}")
-    end
-  end
-
-  defp translate_assertion({ op, _, [{ :in, _, [left, right] }] }, _else) when negation?(op) do
-    IO.write "[WARNING] refute(left in right) is deprecated, please use refute(left inlist right)\n#{Exception.formatted_stacktrace}"
-
-    quote do
-      left  = unquote(left)
-      right = unquote(right)
-      assert(!Enum.find(right, &1 == left), "Expected #{inspect left} to not be in #{inspect right}")
+      assert !(left =~ right), left, right, reason: "a match (=~) with", negation: true
     end
   end
 
@@ -161,7 +150,7 @@ defmodule ExUnit.Assertions do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert(!List.member?(right, left), "Expected #{inspect left} to not be in #{inspect right}")
+      assert !List.member?(right, left), left, right, reason: "in", negation: true
     end
   end
 
@@ -175,8 +164,7 @@ defmodule ExUnit.Assertions do
     quote do
       left  = unquote(expected)
       right = unquote(actual)
-      assert unquote(operator).(left, right),
-        "Expected #{inspect left} to #{unquote(text)} #{inspect right}"
+      assert unquote(operator).(left, right), left, right, reason: unquote(text)
     end
   end
 
@@ -192,8 +180,46 @@ defmodule ExUnit.Assertions do
 
   """
   def assert(expected, message) when is_binary(message) do
-    unless expected, do: flunk message
+    unless expected, do: raise(ExUnit.AssertionError, message: message)
     true
+  end
+
+  @doc """
+  Asserts the `expected` value is true.
+  If it fails, it raises an expectation error
+  using the given expected and actual values.
+
+  ## Examples
+
+      assert this > that, this, that, reason: "more than"
+
+  """
+  def assert(value, expected, actual, opts) do
+    unless value, do: raise(ExUnit.ExpectationError, Keyword.merge([expected: expected, actual: actual], opts))
+    true
+  end
+
+  @doc """
+  Assets a message was or is going to be received. Differently from
+  `assert_received`, it has a default timeout time of 100 miliseconds.
+
+  The given `expected` content must be a pattern.
+
+  ## Examples
+
+      assert_receive :hello
+
+  Asserts against a larger timeout:
+
+      assert_receive :hello, 20_000
+
+  You can also match against specific patterns:
+
+      assert_received { :hello, _ }
+
+  """
+  defmacro assert_receive(expected, timeout // 100, message // nil) do
+    do_assert_receive(expected, timeout, message)
   end
 
   @doc """
@@ -214,13 +240,18 @@ defmodule ExUnit.Assertions do
 
   """
   defmacro assert_received(expected, message // nil) do
+    do_assert_receive(expected, 0, message)
+  end
+
+  defp do_assert_receive(expected, timeout, message) do
     binary = Macro.to_binary(expected)
 
     quote do
       receive do
         unquote(expected) = received -> received
       after
-        0 -> flunk unquote(message) || "Expected to have received message matching #{unquote binary}"
+        unquote(timeout) ->
+          flunk unquote(message) || "Expected to have received message matching #{unquote binary}"
       end
     end
   end
@@ -237,7 +268,8 @@ defmodule ExUnit.Assertions do
   """
   def assert_raise(exception, message, function) when is_binary(message) and is_function(function) do
     error = assert_raise(exception, function)
-    assert error.message == message
+    assert message == error.message, message, error.message,
+      prelude: "Expected #{inspect error}'s message", reason: "a match"
     error
   end
 
@@ -261,7 +293,7 @@ defmodule ExUnit.Assertions do
       error ->
         name = error.__record__(:name)
 
-        if name == ExUnit.AssertionError do
+        if name in [ExUnit.AssertionError, ExUnit.ExpectationError] do
           raise(error)
         else
           flunk "Expected exception #{inspect exception}, got #{inspect name} (#{error.message})"
@@ -330,7 +362,7 @@ defmodule ExUnit.Assertions do
         unquote(expr)
         flunk "Expected to catch #{unquote(kind)}, got nothing"
       rescue
-        e in [ExUnit.AssertionError] -> raise(e)
+        e in [ExUnit.AssertionError, ExUnit.ExpectationError] -> raise(e)
       catch
         unquote(kind), what_we_got -> what_we_got
       end
@@ -351,6 +383,25 @@ defmodule ExUnit.Assertions do
   end
 
   @doc """
+  Asserts a message was not received and won't be during
+  a timeout value.
+
+  The `not_expected` contents must be a match pattern.
+
+  ## Examples
+
+      refute_receive :bye
+
+  Refute received with a explicit timeout:
+
+      refute_receive :bye, 1000
+
+  """
+  defmacro refute_receive(not_expected, timeout // 100, message // nil) do
+    do_refute_receive(not_expected, timeout, message)
+  end
+
+  @doc """
   Asserts a message was not received (i.e. it is not in the current process mailbox).
   The `not_expected` contents must be a match pattern.
 
@@ -363,6 +414,10 @@ defmodule ExUnit.Assertions do
 
   """
   defmacro refute_received(not_expected, message // nil) do
+    do_refute_receive(not_expected, 0, message)
+  end
+
+  defp do_refute_receive(not_expected, timeout, message) do
     binary = Macro.to_binary(not_expected)
 
     quote do
@@ -370,7 +425,7 @@ defmodule ExUnit.Assertions do
         unquote(not_expected) = actual ->
           flunk unquote(message) || "Expected to not have received message matching #{unquote binary}, got #{inspect actual}"
       after
-        0 -> false
+        unquote(timeout) -> false
       end
     end
   end

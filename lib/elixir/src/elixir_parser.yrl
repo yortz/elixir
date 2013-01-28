@@ -1,12 +1,9 @@
-% Grammar for the Elixir language done with yecc
-% Copyright (C) 2011 Jose Valim
-
 Nonterminals
   grammar expr_list
   expr paren_expr block_expr fn_expr bracket_expr call_expr bracket_at_expr max_expr
   base_expr matched_expr matched_op_expr unmatched_expr op_expr
   add_op mult_op unary_op two_op pipeline_op bin_concat_op
-  match_op send_op default_op when_op pipe_op in_op inc_op stab_op range_op
+  match_op send_op default_op when_op pipe_op in_op inc_op range_op
   andand_op oror_op and_op or_op comp_expr_op colon_colon_op three_op at_op
   open_paren close_paren empty_paren
   open_bracket close_bracket
@@ -14,7 +11,7 @@ Nonterminals
   open_bit close_bit
   base_comma_expr comma_expr optional_comma_expr matched_comma_expr
   call_args call_args_parens call_args_parens_not_one call_args_no_parens parens_call
-  stab_expr stab_expr_list
+  stab stab_op stab_expr stab_maybe_expr
   kw_eol kw_expr kw_comma kw_base
   matched_kw_expr matched_kw_comma matched_kw_base
   dot_op dot_ref dot_identifier dot_op_identifier dot_do_identifier
@@ -26,14 +23,14 @@ Nonterminals
 Terminals
   identifier kw_identifier punctuated_identifier
   bracket_identifier paren_identifier do_identifier block_identifier
-  fn 'end' '__aliases__'
+  fn 'end' aliases
   number signed_number atom bin_string list_string sigil
   dot_call_op comp_op op_identifier
   'not' 'and' 'or' 'xor' 'when' 'in' 'inlist' 'inbits' 'do'
   'true' 'false' 'nil'
   '=' '+' '-' '*' '/' '++' '--' '**' '//'
   '(' ')' '[' ']' '{' '}' '<<' '>>' '::'
-  eol ','  '&' '|'  '.' '^' '@' '<-' '<>' '->' '/>' '=~'
+  eol ','  '&' '|'  '.' '^' '@' '<-' '<>' '->' '|>' '/>' '=~'
   '&&' '||' '!' '...' '..'
   '<<<' '>>>' '&&&' '|||' '^^^' '~~~'
   .
@@ -41,7 +38,7 @@ Terminals
 Rootsymbol grammar.
 
 Left       5 do.
-Right     10 '->'.
+Right     10 stab_op.
 Left      20 ','.  % Solve nested call_args conflicts
 Right     30 colon_colon_op.
 Right     40 when_op.
@@ -144,13 +141,12 @@ matched_op_expr -> colon_colon_op matched_expr : { '$1', '$2' }.
 matched_op_expr -> comp_expr_op matched_expr : { '$1', '$2' }.
 
 block_expr -> parens_call call_args_parens do_block : build_identifier('$1', '$2' ++ '$3').
-block_expr -> parens_call call_args_parens call_args_parens do_block : { build_identifier('$1', '$2'), ?line('$1'), '$3' ++ '$4' }.
+block_expr -> parens_call call_args_parens call_args_parens do_block : build_nested_parens('$1', '$2', '$3' ++ '$4').
 block_expr -> dot_punctuated_identifier call_args_no_parens do_block : build_identifier('$1', '$2' ++ '$3').
 block_expr -> dot_do_identifier do_block : build_identifier('$1', '$2').
 block_expr -> dot_identifier call_args_no_parens do_block : build_identifier('$1', '$2' ++ '$3').
 
-fn_expr -> fn_eol stab_expr_list end_eol : build_fn('$1', build_stab(lists:reverse('$2'))).
-fn_expr -> fn_eol '->' grammar 'end' : build_fn('$1', { '->', ?line('$2'), [{ [], build_block('$3') }] }).
+fn_expr -> fn_eol stab end_eol : build_fn('$1', build_stab(lists:reverse('$2'))).
 fn_expr -> call_expr : '$1'.
 
 call_expr -> dot_punctuated_identifier call_args_no_parens : build_identifier('$1', '$2').
@@ -163,10 +159,10 @@ call_expr -> max_expr : '$1'.
 
 max_expr -> bracket_expr : '$1'.
 max_expr -> parens_call call_args_parens : build_identifier('$1', '$2').
-max_expr -> parens_call call_args_parens call_args_parens : { build_identifier('$1', '$2'), ?line('$1'), '$3' }.
+max_expr -> parens_call call_args_parens call_args_parens : build_nested_parens('$1', '$2', '$3').
 max_expr -> dot_ref : '$1'.
 max_expr -> base_expr : '$1'.
-max_expr -> open_paren stab_expr_list close_paren : build_stab(lists:reverse('$2')).
+max_expr -> open_paren stab close_paren : build_stab(lists:reverse('$2')).
 
 bracket_expr -> dot_bracket_identifier bracket_access : build_access(build_identifier('$1', nil), '$2').
 bracket_expr -> max_expr bracket_access : build_access('$1', '$2').
@@ -176,27 +172,27 @@ bracket_at_expr -> at_op max_expr bracket_access : build_access(build_unary_op('
 bracket_at_expr -> bracket_at_expr bracket_access : build_access('$1', '$2').
 
 base_expr -> number : ?exprs('$1').
-base_expr -> signed_number : { element(4, '$1'), ?line('$1'), ?exprs('$1') }.
+base_expr -> signed_number : { element(4, '$1'), [{line,?line('$1')}], ?exprs('$1') }.
 base_expr -> atom : build_atom('$1').
 base_expr -> list : '$1'.
 base_expr -> tuple : '$1'.
 base_expr -> 'true' : ?op('$1').
 base_expr -> 'false' : ?op('$1').
 base_expr -> 'nil' : ?op('$1').
-base_expr -> '__aliases__' : '$1'.
+base_expr -> aliases : { '__aliases__', [{line,?line('$1')}], ?exprs('$1') }.
 base_expr -> bin_string  : build_bin_string('$1').
 base_expr -> list_string : build_list_string('$1').
 base_expr -> bit_string : '$1'.
-base_expr -> '&' : '$1'.
-base_expr -> '...' : { ?op('$1'), ?line('$1'), [] }.
+base_expr -> '&' : { '&', [{line,?line('$1')}], ?exprs('$1') }.
+base_expr -> '...' : { ?op('$1'), [{line,?line('$1')}], [] }.
 base_expr -> sigil : build_sigil('$1').
 
 %% Blocks
 
 do_block -> do_eol 'end' : [[{do,nil}]].
-do_block -> do_eol stab_expr_list end_eol : [[{ do, build_stab(lists:reverse('$2')) }]].
+do_block -> do_eol stab end_eol : [[{ do, build_stab(lists:reverse('$2')) }]].
 do_block -> do_eol block_list 'end' : [[{ do, nil }|'$2']].
-do_block -> do_eol stab_expr_list eol block_list 'end' : [[{ do, build_stab(lists:reverse('$2')) }|'$4']].
+do_block -> do_eol stab eol block_list 'end' : [[{ do, build_stab(lists:reverse('$2')) }|'$4']].
 
 fn_eol -> 'fn' : '$1'.
 fn_eol -> 'fn' eol : '$1'.
@@ -210,14 +206,18 @@ end_eol -> eol 'end' : '$2'.
 block_eol -> block_identifier : '$1'.
 block_eol -> block_identifier eol : '$1'.
 
-stab_expr_list -> stab_expr : ['$1'].
-stab_expr_list -> stab_expr_list eol stab_expr : ['$3'|'$1'].
+stab -> stab_expr : ['$1'].
+stab -> stab eol stab_expr : ['$3'|'$1'].
 
 stab_expr -> expr : '$1'.
-stab_expr -> call_args_no_parens stab_op expr : build_op('$2', '$1', '$3').
-stab_expr -> call_args_parens_not_one stab_op expr : build_op('$2', '$1', '$3').
+stab_expr -> stab_op stab_maybe_expr : build_op('$1', [], '$2').
+stab_expr -> call_args_no_parens stab_op stab_maybe_expr : build_op('$2', '$1', '$3').
+stab_expr -> call_args_parens_not_one stab_op stab_maybe_expr : build_op('$2', '$1', '$3').
 
-block_item -> block_eol stab_expr_list eol : { ?exprs('$1'), build_stab(lists:reverse('$2')) }.
+stab_maybe_expr -> 'expr' : '$1'.
+stab_maybe_expr -> '$empty' : nil.
+
+block_item -> block_eol stab eol : { ?exprs('$1'), build_stab(lists:reverse('$2')) }.
 block_item -> block_eol : { ?exprs('$1'), nil }.
 
 block_list -> block_item : ['$1'].
@@ -270,6 +270,8 @@ two_op -> '**' eol : '$1'.
 
 pipeline_op -> '=~' : '$1'.
 pipeline_op -> '=~' eol : '$1'.
+pipeline_op -> '|>' : '$1'.
+pipeline_op -> '|>' eol : '$1'.
 pipeline_op -> '/>' : '$1'.
 pipeline_op -> '/>' eol : '$1'.
 
@@ -360,7 +362,7 @@ dot_op -> '.' eol : '$1'.
 dot_identifier -> identifier : '$1'.
 dot_identifier -> matched_expr dot_op identifier : build_dot('$2', '$1', '$3').
 
-dot_ref -> matched_expr dot_op '__aliases__' : build_dot_ref('$2', '$1', '$3').
+dot_ref -> matched_expr dot_op aliases : build_dot_ref('$2', '$1', '$3').
 
 dot_op_identifier -> op_identifier : '$1'.
 dot_op_identifier -> matched_expr dot_op op_identifier : build_dot('$2', '$1', '$3').
@@ -378,7 +380,7 @@ dot_punctuated_identifier -> punctuated_identifier : '$1'.
 dot_punctuated_identifier -> matched_expr dot_op punctuated_identifier : build_dot('$2', '$1', '$3').
 
 parens_call -> dot_paren_identifier : '$1'.
-parens_call -> matched_expr dot_call_op : { '.', ?line('$2'), ['$1'] }. % Fun/local calls
+parens_call -> matched_expr dot_call_op : { '.', [{line,?line('$2')}], ['$1'] }. % Fun/local calls
 
 % Function calls
 
@@ -448,8 +450,8 @@ tuple -> open_curly paren_expr ',' call_args close_curly :  build_tuple('$1', ['
 
 % Bitstrings
 
-bit_string -> open_bit '>>' : { '<<>>', ?line('$1'), [] }.
-bit_string -> open_bit call_args close_bit : { '<<>>', ?line('$1'), '$2' }.
+bit_string -> open_bit '>>' : { '<<>>', [{line,?line('$1')}], [] }.
+bit_string -> open_bit call_args close_bit : { '<<>>', [{line,?line('$1')}], '$2' }.
 
 Erlang code.
 
@@ -467,58 +469,62 @@ Erlang code.
 %% Operators
 
 build_op({ _, _, _ } = Op, Left, Right) ->
-  { ?exprs(Op), ?line(Op), [Left, Right] };
+  { ?exprs(Op), [{line,?line(Op)}], [Left, Right] };
 
 build_op({ BOp, Line }, { UOp, _, [Left] }, Right) when ?rearrange_bop(BOp), ?rearrange_uop(UOp) ->
-  { UOp, Line, [{ BOp, Line, [Left, Right] }] };
+  { UOp, [{line,Line}], [{ BOp, [{line,Line}], [Left, Right] }] };
 
 build_op(Op, Left, Right) ->
-  { ?op(Op), ?line(Op), [Left, Right] }.
+  { ?op(Op), [{line,?line(Op)}], [Left, Right] }.
 
 build_unary_op(Op, Expr) ->
-  { ?op(Op), ?line(Op), [Expr] }.
+  { ?op(Op), [{line,?line(Op)}], [Expr] }.
 
 build_tuple(_Marker, [Left, Right]) ->
   { Left, Right };
 
 build_tuple(Marker, Args) ->
-  { '{}', ?line(Marker), Args }.
+  { '{}', [{line,?line(Marker)}], Args }.
 
 %% Blocks
 
-build_block([nil])                                      -> { '__block__', 0, [nil] };
-build_block([{Op,_,[_]}]=Exprs) when ?rearrange_uop(Op) -> { '__block__', 0, Exprs };
+build_block([nil])                                      -> { '__block__', [], [nil] };
+build_block([{Op,_,[_]}]=Exprs) when ?rearrange_uop(Op) -> { '__block__', [], Exprs };
 build_block([Expr]) when not is_list(Expr)              -> Expr;
-build_block(Exprs)                                      -> { '__block__', 0, Exprs }.
+build_block(Exprs)                                      -> { '__block__', [], Exprs }.
 
 %% Dots
 
-build_dot_ref(Dot, { '__aliases__', _, Left }, { '__aliases__', _, Right }) ->
-  { '__aliases__', ?line(Dot), Left ++ Right };
+build_dot_ref(Dot, { '__aliases__', _, Left }, { 'aliases', _, Right }) ->
+  { '__aliases__', [{line,?line(Dot)}], Left ++ Right };
 
-build_dot_ref(Dot, Other, { '__aliases__', _, Right }) ->
-  { '__aliases__', ?line(Dot), [Other|Right] }.
+build_dot_ref(Dot, Other, { 'aliases', _, Right }) ->
+  { '__aliases__', [{line,?line(Dot)}], [Other|Right] }.
 
 build_dot(Dot, Left, Right) ->
-  { '.', ?line(Dot), [Left, extract_identifier(Right)] }.
+  { '.', [{line,?line(Dot)}], [Left, extract_identifier(Right)] }.
 
 %% Identifiers
 
-build_identifier({ '.', Line, _ } = Dot, Args) ->
+build_nested_parens(Dot, Args1, Args2) ->
+  Identifier = build_identifier(Dot, Args1),
+  { Identifier, ?line(Identifier), Args2 }.
+
+build_identifier({ '.', Meta, _ } = Dot, Args) ->
   FArgs = case Args of
     nil -> [];
     _ -> Args
   end,
-  { Dot, Line, FArgs };
+  { Dot, Meta, FArgs };
 
 build_identifier({ Keyword, Line }, Args) when Keyword == fn ->
-  { fn, Line, Args };
+  { fn, [{line,Line}], Args };
 
 build_identifier({ op_identifier, Line, Identifier }, Args) ->
-  { '__ambiguousop__', Line, [{ Identifier, Line, nil }|Args] };
+  { '__ambiguousop__', [{line,Line}], [{ Identifier, [{line,Line}], nil }|Args] };
 
 build_identifier({ _, Line, Identifier }, Args) ->
-  { Identifier, Line, Args }.
+  { Identifier, [{line,Line}], Args }.
 
 extract_identifier({ Kind, _, Identifier }) when
     Kind == identifier; Kind == punctuated_identifier; Kind == bracket_identifier;
@@ -530,32 +536,37 @@ extract_identifier(Other) -> Other.
 %% Fn
 
 build_fn(Op, Stab) ->
-  { fn, ?line(Op), [[{ do, Stab }]] }.
+  { fn, [{line,?line(Op)}], [[{ do, Stab }]] }.
 
 %% Access
 
 build_access(Expr, Access) ->
-  Line = ?line(Access),
-  { { '.', Line, ['Elixir-Kernel', access] }, ?line(Access), [ Expr, ?op(Access) ] }.
+  Meta = [{line,?line(Access)}],
+  { { '.', Meta, ['Elixir-Kernel', access] }, Meta, [ Expr, ?op(Access) ] }.
 
 %% Interpolation aware
 
 build_sigil({ sigil, Line, Sigil, Parts, Modifiers }) ->
-  { list_to_atom([$_,$_,Sigil,$_,$_]), Line, [ { '<<>>', Line, Parts }, Modifiers ] }.
+  Meta = [{line,Line}],
+  { list_to_atom([$_,$_,Sigil,$_,$_]), Meta, [ { '<<>>', Meta, Parts }, Modifiers ] }.
 
 build_bin_string({ bin_string, _Line, [H] }) when is_binary(H) -> H;
-build_bin_string({ bin_string, Line, Args }) -> { '<<>>', Line, Args }.
+build_bin_string({ bin_string, Line, Args }) -> { '<<>>', [{line,Line}], Args }.
 
 build_list_string({ list_string, _Line, [H] }) when is_binary(H) -> binary_to_list(H);
-build_list_string({ list_string, Line, Args }) -> { { '.', Line, [erlang, binary_to_list] }, Line, [{ '<<>>', Line, Args}] }.
+build_list_string({ list_string, Line, Args }) ->
+  Meta = [{line,Line}],
+  { { '.', Meta, [erlang, binary_to_list] }, Meta, [{ '<<>>', Meta, Args}] }.
 
 build_atom({ atom, _Line, Atom }) when is_atom(Atom) -> Atom;
-build_atom({ atom, Line, Args }) -> { { '.', Line, [erlang, binary_to_atom] }, Line, [{ '<<>>', Line, Args }, utf8] }.
+build_atom({ atom, Line, Args }) ->
+  Meta = [{line,Line}],
+  { { '.', Meta, [erlang, binary_to_atom] }, Meta, [{ '<<>>', Meta, Args }, utf8] }.
 
 %% Keywords
 
-build_stab([{ '->', Line, [Left, Right] }|T]) ->
-  { '->', Line, build_stab(T, Left, [Right], []) };
+build_stab([{ '->', Meta, [Left, Right] }|T]) ->
+  { '->', Meta, build_stab(T, Left, [Right], []) };
 
 build_stab(Else) ->
   build_block(Else).

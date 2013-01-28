@@ -5,6 +5,15 @@ defmodule DictTest.Common do
     quote location: :keep do
       use ExUnit.Case, async: true
 
+      # Most underlying Dict implementations have no key order guarantees,
+      # sort them before we compare:
+      defmacrop dicts_equal(actual, expected) do
+        quote do
+          cmp = fn { k1, _ }, { k2, _ } -> k1 < k2 end
+          Enum.sort(expected, cmp) == Enum.sort(actual, cmp)
+        end
+      end
+
       test :access do
         dict = new_dict [{"first_key", 1}, {"second_key", 2}]
         assert dict["first_key"] == 1
@@ -48,6 +57,11 @@ defmodule DictTest.Common do
         assert 2 == Dict.get dict, "second_key"
       end
 
+      test :put_new do
+        dict = Dict.put_new(new_dict, "first_key", {1})
+        assert 1 == Dict.get dict, "first_key"
+      end
+
       test :keys do
         assert ["first_key", "second_key"] == Enum.sort Dict.keys new_dict
         assert [] == Dict.keys empty_dict
@@ -78,24 +92,25 @@ defmodule DictTest.Common do
 
         dict1 = new_dict Enum.zip ["a", "b", "c"], [1, 2, 3]
         dict2 = new_dict Enum.zip ["a", "c", "d"], [3, :a, 0]
-        final = new_dict Enum.zip ["a", "b", "c", "d"], [3, 2, :a, 0]
-        assert Dict.merge(dict1, dict2) == final
+        actual = Dict.merge(dict1, dict2)
+        expected = new_dict Enum.zip ["a", "b", "c", "d"], [3, 2, :a, 0]
+        assert dicts_equal actual, expected
       end
 
       test :merge_with_enum do
         dict1 = new_dict Enum.zip ["a", "b", "c"], [1, 2, 3]
         dict2 = Enum.zip ["a", "c", "d"], [3, :a, 0]
-        final = new_dict(Enum.zip ["a", "b", "c", "d"], [3, 2, :a, 0])
-        assert Dict.merge(dict1, dict2) == final
+        actual = Dict.merge(dict1, dict2)
+        expected = new_dict(Enum.zip ["a", "b", "c", "d"], [3, 2, :a, 0])
+        assert dicts_equal actual, expected
       end
 
       test :merge_with_function do
         dict1 = new_dict Enum.zip ["a", "b"], [1, 2]
         dict2 = new_dict Enum.zip ["a", "d"], [3, 4]
-        result = Dict.merge dict1, dict2, fn _k, v1, v2 ->
-          v1 + v2
-        end
-        assert new_dict(Enum.zip ["a", "b", "d"], [4, 2, 4]) == result
+        actual = Dict.merge dict1, dict2, fn _k, v1, v2 -> v1 + v2 end
+        expected = new_dict(Enum.zip ["a", "b", "d"], [4, 2, 4])
+        assert dicts_equal actual, expected
       end
 
       test :has_key do
@@ -123,39 +138,21 @@ defmodule DictTest.Common do
 
       defp empty_dict, do: unquote(module).new
 
-      defp new_dict(list // [{"first_key", 1}, {"second_key", 2}])
-      defp new_dict(list), do: unquote(module).new list
-      defp new_dict(list, transform), do: unquote(module).new list, transform
+      defp new_dict(list // [{"first_key", 1}, {"second_key", 2}]) do
+        unquote(module).new list
+      end
+
+      defp new_dict(list, transform) do
+        unquote(module).new list, transform
+      end
     end
   end
 end
 
-defmodule DictTest do
+defmodule Dict.HashDictTest do
   use DictTest.Common, HashDict
-
-  test :new do
-    assert :dict.new == elem(new_dict([]), 1)
-  end
 end
 
-defmodule OrdDictTest do
-  use DictTest.Common, OrdDict
-
-  test :new do
-    assert [] == elem(new_dict([]), 1)
-  end
-end
-
-defmodule Binary.DictTest do
-  use DictTest.Common, Binary.Dict
-
-  test :new do
-    assert [] == elem(new_dict([]), 1)
-  end
-
-  test :merge_mixed do
-    merged = Dict.merge(new_dict, new_dict([first_key: 13]))
-    assert merged[:first_key]  == 13
-    assert merged["first_key"] == 13
-  end
+defmodule Dict.ListTest do
+  use DictTest.Common, List.Dict
 end

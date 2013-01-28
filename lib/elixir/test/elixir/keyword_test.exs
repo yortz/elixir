@@ -12,7 +12,7 @@ defmodule KeywordTest do
   test :ambiguity do
     # This raises a warning, so let's leave it commented
     # assert quote(do: [a:b])  == [a: { :b, 0, :quoted }]
-    assert quote(do: [a::b]) == [{ :::, 0, [{ :a, 0, :quoted },{ :b, 0, :quoted }] }]
+    assert [{ :::, [], [{ :a, [], _ },{ :b, [], _ }] }] = quote(do: [a::b])
   end
 
   test :optional_comma do
@@ -23,7 +23,7 @@ defmodule KeywordTest do
 
   test :from_enum do
     list = [{:b,2},{:a,1},{:c,3}]
-    dict = OrdDict.new list
+    dict = HashDict.new list
     assert Keyword.from_enum(list) == [b: 2, a: 1, c: 3]
     assert Keyword.from_enum(dict) == [a: 1, b: 2, c: 3]
   end
@@ -82,7 +82,12 @@ defmodule KeywordTest do
 
   test :put do
     assert Keyword.put(create_empty_keywords, :first_key, 1) == [first_key: 1]
-    assert Keyword.put(create_keywords, :first_key, 1) == [first_key: 1, second_key: 2]
+    assert Keyword.put(create_keywords, :first_key, 3) == [first_key: 3, second_key: 2]
+  end
+
+  test :put_new do
+    assert Keyword.put_new(create_empty_keywords, :first_key, 1) == [first_key: 1]
+    assert Keyword.put_new(create_keywords, :first_key, 3) == [first_key: 1, second_key: 2]
   end
 
   test :merge do

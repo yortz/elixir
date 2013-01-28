@@ -1,13 +1,13 @@
 Code.require_file "../test_helper.exs", __FILE__
 
-defmodule Typespec.Test.Type do
+defmodule Typespec.TypeTest do
   use ExUnit.Case, async: true
 
   # This macro allows us to focus on the result of the
   # definition and not on the hassles of handling test
   # module
   defmacrop test_module([{:do, block}]) do
-    quote do
+    quote expand_aliases: false do
       { :module, T, _binary, result } = defmodule T do
         unquote(block)
       end
@@ -119,6 +119,18 @@ defmodule Typespec.Test.Type do
     end
     assert {:mytype,{:type,_,:tuple, :any},[]} = spec1
     assert {:mytype1,{:type,_,:tuple, :any},[]} = spec2
+  end
+
+  test "@type with list shortcuts" do
+    {spec1, spec2, spec3} = test_module do
+      t1 = @type mytype :: []
+      t2 = @type mytype1 :: [integer]
+      t3 = @type mytype2 :: [integer, ...]
+      {t1, t2, t3}
+    end
+    assert {:mytype,{:type,_,:nil,[]},[]} = spec1
+    assert {:mytype1,{:type,_,:list, [{:type,_,:integer,[]}]},[]} = spec2
+    assert {:mytype2,{:type,_,:nonempty_list, [{:type,_,:integer,[]}]},[]} = spec3
   end
 
   test "@type with a fun" do
@@ -285,7 +297,7 @@ defmodule Typespec.Test.Type do
   test "type_to_ast" do
     quoted = [
       (quote do: @type with_ann() :: (t :: atom())),
-      (quote do: @type empty_tuple_type() :: {}),    
+      (quote do: @type empty_tuple_type() :: {}),
       (quote do: @type imm_type_1() :: 1),
       (quote do: @type imm_type_2() :: :atom),
       (quote do: @type simple_type() :: integer()),
@@ -298,6 +310,7 @@ defmodule Typespec.Test.Type do
       (quote do: @type ftype() :: (() -> any()) | (() -> integer()) | ((integer() -> integer()))),
       (quote do: @type cl() :: char_list()),
       (quote do: @type vaf() :: (... -> any())),
+      (quote do: @type rng() :: 1 .. 10),
     ]
 
     types = test_module do
@@ -314,7 +327,7 @@ defmodule Typespec.Test.Type do
   end
 
   test "type_to_ast for records" do
-    record_type = { { :record, :my_record }, 
+    record_type = { { :record, :my_record },
                     [
                       { :typed_record_field,
                         { :record_field, 0, { :atom, 0, :field1 }},
@@ -325,13 +338,25 @@ defmodule Typespec.Test.Type do
                     ],
                     []}
     assert Kernel.Typespec.type_to_ast(record_type) ==
-      quote(hygiene: false, do: my_record() :: {:my_record, field1 :: atom(), field2 :: integer() })
+      { :::,[], [
+        { :my_record,[],[] },
+        { :{},[], [:my_record,
+          { :::, [line: 0], [
+            {:field1,0,nil},
+            {:atom,[line: 0],[]}
+          ] },
+          { :::, [line: 0], [
+            {:field2,0,nil},
+            {:integer,[line: 0],[]}
+          ] }
+        ] }
+      ] }
   end
 
-  test "type_to_ast for paren_type" do 
+  test "type_to_ast for paren_type" do
     type = {:my_type, {:paren_type, 0, [{:type, 0, :integer, []}]}, []}
     assert Kernel.Typespec.type_to_ast(type) ==
-      quote(hygiene: false, do: my_type() :: integer())
+      { :::, [], [{:my_type,[],[]}, {:integer,[line: 0],[]}] }
   end
 
   test "spec_to_ast" do

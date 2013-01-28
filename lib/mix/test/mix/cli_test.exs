@@ -5,7 +5,7 @@ defmodule Mix.CLITest do
 
   test "env" do
     in_fixture "custom_mixfile", fn ->
-      env = System.cmd %b(MIX_ENV=prod #{mix_executable} run "IO.puts Mix.env")
+      env = System.cmd %b(MIX_ENV=prod #{elixir_executable} #{mix_executable} run "IO.puts Mix.env")
       assert env =~ %r"prod"
     end
   end
@@ -14,7 +14,7 @@ defmodule Mix.CLITest do
     in_fixture "custom_mixfile", fn ->
       output = mix ""
       assert File.regular?("ebin/Elixir-A.beam")
-      assert output =~ %r"1 tests, 0 failures"
+      assert output =~ %r"Compiled lib/a.ex"
     end
   end
 
@@ -83,4 +83,17 @@ defmodule Mix.CLITest do
       assert output =~ %r"1 tests, 0 failures"
     end
   end
+
+  test "new --sup with tests smoke test" do
+    in_tmp "new_with_tests", fn ->
+      output = mix "new . --sup"
+      assert output =~ %r(\* creating lib/new_with_tests.ex)
+      assert output =~ %r(\* creating lib/new_with_tests/supervisor.ex)
+
+      output = mix "test"
+      assert File.regular?("ebin/Elixir-NewWithTests.beam")
+      assert output =~ %r"1 tests, 0 failures"
+    end
+  end
+
 end

@@ -31,7 +31,7 @@ data_table(Module) ->
   Module.
 
 docs_table(Module) ->
-  ?ELIXIR_ATOM_CONCAT([o, Module]).
+  ?atom_concat([o, Module]).
 
 %% TRANSFORMATION FUNCTIONS
 
@@ -39,25 +39,27 @@ docs_table(Module) ->
 %% The abstract form for extra arguments may be given and they
 %% will be passed to the invoked function.
 
-translate(Line, Ref, Block, S) ->
+translate(Meta, Ref, Block, S) ->
+  Line            = ?line(Meta),
   MetaBlock       = elixir_tree_helpers:abstract_syntax(Block),
   { MetaS, Vars } = elixir_scope:serialize_with_vars(Line, S),
 
   Args = [{integer, Line, Line}, Ref, MetaBlock, Vars, MetaS],
-  ?ELIXIR_WRAP_CALL(Line, ?MODULE, compile, Args).
+  ?wrap_call(Line, ?MODULE, compile, Args).
 
 %% The compilation hook.
 
 compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
   C = elixir_compiler:get_opts(),
   File = S#elixir_scope.file,
+  FileList = binary_to_list(File),
 
   check_module_availability(Line, File, Module, C),
   build(Line, File, Module),
 
   try
     Result = eval_form(Line, Module, Block, Vars, S),
-    { Export, Private, Def, Defmacro, Defmacrop, Functions } = elixir_def:unwrap_stored_definitions(Module),
+    { Export, Private, Def, Defmacro, Defmacrop, Functions } = elixir_def:unwrap_stored_definitions(FileList, Module),
 
     { All, Forms0 } = functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Functions, C),
     Forms1          = specs_form(Line, Module, Defmacro, Defmacrop, Forms0, C),
@@ -67,7 +69,7 @@ compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
     elixir_import:ensure_no_import_conflict(Line, File, Module, All),
 
     Final = [
-      { attribute, Line, file, { binary_to_list(File), Line } },
+      { attribute, Line, file, { FileList, Line } },
       { attribute, Line, module, Module } | Forms2
     ],
 
@@ -219,7 +221,7 @@ translate_spec({ Spec, Rest }, Defmacro, Defmacrop) ->
       case ordsets:is_element(Spec, Defmacro) of
         true ->
           { Name, Arity } = Spec,
-          { { ?ELIXIR_MACRO(Name), Arity + 1 }, spec_for_macro(Rest) };
+          { { ?elixir_macro(Name), Arity + 1 }, spec_for_macro(Rest) };
         false ->
           { Spec, Rest }
       end
@@ -284,8 +286,7 @@ add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C) ->
   end.
 
 functions_clause(Def) ->
-  All = ordsets:add_element({'__info__',1}, Def),
-  { clause, 0, [{ atom, 0, functions }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
+  { clause, 0, [{ atom, 0, functions }], [], [elixir_tree_helpers:abstract_syntax(Def)] }.
 
 macros_clause(Module, Def, Defmacro) ->
   All = handle_builtin_macros(Module, Def, Defmacro),
@@ -324,9 +325,10 @@ eval_callbacks(Line, Module, Name, Args, RawS) ->
   Binding   = binding_for_eval(Module, []),
   Callbacks = lists:reverse(ets:lookup_element(data_table(Module), Name, 2)),
   Requires  = S#elixir_scope.requires,
+  Meta      = [{line,Line}],
 
   lists:foreach(fun({M,F}) ->
-    Expr  = { { '.', Line, [M,F] }, Line, Args },
+    Expr  = { { '.', Meta, [M,F] }, Meta, Args },
     Scope = case ordsets:is_element(M, Requires) of
       true  -> S;
       false -> S#elixir_scope{requires=ordsets:add_element(M, Requires)}

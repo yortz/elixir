@@ -27,8 +27,8 @@ defmodule Mix.Task do
   """
   def load_all do
     Enum.each :code.get_path, fn(codepath) ->
-      files = File.wildcard(codepath ++ '/Elixir-Mix-Tasks-*.beam')
-      Enum.each files, &1 /> File.basename /> File.rootname('.beam') /> list_to_atom /> Code.ensure_loaded
+      files = Path.wildcard(codepath ++ '/Elixir-Mix-Tasks-*.beam')
+      Enum.each files, &1 |> Path.basename |> Path.rootname('.beam') |> list_to_atom |> Code.ensure_loaded
     end
   end
 
@@ -127,7 +127,6 @@ defmodule Mix.Task do
       module = get(task)
       Mix.Server.cast({ :add_task, task })
       module.run(args)
-      :ok
     end
   end
 

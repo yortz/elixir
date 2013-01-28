@@ -3,7 +3,7 @@
 -export([main/1, start_cli/0,
   scope_for_eval/1, eval/2, eval/3, eval/4,
   eval_quoted/2, eval_quoted/3, eval_quoted/4,
-  eval_forms/3]).
+  eval_forms/3, translate_forms/3]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
@@ -61,7 +61,7 @@ scope_for_eval(Opts) ->
   end,
 
   case lists:keyfind(requires, 1, Opts) of
-    { requires, Requires } -> Requires;
+    { requires, List } -> Requires = ordsets:from_list(List);
     false -> Requires = elixir_dispatch:default_requires()
   end,
 
@@ -107,20 +107,25 @@ eval_quoted(Tree, Binding, Opts) ->
   end,
   eval_quoted(Tree, Binding, Line, scope_for_eval(Opts)).
 
-eval_quoted(Tree, Binding, Line, #elixir_scope{} = S) ->
+eval_quoted(Tree, Binding, Line, #elixir_scope{} = S) when is_integer(Line) ->
   eval_forms(elixir_quote:linify(Line, Tree), Binding, S).
 
 %% Handle forms evaluation internally, it is an
 %% internal API not meant for external usage.
 
-eval_forms(Tree, Binding, RawScope) ->
-  Scope = RawScope#elixir_scope{
+translate_forms(Tree, Binding, Opts) when is_list(Opts) ->
+  translate_forms(Tree, Binding, scope_for_eval(Opts));
+
+translate_forms(Tree, Binding, #elixir_scope{} = Scope) ->
+  elixir_translator:translate(Tree, Scope#elixir_scope{
     vars=binding_dict(Binding),
     temp_vars=[],
     clause_vars=nil,
     counter=[]
-  },
-  { ParseTree, NewScope } = elixir_translator:translate(Tree, Scope),
+  }).
+
+eval_forms(Tree, Binding, Scope) ->
+  { ParseTree, NewScope } = translate_forms(Tree, Binding, Scope),
   case ParseTree of
     [] -> { nil, Binding, NewScope };
     _  ->

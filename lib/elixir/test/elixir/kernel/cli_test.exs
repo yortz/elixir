@@ -17,17 +17,17 @@ defmodule Kernel.CLI.OptionParsingTest do
   import PathHelpers
 
   test :path do
-    root = fixture_path("../../..") /> to_char_list
+    root = fixture_path("../../..") |> to_char_list
     list = elixir('-e "IO.inspect :code.get_path" -pa "#{root}/*" -pz "#{root}/lib/*"')
     { path, _ } = Code.eval list, []
 
     # pa
-    assert File.expand_path('ebin', root) inlist path
-    assert File.expand_path('lib', root) inlist path
-    assert File.expand_path('src', root) inlist path
+    assert Path.expand('ebin', root) inlist path
+    assert Path.expand('lib', root) inlist path
+    assert Path.expand('src', root) inlist path
 
     # pz
-    assert File.expand_path('lib/list', root) inlist path
+    assert Path.expand('lib/list', root) inlist path
   end
 end
 
@@ -36,7 +36,7 @@ defmodule Kernel.CLI.AtExitTest do
   import PathHelpers
 
   test :at_exit do
-    assert elixir(fixture_path("at_exit.exs") /> to_char_list) ==
+    assert elixir(fixture_path("at_exit.exs") |> to_char_list) ==
       'goodbye cruel world with status 0\n'
   end
 end

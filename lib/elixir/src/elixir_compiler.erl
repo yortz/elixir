@@ -17,7 +17,7 @@ get_opt(Key, Dict) ->
   end.
 
 get_opts() ->
-  gen_server:call(elixir_code_server, compiler_options).
+  elixir_code_server:call(compiler_options).
 
 %% Compiles the given string.
 
@@ -52,19 +52,28 @@ file_to_path(File, Path) when is_binary(File), is_binary(Path) ->
 eval_forms(Forms, Line, Vars, S) ->
   { Module, I } = retrieve_module_name(),
   { Exprs, FS } = elixir_translator:translate(Forms, S),
-  ModuleForm    = module_form(Exprs, Line, S#elixir_scope.file, Module, Vars),
 
+  Fun  = module_form_fun(S#elixir_scope.module),
+  Form = module_form(Fun, Exprs, Line, S#elixir_scope.file, Module, Vars),
   Args = [X || { _, _, _, X } <- Vars],
 
   %% Pass { native, false } to speed up bootstrap
   %% process when native is set to true
-  { module(ModuleForm, S#elixir_scope.file, [{native,false}], true, fun(_, _) ->
-    Res = Module:'BOOTSTRAP'(S#elixir_scope.module, Args),
+  { module(Form, S#elixir_scope.file, [{native,false}], true, fun(_, Binary) ->
+    Res = Module:Fun(S#elixir_scope.module, Args),
     code:delete(Module),
-    case code:soft_purge(Module) of
-      true  -> return_module_name(I);
-      false -> ok
+
+    %% If we have labeled locals, anonymous functions
+    %% were created and therefore we cannot ditch the
+    %% module
+    case beam_lib:chunks(Binary, [labeled_locals]) of
+      { ok, { _, [{ labeled_locals, []}] } } ->
+        code:purge(Module),
+        return_module_name(I);
+      _ ->
+        ok
     end,
+
     Res
   end), FS }.
 
@@ -98,7 +107,7 @@ module(Forms, File, Options, Bootstrap, Callback) when
 
 core() ->
   application:start(elixir),
-  gen_server:call(elixir_code_server, { compiler_options, [{docs,false},{internal,true}] }),
+  elixir_code_server:cast({ compiler_options, [{docs,false},{internal,true}] }),
   [core_file(File) || File <- core_main()].
 
 %% HELPERS
@@ -107,9 +116,11 @@ no_auto_import() ->
   Bifs = [{ Name, Arity } || { Name, Arity } <- erlang:module_info(exports), erl_internal:bif(Name, Arity)],
   { attribute, 0, compile, { no_auto_import, Bifs } }.
 
-module_form(Exprs, Line, File, Module, Vars) when
-    is_binary(File), is_list(Exprs), is_integer(Line), is_atom(Module) ->
+module_form_fun(nil) -> '__FILE__';
+module_form_fun(_)   -> '__MODULE__'.
 
+module_form(Fun, Exprs, Line, File, Module, Vars) when
+    is_binary(File), is_integer(Line), is_list(Exprs), is_atom(Module) ->
   Cons = lists:foldr(fun({ _, _, Var, _ }, Acc) ->
     { cons, Line, { var, Line, Var }, Acc }
   end, { nil, Line }, Vars),
@@ -119,8 +130,8 @@ module_form(Exprs, Line, File, Module, Vars) when
   [
     { attribute, Line, file, { binary_to_list(File), 1 } },
     { attribute, Line, module, Module },
-    { attribute, Line, export, [{ 'BOOTSTRAP', 2 }] },
-    { function, Line, 'BOOTSTRAP', length(Args), [
+    { attribute, Line, export, [{ Fun, 2 }] },
+    { function, Line, Fun, length(Args), [
       { clause, Line, Args, [], Exprs }
     ] }
   ].
@@ -128,10 +139,10 @@ module_form(Exprs, Line, File, Module, Vars) when
 %% Generate module names from code server.
 
 retrieve_module_name() ->
-  gen_server:call(elixir_code_server, retrieve_module_name).
+  elixir_code_server:call(retrieve_module_name).
 
 return_module_name(I) ->
-  gen_server:cast(elixir_code_server, { return_module_name, I }).
+  elixir_code_server:cast({ return_module_name, I }).
 
 %% Receives a module Binary and outputs it in the given path.
 
@@ -158,21 +169,22 @@ core_main() ->
     "lib/elixir/lib/kernel.ex",
     "lib/elixir/lib/keyword.ex",
     "lib/elixir/lib/list.ex",
-    "lib/elixir/lib/kernel/typespec.ex",    
+    "lib/elixir/lib/kernel/typespec.ex",
     "lib/elixir/lib/module.ex",
     "lib/elixir/lib/record.ex",
     "lib/elixir/lib/record/extractor.ex",
     "lib/elixir/lib/macro.ex",
     "lib/elixir/lib/macro/env.ex",
+    "lib/elixir/lib/exception.ex",
     "lib/elixir/lib/code.ex",
     "lib/elixir/lib/protocol.ex",
     "lib/elixir/lib/enum.ex",
-    "lib/elixir/lib/exception.ex",
     "lib/elixir/lib/binary/inspect.ex",
     "lib/elixir/lib/binary/chars.ex",
     "lib/elixir/lib/list/chars.ex",
     "lib/elixir/lib/io.ex",
     "lib/elixir/lib/file.ex",
+    "lib/elixir/lib/path.ex",
     "lib/elixir/lib/access.ex",
     "lib/elixir/lib/regex.ex",
     "lib/elixir/lib/system.ex",

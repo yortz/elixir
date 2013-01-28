@@ -58,6 +58,12 @@ defmodule Mix.Project do
     Mix.Server.call(:pop_project)
   end
 
+  # Registers post config.
+  @doc false
+  def post_config(config) do
+    Mix.Server.cast({ :post_config, config })
+  end
+
   @doc """
   Refresh the project configuration. Usually required
   when the environment changes during a task.
@@ -75,7 +81,7 @@ defmodule Mix.Project do
   function raises `Mix.NoProjectError` in case no project
   is available.
 
-  Returns nil if no project./
+  Returns nil if no project.
   """
   def get do
     case Mix.Server.call(:projects) do
@@ -102,30 +108,52 @@ defmodule Mix.Project do
     end
   end
 
-  # Registers post config.
   @doc false
-  def post_config(config) do
-    Mix.Server.cast({ :post_config, config })
+  def sources do
+    IO.puts "Mix.Project.sources is deprecated, please use Mix.Project.config_files instead"
+    Exception.print_stacktrace
+    config_files
+  end
+
+  @doc """
+  Returns a list of project config files (mix.exs and mix.lock).
+  """
+  def config_files do
+    opts     = []
+    project  = get
+    lockfile = config[:lockfile]
+
+    if File.regular?(lockfile) do
+      opts = [lockfile|opts]
+    end
+
+    if project do
+      opts = [Mix.Utils.source(project)|opts]
+    end
+
+    opts
   end
 
   defp default_config do
     [ compile_path: "ebin",
-      compile_exts: [:ex],
-      watch_exts: [:ex, :eex, :exs],
+      elixirc_exts: [:ex],
       default_env: [test: :test],
-      default_task: "test",
+      default_task: "compile",
       deps_path: "deps",
+      erlc_paths: ["src"],
       lockfile: "mix.lock",
-      prepare_task: "compile",
-      source_paths: ["lib"] ]
+      prepare_task: "app.start",
+      elixirc_paths: ["lib"],
+      elixirc_watch_exts: [:ex, :eex, :exs] ]
   end
 
   defp get_project_config(nil), do: []
 
   defp get_project_config(atom) do
     config = atom.project
+
     if env = config[:env][Mix.env] do
-      config /> Keyword.delete(:env) /> Keyword.merge(env)
+      config |> Keyword.delete(:env) |> Keyword.merge(env)
     else
       config
     end

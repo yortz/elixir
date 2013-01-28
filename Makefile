@@ -1,12 +1,11 @@
 REBAR := $(shell echo `pwd`/rebar)
 ELIXIRC := bin/elixirc --ignore-module-conflict $(ELIXIRC_OPTS)
 ERLC := erlc -I lib/elixir/include
-ERL := erl -I lib/elixir/include -noshell -env ERL_LIBS $ERL_LIBS:lib
-VERSION := 0.7.2
-RELEASE_FLAG := .release
+ERL := erl -I lib/elixir/include -noshell -pa lib/elixir/ebin
+VERSION := $(strip $(shell cat VERSION))
 INSTALL_PATH := /usr/local
 
-.PHONY: 1
+.PHONY: install compile erlang elixir dialyze test clean docs release_docs release_zip release_erl
 .NOTPARALLEL: compile
 
 #==> Templates
@@ -15,7 +14,7 @@ define APP_TEMPLATE
 $(1): lib/$(1)/ebin/Elixir-$(2).beam lib/$(1)/ebin/$(1).app
 
 lib/$(1)/ebin/$(1).app:
-	@ cd lib/$(1) && ../../bin/mix compile.app
+	@ cd lib/$(1) && ../../bin/elixir -e "Mix.Server.start_link(:dev)" -r mix.exs -e "Mix.Task.run('compile.app')"
 
 lib/$(1)/ebin/Elixir-$(2).beam: $(wildcard lib/$(1)/lib/*.ex) $(wildcard lib/$(1)/lib/*/*.ex) $(wildcard lib/$(1)/lib/*/*/*.ex)
 	@ echo "==> $(1) (compile)"
@@ -23,7 +22,7 @@ lib/$(1)/ebin/Elixir-$(2).beam: $(wildcard lib/$(1)/lib/*.ex) $(wildcard lib/$(1
 
 test_$(1): $(1)
 	@ echo "==> $(1) (exunit)"
-	@ cd lib/$(1) && time ../../bin/elixir -r "test/test_helper.exs" -pr "test/**/*_test.exs";
+	@ cd lib/$(1) && ../../bin/elixir -r "test/test_helper.exs" -pr "test/**/*_test.exs";
 endef
 
 #==> Compilation tasks
@@ -82,35 +81,35 @@ install: compile
 
 clean:
 	@ cd lib/elixir && $(REBAR) clean
-	rm -rf $(RELEASE_FLAG)
 	rm -rf ebin
 	rm -rf lib/*/ebin
 	rm -rf lib/*/test/tmp
 	rm -rf lib/mix/test/fixtures/git_repo
-	rm -rf lib/mix/tmp
+	rm -rf lib/*/tmp
+	rm -rf lib/elixir/src/elixir.app.src
+	rm -rf lib/elixir/src/*_lexer.erl
+	rm -rf lib/elixir/src/*_parser.erl
+	rm -rf lib/elixir/test/ebin
 
 #==> Release tasks
 
-$(RELEASE_FLAG): compile
-	touch $(RELEASE_FLAG)
-
-docs: $(RELEASE_FLAG)
+docs:
 	mkdir -p ebin
 	rm -rf docs
 	cp -R -f lib/*/ebin/*.beam ./ebin
 	bin/elixir ../exdoc/bin/exdoc
 	rm -rf ebin
 
-release_zip: $(RELEASE_FLAG)
+release_zip:
 	rm -rf v$(VERSION).zip
-	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel
+	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel VERSION
 
 release_docs: docs
 	cd ../elixir-lang.github.com && git checkout master
 	rm -rf ../elixir-lang.github.com/docs/master
 	mv output ../elixir-lang.github.com/docs/master
 
-release_erl: $(RELEASE_FLAG)
+release_erl:
 	@ rm -rf rel/elixir
 	@ cd rel && ../rebar generate
 
@@ -122,20 +121,20 @@ test_erlang: compile
 	@ echo "==> elixir (eunit)"
 	@ mkdir -p lib/elixir/test/ebin
 	@ $(ERLC) -pa lib/elixir/ebin -o lib/elixir/test/ebin lib/elixir/test/erlang/*.erl
-	@ time $(ERL) -pa lib/elixir/test/ebin -s test_helper test -s erlang halt;
+	@ $(ERL) -pa lib/elixir/test/ebin -s test_helper test -s erlang halt;
 	@ echo
 
 test_elixir: test_kernel test_mix test_ex_unit test_eex test_iex
 
 test_kernel: compile
 	@ echo "==> kernel (exunit)"
-	@ cd lib/elixir && time ../../bin/elixir -r "test/elixir/test_helper.exs" -pr "test/elixir/**/*_test.exs";
+	@ cd lib/elixir && ../../bin/elixir -r "test/elixir/test_helper.exs" -pr "test/elixir/**/*_test.exs";
 
 .dialyzer.base_plt:
 	@ echo "==> Adding Erlang/OTP basic applications to a new base PLT"
 	@ dialyzer --output_plt .dialyzer.base_plt --build_plt --apps erts kernel stdlib compiler syntax_tools inets crypto ssl
 
-dialyze: $(RELEASE_FLAG) .dialyzer.base_plt
+dialyze: .dialyzer.base_plt
 	@ rm -f .dialyzer_plt
 	@ cp .dialyzer.base_plt .dialyzer_plt
 	@ echo "==> Adding Elixir to PLT..."

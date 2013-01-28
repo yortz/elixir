@@ -1,13 +1,14 @@
 defmodule Exception do
   @moduledoc """
   Several convenience functions to work and pretty print
-  exceptions and backtraces.
+  exceptions and stacktraces.
   """
 
-  # Normalize an exception converting Erlang exceptions
-  # to Elixir style exceptions. This is meant to be used
-  # internally.
-  @doc false
+  @doc """
+  Normalizes an exception converting Erlang exceptions
+  to Elixir exceptions. Useful when interfacing Erlang
+  code with Elixir code.
+  """
   def normalize(exception) when is_exception(exception) do
     exception
   end
@@ -41,11 +42,11 @@ defmodule Exception do
   end
 
   def normalize(:undef) do
-    UndefinedFunctionError.new from_stacktrace(System.stacktrace)
+    UndefinedFunctionError.new from_stacktrace(:erlang.get_stacktrace)
   end
 
   def normalize(:function_clause) do
-    FunctionClauseError.new from_stacktrace(System.stacktrace)
+    FunctionClauseError.new from_stacktrace(:erlang.get_stacktrace)
   end
 
   def normalize({ :badarg, payload }) do
@@ -56,6 +57,76 @@ defmodule Exception do
     ErlangError.new original: other
   end
 
+  @doc """
+  Receives a tuple representing a stacktrace entry and formats it.
+  The current working directory may be given as argument, which
+  is used to prettify the stacktrace.
+  """
+  def format_entry(entry, cwd // nil)
+
+  # From Macro.Env.stacktrace
+  def format_entry({ module, :__MODULE__, 0, file_line }, cwd) do
+    "#{format_file_line(file_line, cwd)}#{inspect module} (module)"
+  end
+
+  # From :elixir_compiler
+  def format_entry({ _module, :__MODULE__, 2, file_line }, cwd) do
+    "#{format_file_line(file_line, cwd)}(module)"
+  end
+
+  # From :elixir_compiler
+  def format_entry({ _module, :__FILE__, 2, file_line }, cwd) do
+    "#{format_file_line(file_line, cwd)}(file)"
+  end
+
+  def format_entry({module, fun, arity, file_line}, cwd) do
+    "#{format_file_line(file_line, cwd)}#{format_module_fun_arity(module, fun, arity)}"
+  end
+
+  def format_entry({fun, arity, file_line}, cwd) do
+    "#{format_file_line(file_line, cwd)}#{format_fun_arity(fun, arity)}"
+  end
+
+  @doc """
+  Formats the stacktrace.
+
+  A stacktrace must be given as argument. If not, this function
+  calculates the current stacktrace and formats it. As consequence,
+  the value of `System.stacktrace` is changed.
+  """
+  def format_stacktrace(trace // nil)
+
+  def format_stacktrace(trace) when is_tuple(trace) do
+    IO.puts "Exception.format_stacktrace is deprecated, please use format_entry instead"
+    print_stacktrace
+  end
+
+  def format_stacktrace(trace) do
+    trace = trace || try do
+      throw(:stacktrace)
+    catch
+      :stacktrace -> Enum.drop(:erlang.get_stacktrace, 1)
+    end
+
+    case trace do
+      [] -> "\n"
+      s  -> "    " <> Enum.map_join(s, "\n    ", format_entry(&1)) <> "\n"
+    end
+  end
+
+  @doc """
+  Prints the current stacktrace to standard output.
+
+  A stacktrace must be given as argument. If not, this function
+  calculates the current stacktrace and formats it. As consequence,
+  the value of `System.stacktrace` is changed.
+  """
+  def print_stacktrace(trace // nil) do
+    IO.write format_stacktrace(trace)
+  end
+
+  ## Helpers
+
   # Check the given module is a valid exception record.
   @doc false
   def check!(module) do
@@ -64,16 +135,27 @@ defmodule Exception do
     end
   end
 
-  @doc """
-  Receives a module, fun and arity and returns a string
-  representing such invocation. Arity may also be a list
-  of arguments. It follows the same syntax as in stacktraces.
-  """
-  def format_module_fun_arity(module, fun, arity) do
-    case inspect(fun) do
-      << ?:, fun :: binary >> -> :ok
-      fun -> :ok
+  # Format fun and arity
+  @doc false
+  def format_fun_arity(fun, arity) do
+    if is_list(arity) do
+      inspected = lc x inlist arity, do: inspect(x)
+      "#{inspect fun}(#{Enum.join(inspected, ", ")})"
+    else
+      "#{inspect fun}/#{arity}"
     end
+  end
+
+  # Receives a module, fun and arity and returns a string
+  # representing such invocation. Arity may also be a list
+  # of arguments. It follows the same syntax as in stacktraces.
+  @doc false
+  def format_module_fun_arity(module, fun, arity) do
+    fun =
+      case inspect(fun) do
+        << ?:, erl :: binary >> -> erl
+        elixir -> elixir
+      end
 
     if is_list(arity) do
       inspected = lc x inlist arity, do: inspect(x)
@@ -83,56 +165,20 @@ defmodule Exception do
     end
   end
 
-  @doc """
-  Returns the stacktrace as a binary formatted as per `format_stacktrace/1`.
-  """
-  def formatted_stacktrace(trace // nil) do
-    trace = trace || try do
-      throw(:stacktrace)
-    catch
-      :stacktrace -> Enum.drop(System.stacktrace, 1)
-    end
-
-    case trace do
-      [] -> ""
-      s  -> "    " <> Enum.map_join(s, "\n    ", format_stacktrace(&1)) <> "\n"
-    end
+  # Format file and line for exception printing.
+  @doc false
+  def format_file_line(opts, cwd) do
+    format_file_line Keyword.get(opts, :file), Keyword.get(opts, :line), cwd
   end
 
-  @doc """
-  Returns a formatted stacktrace from the environment.
-  """
-  def env_stacktrace(env) do
-    rest =
-      case env.function do
-        { name, arity } -> format_module_fun_arity(env.module, name, arity)
-        nil -> "#{inspect env.module} (body)"
-      end
-
-    "    #{format_file_line(env.location)}#{rest}\n"
-  end
-
-  @doc """
-  Formats each line in the stacktrace.
-  """
-  def format_stacktrace({module, fun, arity, file_line}) do
-    "#{format_file_line(file_line)}#{format_module_fun_arity(module, fun, arity)}"
-  end
-
-  @doc """
-  Formats file and line information present in stacktraces.
-  Expect them to be given in a keyword list.
-  """
-  def format_file_line(file_line) do
-    format_file_line(Keyword.get(file_line, :file), Keyword.get(file_line, :line))
-  end
-
-  @doc """
-  Formats the given file and line.
-  """
-  def format_file_line(file, line) do
+  def format_file_line(file, line, cwd) do
     if file do
       file = to_binary(file)
+
+      if cwd do
+        file = Path.relative_to(file, cwd)
+      end
+
       if line && line != 0 do
         "#{file}:#{line}: "
       else
@@ -142,8 +188,6 @@ defmodule Exception do
       ""
     end
   end
-
-  ## Helpers
 
   defp from_stacktrace([{ module, function, arity, _ }|_]) do
     [module: module, function: function, arity: arity]
@@ -159,25 +203,25 @@ defexception SystemLimitError,  message: "a system limit has been reached"
 
 defexception SyntaxError, [file: nil, line: nil, description: "syntax error"] do
   def message(exception) do
-    "#{Exception.format_file_line(exception.file, exception.line)}#{exception.description}"
+    "#{Exception.format_file_line(exception.file, exception.line, nil)}#{exception.description}"
   end
 end
 
 defexception TokenMissingError, [file: nil, line: nil, description: "expression is incomplete"] do
   def message(exception) do
-    "#{Exception.format_file_line(exception.file, exception.line)}#{exception.description}"
+    "#{Exception.format_file_line(exception.file, exception.line, nil)}#{exception.description}"
   end
 end
 
 defexception CompileError, [file: nil, line: nil, description: "compile error"] do
   def message(exception) do
-    "#{Exception.format_file_line(exception.file, exception.line)}#{exception.description}"
+    "#{Exception.format_file_line(exception.file, exception.line, nil)}#{exception.description}"
   end
 end
 
 defexception BadFunctionError, [actual: nil] do
   def message(exception) do
-    "bad function: #{inspect(exception.actual)}"
+    "expected a function, got: #{inspect(exception.actual)}"
   end
 end
 

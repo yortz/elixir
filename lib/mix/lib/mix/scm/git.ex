@@ -13,7 +13,7 @@ defmodule Mix.SCM.Git do
   def accepts_options(opts) do
     cond do
       gh = opts[:github] ->
-        opts /> Keyword.delete(:github) /> Keyword.put(:git, "https://github.com/#{gh}.git")
+        opts |> Keyword.delete(:github) |> Keyword.put(:git, "https://github.com/#{gh}.git")
       opts[:git] ->
         opts
       true ->
@@ -22,11 +22,11 @@ defmodule Mix.SCM.Git do
   end
 
   def checked_out?(opts) do
-    File.dir?(File.join(opts[:path], ".git"))
+    File.dir?(Path.join(opts[:dest], ".git"))
   end
 
   def matches_lock?(opts) do
-    opts[:lock] && File.cd!(opts[:path], fn ->
+    opts[:lock] && File.cd!(opts[:dest], fn ->
       opts[:lock] == get_lock(opts, true)
     end)
   end
@@ -36,7 +36,7 @@ defmodule Mix.SCM.Git do
   end
 
   def checkout(opts) do
-    path     = opts[:path]
+    path     = opts[:dest]
     location = opts[:git]
     command  = %b[git clone --no-checkout "#{location}" "#{path}"]
 
@@ -45,7 +45,7 @@ defmodule Mix.SCM.Git do
   end
 
   def update(opts) do
-    File.cd! opts[:path], fn ->
+    File.cd! opts[:dest], fn ->
       command = "git fetch --force"
       if opts[:tag] do
         command = command <> " --tags"
@@ -57,7 +57,7 @@ defmodule Mix.SCM.Git do
   end
 
   def clean(opts) do
-    File.rm_rf opts[:path]
+    File.rm_rf opts[:dest]
   end
 
   ## Helpers
@@ -113,7 +113,7 @@ defmodule Mix.SCM.Git do
   end
 
   defp check_rev(fin, acc) when fin == [?\n] or fin == [] do
-    Enum.reverse(acc) /> list_to_binary
+    Enum.reverse(acc) |> list_to_binary
   end
 
   defp check_rev(_, _) do

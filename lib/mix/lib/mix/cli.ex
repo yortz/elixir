@@ -34,7 +34,7 @@ defmodule Mix.CLI do
   end
 
   defp get_task([]) do
-    { Mix.project[:default] || "test", [] }
+    { Mix.project[:default_task] || "compile", [] }
   end
 
   defp run_task(name, args) do
@@ -44,12 +44,14 @@ defmodule Mix.CLI do
       # We only rescue exceptions in the mix namespace, all
       # others pass through and will explode on the users face
       exception ->
+        stacktrace = System.stacktrace
+
         if function_exported?(exception, :mix_error, 0) do
           if msg = exception.message, do: Mix.shell.error "** (Mix) #{msg}"
+          exit(1)
         else
-          raise(exception)
+          raise exception, [], stacktrace
         end
-        exit(1)
     end
   end
 end

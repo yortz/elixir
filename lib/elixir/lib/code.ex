@@ -1,4 +1,10 @@
 defmodule Code do
+  defexception LoadError, file: nil do
+    def message(exception) do
+      "could not load #{exception.file}"
+    end
+  end
+
   @moduledoc """
   The Code module is responsible to manage code compilation,
   code evaluation and code loading.
@@ -14,7 +20,7 @@ defmodule Code do
   Returns all the loaded files.
   """
   def loaded_files do
-    server_call :loaded
+    :elixir_code_server.call :loaded
   end
 
   @doc """
@@ -24,31 +30,31 @@ defmodule Code do
   allowing it to be required again.
   """
   def unload_files(files) do
-    server_cast { :unload_files, files }
+    :elixir_code_server.cast { :unload_files, files }
   end
 
   @doc """
   Appends a path to Erlang VM code path.
-  The path is expanded with `File.expand_path` before added.
+  The path is expanded with `Path.expand` before added.
   """
   def append_path(path) do
-    :code.add_pathz(File.expand_path to_char_list(path))
+    :code.add_pathz(Path.expand to_char_list(path))
   end
 
   @doc """
   Prepends a path to Erlang VM code path.
-  The path is expanded with `File.expand_path` before added.
+  The path is expanded with `Path.expand` before added.
   """
   def prepend_path(path) do
-    :code.add_patha(File.expand_path to_char_list(path))
+    :code.add_patha(Path.expand to_char_list(path))
   end
 
   @doc """
   Deletes a path from Erlang VM code path.
-  The path is expanded with `File.expand_path` before deleted.
+  The path is expanded with `Path.expand` before deleted.
   """
   def delete_path(path) do
-    :code.del_path(File.expand_path to_char_list(path))
+    :code.del_path(Path.expand to_char_list(path))
   end
 
   @doc """
@@ -58,14 +64,23 @@ defmodule Code do
 
   * `:file` - the file to be considered in the evaluation
   * `:line` - the line the script starts
+  * `:delegate_locals_to` - delegate local calls to the given module,
+    the default is to not delegate
+
+  Besides, the following scope values can be configured:
+
   * `:aliases` - a list of tuples with the alias and its target
   * `:requires` - a list of modules required
   * `:functions` - a list of tuples where the first element is a module
     and the second a list of imported function names and arity
   * `:macros` - a list of tuples where the first element is a module
     and the second a list of imported macro names and arity
-  * `:delegate_locals_to` - delegate local calls to the given module,
-    the default is to not delegate
+
+  Notice that setting any ov the values above overrides Elixir default
+  values. For example, setting `:requires` to `[]`, will no longer
+  automatically required the `Kernel` module, in the same way setting
+  `:macros` will no longer auto-import `Kernel` macros as `if`, `case`,
+  etc.
 
   ## Examples
 
@@ -167,7 +182,7 @@ defmodule Code do
 
   defp unpack_ast(_line, []),                              do: nil
   defp unpack_ast(_line, [forms]) when not is_list(forms), do: forms
-  defp unpack_ast(line, forms),                            do: { :__block__, line, forms }
+  defp unpack_ast(line, forms),                            do: { :__block__, [line: line], forms }
 
   @doc """
   Loads the given `file`. Accepts `relative_to` as an argument
@@ -183,9 +198,9 @@ defmodule Code do
   """
   def load_file(file, relative_to // nil) when is_binary(file) do
     file = find_file(file, relative_to)
-    server_call { :acquire, file }
+    :elixir_code_server.call { :acquire, file }
     loaded = :elixir_compiler.file file
-    server_cast { :loaded, file }
+    :elixir_code_server.cast { :loaded, file }
     loaded
   end
 
@@ -205,14 +220,14 @@ defmodule Code do
   def require_file(file, relative_to // nil) when is_binary(file) do
     file = find_file(file, relative_to)
 
-    case server_call({ :acquire, file }) do
+    case :elixir_code_server.call({ :acquire, file }) do
       :loaded  ->
         nil
       { :queued, ref }  ->
         receive do { :elixir_code_server, ^ref, :loaded } -> nil end
       :proceed ->
         loaded = :elixir_compiler.file file
-        server_cast { :loaded, file }
+        :elixir_code_server.cast { :loaded, file }
         loaded
     end
   end
@@ -222,7 +237,7 @@ defmodule Code do
   Check compiler_options/1 for more information.
   """
   def compiler_options do
-    server_call :compiler_options
+    :elixir_code_server.call :compiler_options
   end
 
   @doc """
@@ -241,7 +256,7 @@ defmodule Code do
 
   """
   def compiler_options(opts) do
-    server_call { :compiler_options, opts }
+    :elixir_code_server.cast { :compiler_options, opts }
   end
 
   @doc """
@@ -252,7 +267,7 @@ defmodule Code do
   For compiling many files at once, check `Kernel.ParallelCompiler`.
   """
   def compile_string(string, file // "nofile") when is_binary(file) do
-    :elixir_compiler.string :unicode.characters_to_list(string), to_binary(file)
+    :elixir_compiler.string :unicode.characters_to_list(string), file
   end
 
   @doc """
@@ -348,26 +363,16 @@ defmodule Code do
   # Finds the file given the relative_to path.
   # If the file is found, returns its path in binary, fails otherwise.
   defp find_file(file, relative_to) do
-    file = to_binary(file)
-
     file = if relative_to do
-      File.expand_path(file, relative_to)
+      Path.expand(file, relative_to)
     else
-      File.expand_path(file)
+      Path.expand(file)
     end
 
     if File.regular?(file) do
       file
     else
-      raise ArgumentError, message: "could not load #{file}"
+      raise LoadError, file: file
     end
-  end
-
-  defp server_call(args) do
-    :gen_server.call(:elixir_code_server, args)
-  end
-
-  defp server_cast(args) do
-    :gen_server.cast(:elixir_code_server, args)
   end
 end

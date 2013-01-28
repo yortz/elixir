@@ -1,14 +1,28 @@
 defmodule System do
+  defexception NoHomeError,
+    message: "could not find the user home, please set the HOME environment variable"
+
+  defexception NoTmpDirError,
+    message: "could not get a writable temporary directory, please set the TMPDIR environment variable"
+
+  defexception NoAccessCwdError,
+    message: "could not get a current working directory, the current location is not accessible"
+
   @moduledoc """
   The System module provides access to some variables used or
   maintained by the VM and to functions that interact strongly
   with the VM or the host system.
   """
 
+  # Read and strip the version from the `VERSION` file.
+  defmacrop get_version do
+    Regex.replace %r/^\s+|\s+$/, File.read!("VERSION"), ""
+  end
+
   # Tries to run `git describe --always --tags`. In case of success
   # returns the most recent tag, otherwise returns an empty string.
   defmacrop get_describe do
-    dotgit = File.join(File.cwd!, ".git")
+    dotgit = Path.join(File.cwd!, ".git")
     if :os.find_executable('git') && File.exists?(dotgit) do
       data = :os.cmd('git describe --always --tags')
       Regex.replace %r/\n/, to_binary(data), ""
@@ -26,7 +40,7 @@ defmodule System do
   Returns Elixir's version as binary.
   """
   @spec version() :: String.t
-  def version, do: "0.7.2"
+  def version, do: get_version
 
   @doc """
   Returns a keywords list with version, git tag info and date.
@@ -41,19 +55,107 @@ defmodule System do
   """
   @spec argv() :: [String.t]
   def argv do
-    :gen_server.call(:elixir_code_server, :argv)
+    :elixir_code_server.call :argv
+  end
+
+  @doc """
+  Returns the current working directory or nil if one
+  is not available.
+  """
+  def cwd do
+    case :file.get_cwd do
+      { :ok, list } -> :unicode.characters_to_binary(list)
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Returns the current working directory or raises `System.NoAccessCwdError`.
+  """
+  def cwd! do
+    cwd || raise NoAccessCwdError
+  end
+
+  @doc """
+  Returns the user home (platform independent).
+  It returns nil if no user home is set.
+  """
+  def user_home do
+    get_unix_home || get_windows_home
+  end
+
+  @doc """
+  Same as `user_home` but raises `System.NoHomeError`
+  instead of returning nil if no user home is set.
+  """
+  def user_home! do
+    user_home || raise NoHomeError
+  end
+
+  defp get_unix_home do
+    get_env("HOME")
+  end
+
+  defp get_windows_home do
+    get_env("USERPROFILE") || (
+      hd = get_env("HOMEDRIVE")
+      hp = get_env("HOMEPATH")
+      hd && hp && hd <> hp
+    )
+  end
+
+  @doc %B"""
+  Returns a writable temporary directory.
+  It searches for directories in the following order:
+
+  1. The directory named by the TMPDIR environment variable
+  2. The directory named by the TEMP environment variable
+  3. The directory named by the TMP environment variable
+  4. `C:\TMP` on Windows or `/tmp` on Unix
+  5.  As a last resort, the current working directory
+
+  Returns nil if none of the above are writable.
+  """
+  def tmp_dir do
+    write_env_tmp_dir('TMPDIR') ||
+      write_env_tmp_dir('TEMP')  ||
+      write_env_tmp_dir('TMP') ||
+      write_tmp_dir("/tmp")     ||
+      ((cwd = cwd()) && write_tmp_dir(cwd))
+  end
+
+  @doc """
+  Same as `tmp_dir` but raises `System.NoTmpDirError`
+  instead of returning nil if no temp dir is set.
+  """
+  def tmp_dir! do
+    tmp_dir || raise NoTmpDirError
+  end
+
+  defp write_env_tmp_dir(env) do
+    case System.get_env(env) do
+      nil -> nil
+      tmp -> write_tmp_dir tmp
+    end
+  end
+
+  defp write_tmp_dir(dir) do
+    case File.stat(dir) do
+      { :ok, File.Stat[type: :directory, access: access] } when access in [:read_write, :write] -> dir
+      { :error, _ } -> nil
+    end
   end
 
   @doc """
   Registers a function that will be invoked
   at the end of program execution. Useful for
-  invoking a hook on scripted mode.
+  invoking a hook in a "script" mode.
 
   The function must expect the exit status code
   as argument.
   """
   def at_exit(fun) when is_function(fun, 1) do
-    server_call { :at_exit, fun }
+    :elixir_code_server.cast { :at_exit, fun }
   end
 
   @doc """
@@ -146,7 +248,11 @@ defmodule System do
   end
 
   @doc """
-  Get the stacktrace.
+  Gets Elixir's stacktrace.
+
+  Notice the Erlang VM (and therefore this function) does not
+  return the current stacktrace but rather the stacktrace of the
+  latest exception.
   """
   def stacktrace do
     filter_stacktrace :erlang.get_stacktrace
@@ -205,14 +311,6 @@ defmodule System do
 
   ## Helpers
 
-  # Filter stacktrace by removing internal BOOTSTRAP calls.
-  defp filter_stacktrace([{ Kernel, :raise, _, _ }|t]), do: filter_stacktrace(t)
-  defp filter_stacktrace([{ _mod, :BOOTSTRAP, _, info }|t]),
-    do: filter_stacktrace([{ Kernel, :defmodule, 2, info }|t])
-  defp filter_stacktrace([h|t]), do: [h|filter_stacktrace(t)]
-  defp filter_stacktrace([]), do: []
-
-  defp server_call(args) do
-    :gen_server.call(:elixir_code_server, args)
-  end
+  defp filter_stacktrace([{ Kernel, :raise, _, _ }|t]), do: t
+  defp filter_stacktrace(t), do: t
 end

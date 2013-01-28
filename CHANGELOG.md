@@ -1,3 +1,45 @@
+# v0.8.0 (2013-01-28)
+
+* enhancements
+  * [Binary] Support `<< "string" :: utf8 >>` as in Erlang
+  * [Binary] Support `\a` escape character in binaries
+  * [Binary] Support syntax shortcut for specifying size in bit syntax
+  * [CLI] Support `--app` option to start an application and its dependencies
+  * [Dict] Support `put_new` in `Dict` and `Keyword`
+  * [Dict] Add `List.Dict` and a faster `HashDict` implementation
+  * [ExUnit] ExUnit now supports multiple runs in the same process
+  * [ExUnit] Failures in ExUnit now shows a tailored stacktrace
+  * [ExUnit] Introduce `ExUnit.ExpectationError` to provide better error messages
+  * [Kernel] Introduce `Application.Behaviour` to define application module callbacks
+  * [Kernel] Introduce `Supervisor.Behaviour` to define supervisors callbacks
+  * [Kernel] More optimizations were added to Record handling
+  * [Kernel] `?\x` and `?\` are now supported ways to retrieve a codepoint
+  * [Kernel] Octal numbers can now be defined as `0777`
+  * [Kernel] Improve macros hygiene regarding variables, aliases and imports
+  * [Mix] Mix now starts the current application before run, iex, test and friends
+  * [Mix] Mix now provides basic support for compiling `.erl` files
+  * [Mix] `mix escriptize` only generates escript if necessary and accept `--force` and `--no-compile` as options
+  * [Path] Introduce `Path` module to hold filesystem paths related functions
+  * [String] Add `String.capitalize` and `String.slice`
+  * [System] Add `System.tmp_dir`, `System.cwd` and `System.user_home`
+
+* bug fix
+  * [Kernel] `import` with `only` accepts functions starting with underscore
+  * [String] `String.first` and `String.last` return nil for empty binaries
+  * [String] `String.rstrip` and `String.lstrip` now verify if argument is a binary
+  * [Typespec] Support `...` inside typespec's lists
+
+* backwards incompatible changes
+  * [Kernel] The AST now allows metadata to be attached to each node. This means the second item in the AST is no longer an integer (representing the line), but a keywords list. Code that relies on the line information from AST or that manually generate AST nodes need to be properly updated
+
+* deprecations
+  * [Dict] Deprecate `Binary.Dict` and `OrdDict` in favor of `HashDict` and `List.Dict`
+  * [File] Deprecate path related functions in favor of the module `Path`
+  * [Kernel] The `/>` operator has been deprecated in favor of `|>`
+  * [Mix] `Mix.Project.sources` is deprecated in favor of `Mix.Project.config_files`
+  * [Mix] `mix iex` is no longer functional, please use `iex -S mix`
+  * [OptionParser] `:flags` option was deprecated in favor of `:switches` to support many types
+
 # v0.7.2 (2012-12-04)
 
 * enhancements

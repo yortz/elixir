@@ -13,7 +13,7 @@ defmodule Macro do
     [
       :===, :!==,
       :==, :!=, :<=, :>=,
-      :&&, :||, :<>, :++, :--, :**, ://, :::, :<-, :.., :/>, :=~,
+      :&&, :||, :<>, :++, :--, :**, ://, :::, :<-, :.., :|>, :=~,
       :<, :>,
       :+, :-, :*, :/, :=, :|, :.,
       :and, :or, :xor, :when, :in, :inlist, :inbits,
@@ -62,14 +62,14 @@ defmodule Macro do
       #=> :foo
 
       Macro.escape({ :a, :b, :c })
-      #=> { :{}, 0, [:a, :b, :c] }
+      #=> { :{}, [], [:a, :b, :c] }
   """
   def escape({ left, right }) do
     { escape(left), escape(right) }
   end
 
   def escape(tuple) when is_tuple(tuple) do
-    { :{}, 0, escape(tuple_to_list(tuple)) }
+    { :{}, [], escape(tuple_to_list(tuple)) }
   end
 
   def escape(list) when is_list(list) do
@@ -84,9 +84,9 @@ defmodule Macro do
   Check `unescape_binary/2` for information on how to customize
   the escaping map.
 
-  In this setup, Elixir will escape the following: `\b`, `\d`,
-  `\e`, `\f`, `\n`, `\r`, `\s`, `\t` and `\v`. Octals are also
-  escaped according to the latin1 set they represent.
+  In this setup, Elixir will escape the following: `\a`, `\b`,
+  `\d`, `\e`, `\f`, `\n`, `\r`, `\s`, `\t` and `\v`. Octals are
+  also escaped according to the latin1 set they represent.
 
   This function is commonly used on sigil implementations
   (like `%r`, `%b` and others).
@@ -114,6 +114,7 @@ defmodule Macro do
   representing the number of the characters it wants to unescape.
   Here is the default mapping function implemented by Elixir:
 
+      def unescape_map(?a), do: ?\a
       def unescape_map(?b), do: ?\b
       def unescape_map(?d), do: ?\d
       def unescape_map(?e), do: ?\e
@@ -265,12 +266,12 @@ defmodule Macro do
 
   # Two-item tuples
   def to_binary({ left, right }) do
-    to_binary({ :{}, 0, [left, right] })
+    to_binary({ :{}, [], [left, right] })
   end
 
   # Lists
   def to_binary(list) when is_list(list) do
-    to_binary({ :[], 0, list })
+    to_binary({ :[], [], list })
   end
 
   # All other structures
@@ -407,7 +408,7 @@ defmodule Macro do
   The compilation will fail because `My.Module` when quoted
   is not an atom, but a syntax tree as follow:
 
-      {:__aliases__, 0, [:My, :Module] }
+      {:__aliases__, [], [:My, :Module] }
 
   That said, we need to expand the aliases node above to an
   atom, so we can retrieve its length. Expanding the node is
@@ -441,28 +442,16 @@ defmodule Macro do
   """
   def expand(aliases, env)
 
-  # The first case we handle is __aliases__. In case
-  # aliases just contain one item, we are sure it is
-  # an atom, so we just expand it based on the aliases
-  # dict.
-  def expand({ :__aliases__, _, [h] }, env) when h != Elixir do
-    expand_alias(h, env)
-  end
+  def expand({ :__aliases__, _, _ } = original, env) do
+    case :elixir_aliases.expand(original, env.aliases) do
+      atom when is_atom(atom) -> atom
+      aliases ->
+        aliases = lc alias inlist aliases, do: expand(alias, env)
 
-  # In case aliases contains more than one item, we need
-  # to loop them checking if they are all atoms or not.
-  # Macros and pseudo-variables are then expanded.
-  def expand({ :__aliases__, _, [h|t] } = original, env) do
-    aliases = case h do
-      x when is_atom(x) and x != Elixir -> [expand_alias(x, env)|t]
-      _                                 -> [h|t]
-    end
-
-    aliases = lc alias inlist aliases, do: expand(alias, env)
-
-    case :lists.all(is_atom(&1), aliases) do
-      true  -> :elixir_aliases.concat(aliases)
-      false -> original
+        case :lists.all(is_atom(&1), aliases) do
+          true  -> :elixir_aliases.concat(aliases)
+          false -> original
+        end
     end
   end
 
@@ -521,11 +510,6 @@ defmodule Macro do
 
   defp is_partial?(args) do
     :lists.any(match?({ :&, _, [_] }, &1), args)
-  end
-
-  defp expand_alias(h, env) do
-    atom = list_to_atom('Elixir-' ++ atom_to_list(h))
-    :elixir_aliases.lookup(atom, env.aliases)
   end
 
   @doc """

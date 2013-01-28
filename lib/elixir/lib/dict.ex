@@ -2,19 +2,13 @@ defmodule Dict do
   @moduledoc """
   This module specifies the Dict API expected to be
   implemented by different dictionaries. It also provides
-  functions that redirect to the underlying Dict based on
-  the tuple signature.
-
-  The keyword list used throughout Elixir cannot be
-  manipulated via the Dict module, you must use the
-  Keyword module instead. This distinction is intentional:
-  the Dict module is meant to work on structures that work
-  as storage.
+  functions that redirect to the underlying Dict, allowing
+  a developer to work with different Dict implementations
+  using one API.
 
   To create a new dict, use the `new` functions defined
   by each dict type:
 
-      OrdDict.new [{:a, 1}, {:b, 2}]
       HashDict.new  #=> creates an empty HashDict
 
   For simplicity's sake, in the examples below everytime
@@ -24,25 +18,43 @@ defmodule Dict do
   it implies that the returned value is actually of the
   same dict type as the input one.
 
+  Keep in mind that all dicts are also required to
+  implement both `Access` and `Enum.Iterator` protocols.
   """
 
   use Behaviour
 
   @type key :: any
   @type value :: any
-  @type t :: tuple
+  @type t :: tuple | list
 
   defcallback delete(t, key) :: t
   defcallback empty(t) :: t
+  defcallback get(t, key) :: value
   defcallback get(t, key, value) :: value
+  defcallback get!(t, key) :: value | no_return
   defcallback has_key?(t, key) :: boolean
   defcallback keys(t) :: list(key)
+  defcallback merge(t, t) :: t
   defcallback merge(t, t, (key, value, value -> value)) :: t
   defcallback put(t, key, value) :: t
+  defcallback put_new(t, key, value) :: t
   defcallback size(t) :: non_neg_integer()
   defcallback to_list(t) :: list()
-  defcallback update(t, key, (value -> value)) :: t
+  defcallback update(t, key, (value -> value)) :: t | no_return
+  defcallback update(t, key, value, (value -> value)) :: t
   defcallback values(t) :: list(value)
+
+  defmacrop target(dict) do
+    quote do
+      cond do
+        is_tuple(unquote(dict)) ->
+          elem(unquote(dict), 0)
+        is_list(unquote(dict)) ->
+          List.Dict
+      end
+    end
+  end
 
   @doc """
   Returns a list containing all dict's keys.
@@ -57,7 +69,7 @@ defmodule Dict do
   """
   @spec keys(t) :: [key]
   def keys(dict) do
-    elem(dict, 0).keys(dict)
+    target(dict).keys(dict)
   end
 
   @doc """
@@ -71,7 +83,7 @@ defmodule Dict do
   """
   @spec values(t) :: [value]
   def values(dict) do
-    elem(dict, 0).values(dict)
+    target(dict).values(dict)
   end
 
   @doc """
@@ -85,7 +97,7 @@ defmodule Dict do
   """
   @spec size(t) :: non_neg_integer
   def size(dict) do
-    elem(dict, 0).size(dict)
+    target(dict).size(dict)
   end
 
   @doc """
@@ -100,7 +112,7 @@ defmodule Dict do
   """
   @spec has_key?(t, key) :: boolean
   def has_key?(dict, key) do
-    elem(dict, 0).has_key?(dict, key)
+    target(dict).has_key?(dict, key)
   end
 
   @doc """
@@ -115,10 +127,9 @@ defmodule Dict do
       Dict.get d, :b, 3  #=> 3
 
   """
-  @spec get(t, key) :: value | nil
   @spec get(t, key, value) :: value
   def get(dict, key, default // nil) do
-    elem(dict, 0).get(dict, key, default)
+    target(dict).get(dict, key, default)
   end
 
   @doc """
@@ -134,7 +145,7 @@ defmodule Dict do
   """
   @spec get!(t, key) :: value | no_return
   def get!(dict, key) do
-    elem(dict, 0).get!(dict, key)
+    target(dict).get!(dict, key)
   end
 
   @doc """
@@ -150,7 +161,22 @@ defmodule Dict do
   """
   @spec put(t, key, value) :: t
   def put(dict, key, val) do
-    elem(dict, 0).put(dict, key, val)
+    target(dict).put(dict, key, val)
+  end
+
+  @doc """
+  Puts the given `value` under `key` in `dict` unless `key` already exists.
+
+  ## Examples
+
+      d = new [a: 1, b: 2]
+      Dict.put_new d, :a, 3
+      #=> [a: 1, b: 2]
+
+  """
+  @spec put_new(t, key, value) :: t
+  def put_new(dict, key, val) do
+    target(dict).put_new(dict, key, val)
   end
 
   @doc """
@@ -168,14 +194,12 @@ defmodule Dict do
   """
   @spec delete(t, key) :: t
   def delete(dict, key) do
-    elem(dict, 0).delete(dict, key)
+    target(dict).delete(dict, key)
   end
 
   @doc """
-  Merges two dicts into one. If the dicts have duplicated entries,
-  the one given as second argument wins. In case the second argument
-  is not of the same kind as the first one, it is converted to the
-  same kind before merging as long as it implements the `Enum` protocol.
+  Merges the given enum into the dict. In case one of the enum entries
+  alread exist in the dict, it is given higher preference.
 
   ## Examples
 
@@ -186,13 +210,14 @@ defmodule Dict do
 
   """
   @spec merge(t, t) :: t
-  def merge(dict1, dict2) do
-    merge(dict1, dict2, fn(_k, _v1, v2) -> v2 end)
+  def merge(dict, enum) do
+    merge(dict, enum, fn(_k, _v1, v2) -> v2 end)
   end
 
   @doc """
-  Merges two dicts into one. If the dicts have duplicated entries, the given
-  function is invoked to solve conflicts.
+  Merges the given enum into the dict. In case one of the enum entries
+  alread exist in the dict, the given function is invoked to solve
+  conflicts.
 
   ## Examples
 
@@ -205,8 +230,8 @@ defmodule Dict do
 
   """
   @spec merge(t, t, (key, value, value -> value)) :: t
-  def merge(dict1, dict2, fun) do
-    elem(dict1, 0).merge(dict1, dict2, fun)
+  def merge(dict, enum, fun) do
+    target(dict).merge(dict, enum, fun)
   end
 
   @doc """
@@ -222,7 +247,7 @@ defmodule Dict do
   """
   @spec update(t, key, (value -> value)) :: t
   def update(dict, key, fun) do
-    elem(dict, 0).update(dict, key, fun)
+    target(dict).update(dict, key, fun)
   end
 
   @doc """
@@ -239,7 +264,7 @@ defmodule Dict do
   """
   @spec update(t, key, value, (value -> value)) :: t
   def update(dict, key, initial, fun) do
-    elem(dict, 0).update(dict, key, initial, fun)
+    target(dict).update(dict, key, initial, fun)
   end
 
   @doc """
@@ -247,7 +272,7 @@ defmodule Dict do
   """
   @spec empty(t) :: t
   def empty(dict) do
-    elem(dict, 0).empty(dict)
+    target(dict).empty(dict)
   end
 
   @doc """
@@ -256,6 +281,6 @@ defmodule Dict do
   """
   @spec to_list(t) :: list
   def to_list(dict) do
-    elem(dict, 0).to_list(dict)
+    target(dict).to_list(dict)
   end
 end

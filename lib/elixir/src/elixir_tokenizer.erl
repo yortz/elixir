@@ -10,16 +10,6 @@
   existing_atoms_only=false
 }).
 
--define(is_digit(S), S >= $0 andalso S =< $9).
--define(is_hex(S), ?is_digit(S) orelse (S >= $A andalso S =< $F) orelse (S >= $a andalso S =< $f)).
--define(is_bin(S), S >= $0 andalso S =< $1).
--define(is_octal(S), S >= $0 andalso S =< $7).
--define(is_upcase(S), S >= $A andalso S =< $Z).
--define(is_downcase(S), S >= $a andalso S =< $z).
--define(is_word(S), ?is_digit(S) orelse ?is_upcase(S) orelse ?is_downcase(S)).
--define(is_quote(S), S == $" orelse S == $').
--define(is_space(S), S == $\s; S == $\r; S == $\t; S == $\n).
-
 -define(container2(T1, T2),
   T1 == ${, T2 == $};
   T1 == $[, T2 == $]
@@ -58,6 +48,7 @@
   T1 == $<, T2 == $-;
   T1 == $-, T2 == $>;
   T1 == $., T2 == $.;
+  T1 == $|, T2 == $>;
   T1 == $/, T2 == $>;
   T1 == $=, T2 == $~
 ).
@@ -125,12 +116,12 @@ tokenize([$0,X,H|T], Line, Scope, Tokens) when (X == $x orelse X == $X), ?is_hex
   { Rest, Number } = tokenize_hex([H|T], []),
   tokenize(Rest, Line, Scope, [{ number, Line, Number }|Tokens]);
 
-tokenize([$0,O,H|T], Line, Scope, Tokens) when (O == $o orelse O == $O), ?is_octal(H) ->
-  { Rest, Number } = tokenize_octal([H|T], []),
-  tokenize(Rest, Line, Scope, [{ number, Line, Number }|Tokens]);
-
 tokenize([$0,B,H|T], Line, Scope, Tokens) when (B == $b orelse B == $B), ?is_bin(H) ->
   { Rest, Number } = tokenize_bin([H|T], []),
+  tokenize(Rest, Line, Scope, [{ number, Line, Number }|Tokens]);
+
+tokenize([$0,H|T], Line, Scope, Tokens) when ?is_octal(H) ->
+  { Rest, Number } = tokenize_octal([H|T], []),
   tokenize(Rest, Line, Scope, [{ number, Line, Number }|Tokens]);
 
 % Comments
@@ -162,6 +153,50 @@ tokenize([$%,S,H|T], Line, #scope{file=File} = Scope, Tokens) when not(?is_word(
 
 % Char tokens
 
+tokenize([$?,$\\,P,${,A,B,C,D,E,F,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E), ?is_hex(F) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,B,C,D,E,F,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,${,A,B,C,D,E,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,B,C,D,E,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,${,A,B,C,D,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,B,C,D,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,${,A,B,C,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,B,C,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,${,A,B,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,B,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,${,A,$}|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,${,A,$}]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,A,B|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,A,B]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,P,A|T], Line, Scope, Tokens) when (P == $x orelse P == $X), ?is_hex(A) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,P,A]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,A,B,C|T], Line, Scope, Tokens) when ?is_octal(A), A =< $3,?is_octal(B), ?is_octal(C) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,A,B,C]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,A,B|T], Line, Scope, Tokens) when ?is_octal(A), ?is_octal(B) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,A,B]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
+tokenize([$?,$\\,A|T], Line, Scope, Tokens) when ?is_octal(A) ->
+  [Char] = unicode:characters_to_list(elixir_interpolation:unescape_chars(list_to_binary([$\\,A]))),
+  tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
+
 tokenize([$?,$\\,H|T], Line, Scope, Tokens) ->
   Char = elixir_interpolation:unescape_map(H),
   tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
@@ -169,13 +204,11 @@ tokenize([$?,$\\,H|T], Line, Scope, Tokens) ->
 tokenize([$?,Char|T], Line, Scope, Tokens) ->
   tokenize(T, Line, Scope, [{ number, Line, Char }|Tokens]);
 
-% Dot identifier
+% Dot identifier/operators
 
 tokenize("..." ++ Rest, Line, Scope, Tokens) ->
   Token = tokenize_call_identifier(identifier, Line, '...', Rest),
   tokenize(Rest, Line, Scope, [Token|Tokens]);
-
-% Dot operators
 
 % ## Containers
 tokenize(".<<>>" ++ Rest, Line, Scope, Tokens) ->
@@ -237,7 +270,7 @@ tokenize([$:,H|T], Line, #scope{file=File} = Scope, Tokens) when ?is_quote(H) ->
   case elixir_interpolation:extract(Line, File, true, T, H) of
     { NewLine, Parts, Rest } ->
       Token = case unescape_tokens(Parts) of
-        [Part]    -> { atom, Line, unsafe_to_atom(Part, Scope) };
+        [Part] when is_list(Part) or is_binary(Part) -> { atom, Line, unsafe_to_atom(Part, Scope) };
         Unescaped -> { atom, Line, Unescaped }
       end,
       tokenize(Rest, NewLine, Scope, [Token|Tokens]);
@@ -245,7 +278,10 @@ tokenize([$:,H|T], Line, #scope{file=File} = Scope, Tokens) when ?is_quote(H) ->
       interpolation_error(Error, " (for atom starting at line ~B)", [Line])
   end;
 
-% Atom operators
+% Atom identifiers/operators
+
+tokenize(":..." ++ Rest, Line, Scope, Tokens) ->
+  tokenize(Rest, Line, Scope, [{ atom, Line, '...' }|Tokens]);
 
 % ## Containers
 tokenize(":<<>>" ++ Rest, Line, Scope, Tokens) ->
@@ -350,7 +386,7 @@ tokenize([H|_] = String, Line, Scope, Tokens) when ?is_upcase(H) ->
     [$:|T] when hd(T) /= $: ->
       tokenize(T, Line, Scope, [{ kw_identifier, Line, Atom }|Tokens]);
     _ ->
-      tokenize(Rest, Line, Scope, [{ '__aliases__', Line, [Atom] }|Tokens])
+      tokenize(Rest, Line, Scope, [{ aliases, Line, [Atom] }|Tokens])
   end;
 
 % Identifier

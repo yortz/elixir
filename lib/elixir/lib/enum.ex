@@ -70,6 +70,7 @@ defmodule Enum do
 
   @type t :: Enum.Iterator.t
   @type element :: any
+  @type index :: non_neg_integer
 
   @doc """
   Invokes the given `fun` for each item in the `collection` and returns true if
@@ -160,7 +161,7 @@ defmodule Enum do
         Enum.at! [2,4,6], 4 #=> raises Enum.OutOfBoundsError
 
   """
-  @spec at!(t, non_neg_integer) :: element | no_return
+  @spec at!(t, index) :: element | no_return
   def at!(collection, n) when is_list(collection) and n >= 0 do
     do_at!(collection, n)
   end
@@ -259,23 +260,32 @@ defmodule Enum do
 
   @doc """
   Invokes the given `fun` for each item in the `collection`.
-  Returns the `collection` itself.
+  Returns the `collection` itself. `fun` can take two parameters,
+  in which case the second parameter will be the iteration index.
 
   ## Examples
 
       Enum.each ['some', 'example'], fn(x) -> IO.puts x end
 
   """
-  @spec each(t, (element -> any)) :: :ok
+  @spec each(t, (element -> any) | (element, index -> any)) :: :ok
   def each(collection, fun) when is_list(collection) do
-    :lists.foreach(fun, collection)
+    cond do
+      is_function(fun, 1) -> :lists.foreach(fun, collection)
+      is_function(fun, 2) -> :lists.foldl(fn(h, idx) -> fun.(h, idx); idx + 1 end, 0, collection)
+    end
+
     :ok
   end
 
   def each(collection, fun) do
     case I.iterator(collection) do
       { iterator, pointer } ->
-        do_each(pointer, iterator, fun)
+        cond do
+          is_function(fun, 1) -> do_each(pointer, iterator, fun)
+          is_function(fun, 2) -> do_indexed_each(pointer, iterator, fun, 0)
+        end
+
         :ok
       list when is_list(list) ->
         each(list, fun)
@@ -430,7 +440,7 @@ defmodule Enum do
       #=> 2
 
   """
-  @spec find_index(t, (element -> any)) :: non_neg_integer | :nil
+  @spec find_index(t, (element -> any)) :: index | :nil
   def find_index(collection, fun) when is_list(collection) do
     do_find_index(collection, 0, fun)
   end
@@ -506,6 +516,9 @@ defmodule Enum do
   @doc """
   Returns a new collection, where each item is the result
   of invoking `fun` on each corresponding item of `collection`.
+  `fun` can take two parameters, in which case the second parameter
+  will be the iteration index.
+
   For dicts, the function accepts a key-value tuple.
 
   ## Examples
@@ -517,15 +530,21 @@ defmodule Enum do
       #=> [a: -1, b: -2]
 
   """
-  @spec map(t, (element -> any)) :: list
+  @spec map(t, (element -> any) | (element, index -> any)) :: list
   def map(collection, fun) when is_list(collection) do
-    lc item inlist collection, do: fun.(item)
+    cond do
+      is_function(fun, 1) -> lc item inlist collection, do: fun.(item)
+      is_function(fun, 2) -> elem(:lists.mapfoldl(fn(h, idx) -> {fun.(h, idx), idx + 1} end, 0, collection), 0)
+    end
   end
 
   def map(collection, fun) do
     case I.iterator(collection) do
       { iterator, pointer }  ->
-        do_map(pointer, iterator, fun)
+        cond do
+          is_function(fun, 1) -> do_map(pointer, iterator, fun)
+          is_function(fun, 2) -> do_indexed_map(pointer, iterator, fun, 0)
+        end
       list when is_list(list) ->
         map(list, fun)
     end
@@ -669,23 +688,6 @@ defmodule Enum do
     end
   end
 
-  @doc false
-  @spec qsort(t) :: list
-  def qsort(collection) when is_list(collection) do
-    IO.write "[WARNING] Enum.qsort is deprecated, please use Enum.sort instead\n#{Exception.formatted_stacktrace}"
-    do_list_qsort(collection, [])
-  end
-
-  def qsort(collection) do
-    case I.iterator(collection) do
-      { iterator, pointer } ->
-        IO.write "[WARNING] Enum.qsort is deprecated, please use Enum.sort instead\n#{Exception.formatted_stacktrace}"
-        do_qsort(pointer, iterator, [])
-      list when is_list(list) ->
-        qsort(list)
-    end
-  end
-
   @doc """
   Sorts the collection using the merge sort algorithm.
 
@@ -803,11 +805,16 @@ defmodule Enum do
 
   """
   @spec take(t, integer) :: list
-  def take(collection, count) when is_list(collection) and count >= 0 do
+
+  def take(_collection, 0) do
+    []
+  end
+
+  def take(collection, count) when is_list(collection) and count > 0 do
     do_take(collection, count)
   end
 
-  def take(collection, count) when count >= 0 do
+  def take(collection, count) when count > 0 do
     case I.iterator(collection) do
       { iterator, pointer } ->
         do_take(pointer, iterator, count)
@@ -1143,6 +1150,15 @@ defmodule Enum do
     []
   end
 
+  defp do_indexed_each({ h, next }, iterator, fun, idx) do
+    fun.(h, idx)
+    do_each(iterator.(next), iterator, fun, idx + 1)
+  end
+
+  defp do_each(:stop, _, _, _) do
+    []
+  end
+
   ## filter
 
   defp do_filter({ h, next }, iterator, fun) do
@@ -1206,6 +1222,14 @@ defmodule Enum do
   end
 
   defp do_map(:stop, _, _) do
+    []
+  end
+
+  defp do_indexed_map({ h, next }, iterator, fun, idx) do
+    [fun.(h, idx) | do_indexed_map(iterator.(next), iterator, fun, idx + 1)]
+  end
+
+  defp do_indexed_map(:stop, _, _, _) do
     []
   end
 
@@ -1462,56 +1486,6 @@ defmodule Enum do
     { :lists.reverse(acc), [] }
   end
 
-  ## qsort (lists)
-
-  defp do_list_qsort([], acc) do
-    acc
-  end
-
-  defp do_list_qsort([h|t], acc) do
-    do_list_qsort_part(h, t, {[], [h], []}, acc)
-  end
-
-  defp do_list_qsort_part(_, [], { l, e, g }, acc) do
-    do_list_qsort(l, e ++ do_list_qsort(g, acc))
-  end
-
-  defp do_list_qsort_part(x, [h|t], { l, e, g }, acc) do
-    cond do
-      h < x ->
-        do_list_qsort_part(x, t, { [h|l], e, g }, acc)
-      h > x ->
-        do_list_qsort_part(x, t, { l, e, [h|g] }, acc)
-      true ->
-        do_list_qsort_part(x, t, { l, [h|e], g }, acc)
-    end
-  end
-
-  ## qsort (iterator)
-
-  defp do_qsort({ h, next }, iterator, acc) do
-    do_qsort_part(h, iterator.(next), iterator, {[], [h], []}, acc)
-  end
-
-  defp do_qsort(:stop, _iterator, acc) do
-    acc
-  end
-
-  defp do_qsort_part(_, :stop, _iterator, { l, e, g }, acc) do
-    do_list_qsort(l, e ++ do_list_qsort(g, acc))
-  end
-
-  defp do_qsort_part(x, { h, next }, iterator, { l, e, g }, acc) do
-    cond do
-      h < x ->
-        do_qsort_part(x, iterator.(next), iterator, { [h|l], e, g }, acc)
-      h > x ->
-        do_qsort_part(x, iterator.(next), iterator, { l, e, [h|g] }, acc)
-      true ->
-        do_qsort_part(x, iterator.(next), iterator, { l, [h|e], g }, acc)
-    end
-  end
-
   ## take
 
   defp do_take([h|t], counter) when counter > 0 do
@@ -1526,8 +1500,12 @@ defmodule Enum do
     []
   end
 
-  defp do_take({ h, next }, iterator, counter) when counter > 0 do
+  defp do_take({ h, next }, iterator, counter) when counter > 1 do
     [h|do_take(iterator.(next), iterator, counter - 1)]
+  end
+
+  defp do_take({ h, _next }, _iterator, 1) do
+    [h]
   end
 
   defp do_take(_extra, _iterator, 0) do
@@ -1627,12 +1605,13 @@ end
 
 defimpl Enum.Iterator, for: Function do
   def iterator(function) do
-    function.()
+    { iterator, first } = function.()
+    { iterator, iterator.(first) }
   end
 
   def count(function) do
     { function, first } = function.()
-    do_count(first, function, 0)
+    do_count(function.(first), function, 0)
   end
 
   defp do_count({ _, next }, function, acc) do

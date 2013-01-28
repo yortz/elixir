@@ -61,6 +61,7 @@ defmodule Binary.Inspect.BitStringTest do
   test :escape do
     assert inspect("f\no") == "\"f\\no\""
     assert inspect("f\\o") == "\"f\\\\o\""
+    assert inspect("f\ao") == "\"f\\ao\""
   end
 
   test :utf8 do
@@ -184,17 +185,35 @@ defmodule Binary.Inspect.ListTest do
   end
 end
 
-defmodule Binary.Inspect.AnyTest do
+defmodule Binary.Inspect.OthersTest do
   use ExUnit.Case, async: true
 
-  test :funs do
-    bin = inspect(fn(x) -> x + 1 end)
-    assert '#Fun<' ++ _ = binary_to_list(bin)
+  def f do
+    fn() -> :ok end
   end
-end
 
-defmodule Binary.Inspect.RegexTest do
-  use ExUnit.Case, async: true
+  test :external_elixir_funs do
+    bin = inspect(function(Enum.map/2))
+    assert bin == "function(Enum.map/2)"
+  end
+
+  test :external_erlang_funs do
+    bin = inspect(function(:lists.map/2))
+    assert bin == "function(:lists.map/2)"
+  end
+
+  test :other_funs do
+    assert "#Function<" <> _ = inspect(fn(x) -> x + 1 end)
+    assert "#Function<" <> _ = inspect(f)
+  end
+
+  test :pids do
+    assert "#PID<" <> _ = inspect(self)
+  end
+
+  test :references do
+    assert "#Reference<" <> _ = inspect(make_ref)
+  end
 
   test :regex do
     "%r\"foo\"m" = inspect(%r(foo)m)

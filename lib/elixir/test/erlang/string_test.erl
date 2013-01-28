@@ -19,19 +19,30 @@ extract_interpolations_with_escaped_interpolation_test() ->
   [<<"f#{o}o">>] = extract_interpolations("f\\#{o}o").
 
 extract_interpolations_with_interpolation_test() ->
-  [<<"f">>, {'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[o]}, { binary, _ , _ }]}, <<"o">>] = extract_interpolations("f#{:o}o").
+  [<<"f">>,
+   {'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[o]}, { binary, _ , _ }]},
+   <<"o">>] = extract_interpolations("f#{:o}o").
 
 extract_interpolations_with_two_interpolations_test() ->
-  [<<"f">>, {'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[o]}, { binary, _ , _ }]}, {'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[o]}, { binary, _ , _ }]}, <<"o">>] = extract_interpolations("f#{:o}#{:o}o").
+  [<<"f">>,
+   {'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[o]}, { binary, _ , _ }]},
+   {'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[o]}, { binary, _ , _ }]},
+   <<"o">>] = extract_interpolations("f#{:o}#{:o}o").
 
 extract_interpolations_with_only_two_interpolations_test() ->
-  [{'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[o]}, { binary, _ , _ }]}, {'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[o]}, { binary, _ , _ }]}] = extract_interpolations("#{:o}#{:o}").
+  [{'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[o]}, { binary, _ , _ }]},
+   {'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[o]}, { binary, _ , _ }]}] = extract_interpolations("#{:o}#{:o}").
 
 extract_interpolations_with_tuple_inside_interpolation_test() ->
-  [<<"f">>, {'::',1,[{{'.',1,['Elixir.Binary.Chars',to_binary]},1,[{'{}',1,[1]}]}, { binary, _ , _ }]}, <<"o">>] = extract_interpolations("f#{{1}}o").
+  [<<"f">>,
+   {'::',[{line,1}],[{{'.',[{line,1}],['Elixir.Binary.Chars',to_binary]},[{line,1}],[{'{}',[{line,1}],[1]}]}, { binary, _ , _ }]},
+   <<"o">>] = extract_interpolations("f#{{1}}o").
 
 extract_interpolations_with_many_expressions_inside_interpolation_test() ->
-  [<<"f">>, {'::',2,[{{'.',2,['Elixir.Binary.Chars',to_binary]},2,[{'__block__',2,[1,2]}]}, { binary, _ , _ }]}, <<"o">>] = extract_interpolations("f#{1\n2}o").
+  [<<"f">>,
+  {'::',[{line,2}],[{{'.',[{line,2}],['Elixir.Binary.Chars',to_binary]},[{line,2}],[{'__block__',[{line,2}],[1,2]}]},
+  { binary, _ , _ }]},
+  <<"o">>] = extract_interpolations("f#{1\n2}o").
 
 extract_interpolations_with_string_inside_interpolation_test() ->
   [<<"f">>, <<"foo">>, <<"o">>] = extract_interpolations("f#{\"foo\"}o").
@@ -59,6 +70,9 @@ bin_string_with_newline_test() ->
 bin_string_with_slash_test() ->
   {<<"f\\o">>, _} = eval("\"f\\\\o\"").
 
+bin_string_with_bell_character_test() ->
+  {<<"f\ao">>, _} = eval("\"f\ao\"").
+
 bin_string_with_interpolation_test() ->
   {<<"foo">>, _} = eval("\"f#{\"o\"}o\"").
 
@@ -70,6 +84,12 @@ bin_string_with_another_string_with_curly_inside_interpolation_test() ->
 
 bin_string_with_atom_with_separator_inside_interpolation_test() ->
   {<<"f}o">>, _} = eval("\"f#{\"}\"}o\"").
+
+bin_string_with_lower_case_hex_interpolation_test() ->
+  {<<"jklmno">>, _} = eval("\"\\x6a\\x6b\\x6c\\x6d\\x6e\\x6f\"").
+
+bin_string_with_upper_case_hex_interpolation_test() ->
+  {<<"jklmno">>, _} = eval("\"\\x6A\\x6B\\x6C\\x6D\\x6E\\x6F\"").
 
 bin_string_without_interpolation_and_escaped_test() ->
   {<<"f#o">>, _} = eval("\"f\\#o\"").
@@ -100,6 +120,9 @@ list_string_with_newline_test() ->
 list_string_with_slash_test() ->
   {"f\\o", _} = eval("'f\\\\o'").
 
+list_string_with_bell_character_test() ->
+  {"f\ao", _} = eval("'f\ao'").
+
 list_string_with_interpolation_test() ->
   {"foo", _} = eval("'f#{\"o\"}o'").
 
@@ -108,6 +131,12 @@ list_string_with_another_string_with_curly_inside_interpolation_test() ->
 
 list_string_with_atom_with_separator_inside_interpolation_test() ->
   {"f}o", _} = eval("'f#{\"}\"}o'").
+
+list_string_with_lower_case_hex_interpolation_test() ->
+  {"JKLMNO", _} = eval("'\\x4a\\x4b\\x4c\\x4d\\x4e\\x4f'").
+
+list_string_with_upper_case_hex_interpolation_test() ->
+  {"JKLMNO", _} = eval("'\\x4A\\x4B\\x4C\\x4D\\x4E\\x4F'").
 
 list_string_without_interpolation_and_escaped_test() ->
   {"f#o", _} = eval("'f\\#o'").

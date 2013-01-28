@@ -115,39 +115,53 @@ defmodule Protocol do
   # Defines meta information about the protocol and internal callbacks.
   @doc false
   def meta(functions, conversions, fallback, returns_nil, env) do
-    any = L.keyfind(Any, 1, conversions) != false
+    any     = L.keyfind(Any, 1, conversions) != false
+    records = L.keyfind(Record, 1, conversions) != false
 
-    meta = quote do
+    meta = quote location: :keep do
       unless Kernel.Typespec.defines_type?(__MODULE__, :t, 0) do
         @type t :: unquote(generate_type(conversions, any))
       end
 
+      @doc false
       def __protocol__(:name),      do: __MODULE__
       def __protocol__(:functions), do: unquote(:lists.sort(functions))
     end
 
-    impl_for = if L.keyfind(Record, 1, conversions) do
-      quote do
-        def __impl_for__(arg) do
-          case __raw_impl__(arg) do
-            __MODULE__.Record ->
-              target = Module.concat(__MODULE__, :erlang.element(1, arg))
-              try do
-                target.__impl__
-                target
-              catch
-                :error, :undef, [[{ ^target, :__impl__, [], _ }|_]|_] ->
-                  unquote(fallback)
-              end
-            other ->
-              other
+    impl_for = cond do
+      records and fallback ->
+        quote location: :keep do
+          def __impl_for__(arg) do
+            case __raw_impl__(arg) do
+              __MODULE__.Record ->
+                target = Module.concat(__MODULE__, :erlang.element(1, arg))
+                try do
+                  target.__impl__
+                  target
+                catch
+                  :error, :undef, [[{ ^target, :__impl__, [], _ }|_]|_] ->
+                    unquote(fallback)
+                end
+              other ->
+                other
+            end
           end
         end
-      end
-    else
-      quote do
-        def __impl_for__(arg), do: __raw_impl__(arg)
-      end
+      records ->
+        quote location: :keep do
+          def __impl_for__(arg) do
+            case __raw_impl__(arg) do
+              __MODULE__.Record ->
+                Module.concat(__MODULE__, :erlang.element(1, arg))
+              other ->
+                other
+            end
+          end
+        end
+      true ->
+        quote location: :keep do
+          def __impl_for__(arg), do: __raw_impl__(arg)
+        end
     end
 
     impl_bang = if returns_nil do
@@ -201,7 +215,7 @@ defmodule Protocol do
   end
 
   defp generate_type(conversions, false) do
-    or_function     = fn({ _, _, x }, acc) -> { :|, 0, [acc, x] } end
+    or_function     = fn({ _, _, x }, acc) -> { :|, [], [acc, x] } end
     { _, _, first } = hd(conversions)
     :lists.foldl(or_function, first, tl(conversions))
   end
@@ -234,10 +248,20 @@ defmodule Protocol do
     end
   end
 
+  # We don't have a fallback, so we assume what was given
+  # as a record is indeed a record
+  defp each_impl_for({ _, :is_record, _ }, _conversions, nil) do
+    quote do
+      defp __raw_impl__(arg) when is_record(arg) do
+        __MODULE__.Record
+      end
+    end
+  end
+
   # Specially handle records in the case we have fallbacks.
   defp each_impl_for({ _, :is_record, _ }, conversions, fallback) do
     quote do
-      defp __raw_impl__(arg) when is_tuple(arg) and is_atom(:erlang.element(1, arg)) do
+      defp __raw_impl__(arg) when is_record(arg) do
         first = :erlang.element(1, arg)
         case unquote(is_builtin?(conversions)) do
           true  -> unquote(fallback)
@@ -283,7 +307,7 @@ defmodule Protocol.DSL do
     # interpolation to generate the arguments because of compile
     # dependencies, so we use the <<>> instead.
     args = lc i inlist :lists.seq(1, arity) do
-      { binary_to_atom(<<?x, i + 64>>), 0, :quoted }
+      { binary_to_atom(<<?x, i + 64>>), [], __MODULE__ }
     end
 
     { conversions, fallback, returns_nil } = conversions_for(module)
@@ -299,7 +323,7 @@ defmodule Protocol.DSL do
 
     body =
       quote do
-        case __raw_impl__(xA), do: unquote({ :->, 0, clauses })
+        case __raw_impl__(xA), do: unquote({ :->, [], clauses })
       end
 
     { args, body }
@@ -334,6 +358,13 @@ defmodule Protocol.DSL do
     end
   end
 
+  defp record_clause(name, args, nil) do
+    quote do
+      { [__MODULE__.Record],
+        Module.concat(__MODULE__, :erlang.element(1, xA)).unquote(name)(unquote_splicing(args)) }
+    end
+  end
+
   defp record_clause(name, args, fallback) do
     arity = length(args)
 
@@ -345,20 +376,8 @@ defmodule Protocol.DSL do
         catch
           :error, :undef, [[{ ^target, name, args, _ }|_]|_] when
               name == unquote(name) and length(args) == unquote(arity) ->
-            unquote(catch_clause(args, fallback))
+            apply unquote(fallback), name, [unquote_splicing(args)]
         end) }
-    end
-  end
-
-  defp catch_clause(args, fallback) do
-    if fallback do
-      quote do
-        apply unquote(fallback), name, [unquote_splicing(args)]
-      end
-    else
-      quote do
-        raise Protocol.UndefinedError, protocol: __MODULE__, structure: xA
-      end
     end
   end
 

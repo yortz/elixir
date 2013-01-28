@@ -33,9 +33,9 @@ defmodule Record do
 
         values = unquote(values)
         opts   = unquote(opts)
-        Record.deffunctions(values, opts, __ENV__)
+        Record.deffunctions(values, __ENV__)
         unquote(block)
-        Record.deftypes(values, @record_type, opts, __ENV__)
+        Record.deftypes(values, @record_type, __ENV__)
       end
     end
   end
@@ -61,11 +61,11 @@ defmodule Record do
 
       defmodule CustomRecord do
         Record.deffunctions [:name, :age], __ENV__
-        Record.deftypes [:name, :age], __ENV__
+        Record.deftypes [:name, :age], [name: :binary, age: :integer], __ENV__
       end
 
   """
-  def deffunctions(values, _opts // [], env) do
+  def deffunctions(values, env) do
     values  = lc value inlist values, do: convert_value(value)
     escaped = Macro.escape(values)
 
@@ -74,9 +74,10 @@ defmodule Record do
       initializer(escaped),
       indexes(escaped),
       conversions(values),
+      record_optimizable(),
       updater(values),
-      extensions(values, 1, [], Record.Extensions),
-      accessors(values),
+      accessors(values, 1),
+      switch_recorder()
     ]
 
     contents = [quote(do: @__record__ unquote(escaped))|contents]
@@ -92,7 +93,7 @@ defmodule Record do
   @doc """
   Defines types and specs for the record.
   """
-  def deftypes(values, types, _opts // [], env) do
+  def deftypes(values, types, env) do
     types  = types || []
     values = lc value inlist values do
       { name, default } = convert_value(value)
@@ -195,7 +196,7 @@ defmodule Record do
     in_match = caller.in_match?
 
     has_underscore_value = Keyword.has_key?(keyword, :_)
-    underscore_value     = Keyword.get(keyword, :_, { :_, 0, nil })
+    underscore_value     = Keyword.get(keyword, :_, { :_, [], nil })
     keyword              = Keyword.delete keyword, :_
 
     iterator = fn({field, default}, each_keyword) ->
@@ -215,7 +216,7 @@ defmodule Record do
     { match, remaining } = :lists.mapfoldl(iterator, keyword, fields)
 
     case remaining do
-      [] -> { :{}, caller.line, [atom|match] }
+      [] -> { :{}, [line: caller.line], [atom|match] }
       _  ->
         keys = lc { key, _ } inlist remaining, do: key
         raise "record #{inspect atom} does not have the keys: #{inspect keys}"
@@ -320,7 +321,10 @@ defmodule Record do
   #
   defp reflection(values) do
     quote do
+      @doc false
       def __record__(kind, _),      do: __record__(kind)
+
+      @doc false
       def __record__(:name),        do: __MODULE__
       def __record__(:fields),      do: unquote(values)
     end
@@ -356,7 +360,10 @@ defmodule Record do
     end
 
     quote do
+      @doc false
       def new(), do: new([])
+
+      @doc false
       def new([]), do: { __MODULE__, unquote_splicing(defaults) }
       def new(opts) when is_list(opts), do: { __MODULE__, unquote_splicing(selective) }
       def new(tuple) when is_tuple(tuple), do: :erlang.setelement(1, tuple, __MODULE__)
@@ -388,7 +395,11 @@ defmodule Record do
     end
     quote do
       unquote(quoted)
+
+      @doc false
       def __index__(_), do: nil
+
+      @doc false
       def __index__(key, _), do: __index__(key)
     end
   end
@@ -408,6 +419,7 @@ defmodule Record do
     end
 
     quote do
+      @doc false
       def to_keywords(record) do
         unquote(:orddict.from_list(sorted))
       end
@@ -444,15 +456,6 @@ defmodule Record do
   #       setelem(record, 2, callback.(elem(record, 2)))
   #     end
   #
-  defp accessors(values) do
-    [ quote do
-        @record_optimized true
-        @record_optimizable []
-        @before_compile { unquote(__MODULE__), :__before_compile__ }
-        @on_definition { unquote(__MODULE__), :__on_definition__ }
-      end | accessors(values, 1) ]
-  end
-
   defp accessors([{ :__exception__, _ }|t], 1) do
     accessors(t, 2)
   end
@@ -461,14 +464,17 @@ defmodule Record do
     update = binary_to_atom "update_" <> atom_to_binary(key)
 
     contents = quote do
+      @doc false
       def unquote(key).(record) do
         :erlang.element(unquote(i + 1), record)
       end
 
+      @doc false
       def unquote(key).(value, record) do
         :erlang.setelement(unquote(i + 1), record, value)
       end
 
+      @doc false
       def unquote(update).(function, record) do
         :erlang.setelement(unquote(i + 1), record,
           function.(:erlang.element(unquote(i + 1), record)))
@@ -479,7 +485,7 @@ defmodule Record do
   end
 
   defp accessors([], _i) do
-    [quote do: @record_optimized false]
+    []
   end
 
   # Define an updater method that receives a
@@ -493,9 +499,10 @@ defmodule Record do
         end
       end
 
-    contents = { :{}, 0, [(quote do: __MODULE__)|fields] }
+    contents = { :{}, [], [(quote do: __MODULE__)|fields] }
 
     quote do
+      @doc false
       def update([], record) do
         record
       end
@@ -506,13 +513,18 @@ defmodule Record do
     end
   end
 
-  # Defines extra functions from the definition.
-  defp extensions([{ key, default }|t], i, acc, extensions) do
-    functions = extensions.functions_for(key, default, i)
-    extensions(t, i + 1, [functions | acc], extensions)
+  defp record_optimizable do
+    quote do
+      @record_optimized true
+      @record_optimizable []
+      @before_compile { unquote(__MODULE__), :__before_compile__ }
+      @on_definition { unquote(__MODULE__), :__on_definition__ }
+    end
   end
 
-  defp extensions([], _i, acc, _), do: acc
+  defp switch_recorder do
+    quote do: @record_optimized false
+  end
 
   ## Types/specs generation
 
@@ -592,69 +604,10 @@ defmodule Record.DSL do
   Expects a keyword list.
   """
   defmacro record_type(opts) when is_list(opts) do
-    quote do
-      @record_type quote do: unquote(opts)
-    end
-  end
-end
-
-defmodule Record.Extensions do
-  @moduledoc false
-
-  # Function definition
-
-  def functions_for(key, default, i) do
-    extension_for(key, default, i)
-  end
-
-  defp extension_for(key, default, i) when is_list(default) do
-    prepend = prefix("prepend_", key)
-    merge   = prefix("merge_", key)
+    escaped = lc { k, v } inlist opts, do: { k, Macro.escape(v) }
 
     quote do
-      def unquote(prepend).(value, record) do
-        IO.write "[WARNING] record default-based generated function #{unquote(prepend)} is deprecated\n#{Exception.formatted_stacktrace}"
-        current = :erlang.element(unquote(i + 1), record)
-        :erlang.setelement(unquote(i + 1), record, value ++ current)
-      end
-
-      def unquote(merge).(value, record) do
-        IO.write "[WARNING] record default-based generated function #{unquote(merge)} is deprecated\n#{Exception.formatted_stacktrace}"
-        current = :erlang.element(unquote(i + 1), record)
-        :erlang.setelement(unquote(i + 1), record, Keyword.merge(current, value))
-      end
+      @record_type Keyword.merge(@record_type || [], unquote(escaped))
     end
-  end
-
-  defp extension_for(key, default, i) when is_number(default) do
-    increment = prefix("increment_", key)
-
-    quote do
-      def unquote(increment).(value // 1, record) do
-        IO.write "[WARNING] record default-based generated function #{unquote(increment)} is deprecated\n#{Exception.formatted_stacktrace}"
-        current = :erlang.element(unquote(i + 1), record)
-        :erlang.setelement(unquote(i + 1), record, current + value)
-      end
-    end
-  end
-
-  defp extension_for(key, default, i) when is_boolean(default) do
-    toggle = prefix("toggle_", key)
-
-    quote do
-      def unquote(toggle).(record) do
-        IO.write "[WARNING] record default-based generated function #{unquote(toggle)} is deprecated\n#{Exception.formatted_stacktrace}"
-        current = :erlang.element(unquote(i + 1), record)
-        :erlang.setelement(unquote(i + 1), record, not current)
-       end
-    end
-  end
-
-  defp extension_for(_, _, _), do: nil
-
-  # Helpers
-
-  defp prefix(prefix, key) do
-    binary_to_atom prefix <> atom_to_binary(key)
   end
 end

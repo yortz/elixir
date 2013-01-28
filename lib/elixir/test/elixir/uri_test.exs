@@ -24,15 +24,15 @@ defmodule URITest do
 
   test :decode_query do
     assert URI.decode_query("q=search%20query&cookie=ab%26cd&block%20buster=") ==
-                OrdDict.new [{"block buster", ""}, {"cookie", "ab&cd"}, {"q", "search query"}]
-    assert URI.decode_query("") == OrdDict.new
-    assert URI.decode_query("something=weird%3Dhappening") == OrdDict.new [{"something", "weird=happening"}]
+                HashDict.new [{"block buster", ""}, {"cookie", "ab&cd"}, {"q", "search query"}]
+    assert URI.decode_query("") == HashDict.new
+    assert URI.decode_query("something=weird%3Dhappening") == HashDict.new [{"something", "weird=happening"}]
 
-    assert URI.decode_query("", HashDict.new) == HashDict.new
+    assert URI.decode_query("", []) == []
 
-    assert URI.decode_query("garbage")                   == OrdDict.new [{"garbage", nil}]
-    assert URI.decode_query("=value")                    == OrdDict.new [{"", "value"}]
-    assert URI.decode_query("something=weird=happening") == OrdDict.new [{"something", "weird=happening"}]
+    assert URI.decode_query("garbage")                   == HashDict.new [{"garbage", nil}]
+    assert URI.decode_query("=value")                    == HashDict.new [{"", "value"}]
+    assert URI.decode_query("something=weird=happening") == HashDict.new [{"something", "weird=happening"}]
   end
 
   test :decoder do
@@ -115,10 +115,6 @@ defmodule URITest do
                     authority: "foo.com:4444",
                     userinfo: nil] ==
                  URI.parse("http://foo.com:4444")
-  end
-
-  test :parse_char_list do
-    assert "/" == URI.parse('/').path
   end
 
   test :parse_bad_uris do

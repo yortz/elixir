@@ -20,8 +20,8 @@ defmodule MacroTest do
   ## Escape
 
   test :escape_handle_tuples_with_size_different_than_two do
-    assert { :{}, 0, [:a] } == Macro.escape({ :a })
-    assert { :{}, 0, [:a, :b, :c] } == Macro.escape({ :a, :b, :c })
+    assert { :{}, [], [:a] } == Macro.escape({ :a })
+    assert { :{}, [], [:a, :b, :c] } == Macro.escape({ :a, :b, :c })
   end
 
   test :escape_simply_returns_tuples_with_size_equal_to_two do
@@ -33,7 +33,7 @@ defmodule MacroTest do
   end
 
   test :escape_works_recursively do
-    assert [1,{:{}, 0, [:a,:b,:c]},3] == Macro.escape([1, { :a, :b, :c },3])
+    assert [1,{:{}, [], [:a,:b,:c]},3] == Macro.escape([1, { :a, :b, :c },3])
   end
 
   ## Expand aliases
@@ -83,7 +83,7 @@ defmodule MacroTest do
   end
 
   test :expand_with_imported_macro do
-    assert Macro.expand(quote(do: 1 || false), __ENV__) == (quote do
+    assert Macro.expand(quote(do: 1 || false), __ENV__) == (quote var_context: Kernel do
       case 1 do
         oror in [false, nil] -> false
         oror -> oror
@@ -92,7 +92,7 @@ defmodule MacroTest do
   end
 
   test :expand_with_require_macro do
-    assert Macro.expand(quote(do: Kernel.||(1, false)), __ENV__) == (quote do
+    assert Macro.expand(quote(do: Kernel.||(1, false)), __ENV__) == (quote var_context: Kernel do
       case 1 do
         oror in [false, nil] -> false
         oror -> oror
@@ -282,5 +282,16 @@ defmodule MacroTest do
     assert Macro.extract_args(quote do: :foo.())    == { :foo, [] }
     assert Macro.extract_args(quote do: foo(1,2,3)) == { :foo, [1,2,3] }
     assert Macro.extract_args(quote do: 1.(1,2,3))  == :error
+  end
+
+  ## env
+
+  test :env_stacktrace do
+    env = __ENV__.file("foo").line(12)
+    assert env.stacktrace == [{ __MODULE__, :test_env_stacktrace, 0, [file: "foo", line: 12] }]
+    env = env.function(nil)
+    assert env.stacktrace == [{ __MODULE__, :__MODULE__, 0, [file: "foo", line: 12] }]
+    env = env.module(nil)
+    assert env.stacktrace == [{ :elixir_compiler, :__FILE__, 2, [file: "foo", line: 12] }]
   end
 end

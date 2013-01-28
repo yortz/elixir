@@ -167,6 +167,7 @@ defmodule IEx.Helpers do
     lc {{f, arity}, _line, _type, _args, doc } inlist module.__info__(:docs),
        f == function and doc != false do
       h(module, function, arity)
+      IO.puts ""
     end
     :ok
   end
@@ -220,7 +221,7 @@ defmodule IEx.Helpers do
   defp print_signature({ { name, _arity }, _line, kind, args, docs }) do
     args = Enum.map_join(args, ", ", signature_arg(&1))
     IO.puts "* #{kind} #{name}(#{args})"
-    docs
+    docs || ""
   end
 
   defp signature_arg({ ://, _, [left, right] }) do
@@ -413,7 +414,7 @@ defmodule IEx.Helpers do
   end
 
   def v(n) when n > 0 do
-    history = Process.get(:iex_history) /> Enum.reverse
+    history = Process.get(:iex_history) |> Enum.reverse
     Enum.at!(history, n - 1).result
   end
 
@@ -444,8 +445,8 @@ defmodule IEx.Helpers do
   Purges and reloads specified module
   """
   def l(module) do
-   :code.purge(module)
-   :code.load_file(module)
+    :code.purge(module)
+    :code.load_file(module)
   end
 
   @doc """
@@ -456,8 +457,8 @@ defmodule IEx.Helpers do
       msg ->
         IO.inspect(msg)
         flush
-    after 0 ->
-      :ok
+    after
+      0 -> :ok
     end  
   end
 

@@ -21,19 +21,25 @@ end
 
 defimpl Access, for: List do
   @doc """
-  Access the given key in a keyword list.
+  Access the given key in a tuple list.
 
   ## Examples
 
       keywords = [a: 1, b: 2]
       keywords[:a] #=> 1
 
+      star_ratings = [{1.0, "★"}, {1.5, "★☆"}, {2.0, "★★"}]
+      star_ratings[1.5] #=> "★☆"
+
   """
+  def access([], _key), do: nil
 
-  def access(list, atom) when is_atom(atom) do
-    Keyword.get(list, atom)
+  def access(list, key) do
+    case :lists.keyfind(key, 1, list) do
+      { ^key, value } -> value
+      false -> nil
+    end
   end
-
 end
 
 defimpl Access, for: Atom do

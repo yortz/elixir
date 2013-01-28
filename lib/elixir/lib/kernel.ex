@@ -283,13 +283,6 @@ defmodule Kernel do
   defmacro left !== right
 
   @doc """
-  When used inside quoting, marks that the variable should not
-  be hygienezed. Check `Kernel.SpecialForms.quote/1` for more
-  information.
-  """
-  defmacro var!(var)
-
-  @doc """
   Returns an integer or float which is the arithmetical absolute value of `number`.
 
   Allowed in guard tests.
@@ -1506,9 +1499,15 @@ defmodule Kernel do
     opts = Keyword.merge(opts, do_block)
     opts = Keyword.put(opts, :do, quote do
       @moduledoc nil
-      unquote(Keyword.get opts, :do)
+      record_type message: binary
+
+      @doc false
       def exception(args), do: new(args)
+
+      @doc false
       def exception(args, self), do: update(args, self)
+
+      unquote(Keyword.get opts, :do)
     end)
 
     fields = [{ :__exception__, :__exception__ }|fields]
@@ -1569,6 +1568,23 @@ defmodule Kernel do
         quote do
           result = unquote(thing)
           is_tuple(result) and :erlang.element(1, result) == unquote(kind)
+        end
+    end
+  end
+
+  @doc """
+  Check if the given argument is a record.
+  """
+  defmacro is_record(thing) do
+    case __CALLER__.in_guard? do
+      true ->
+        quote do
+          is_tuple(unquote(thing)) and is_atom(:erlang.element(1, unquote(thing)))
+        end
+      false ->
+        quote do
+          result = unquote(thing)
+          is_tuple(result) and is_atom(:erlang.element(1, result))
         end
     end
   end
@@ -1674,29 +1690,32 @@ defmodule Kernel do
 
   ## Protocols + Records
 
-  The real benefit of protocols comes when mixed with records. For instance,
-  imagine we have a module called `RedBlack` that provides an API to create
-  and manipulate Red-Black trees. This module represents such trees via a
-  record named `RedBlack.Tree` and we want this tree to be considered blank
-  in case it has no items. To achieve this, the developer just needs to
-  implement the protocol for `RedBlack.Tree`:
+  The real benefit of protocols comes when mixed with records.
+  For instance, imagine we have a module called `RedBlack` that
+  provides an API to create and manipulate Red-Black trees. This
+  module represents such trees via a record named `RedBlack.Tree`
+  and we want this tree to be considered blank in case it has no
+  items. To achieve this, the developer just needs to implement
+  the protocol for `RedBlack.Tree`:
 
       defimpl Blank, for: RedBlack.Tree do
         def blank?(tree), do: RedBlack.empty?(tree)
       end
 
-  In the example above, we have implemented `blank?` for `RedBlack.Tree`
-  that simply delegates to `RedBlack.empty?` passing the tree as argument.
-  This implementation doesn't need to be defined inside the `RedBlack`
-  tree or inside the record, but anywhere in the code.
+  In the example above, we have implemented `blank?` for
+  `RedBlack.Tree` that simply delegates to `RedBlack.empty?` passing
+  the tree as argument. This implementation doesn't need to be defined
+  inside the `RedBlack` tree or inside the record, but anywhere in
+  the code.
 
-  Finally, since records are simply tuples, one can add a default protocol
-  implementation to any record by defining a default implementation for tuples.
+  Finally, since records are simply tuples, one can add a default
+  protocol implementation to any record by defining a default
+  implementation for tuples.
 
   ## Types
 
-  As in records, defining a protocol automatically defines a type named `t`,
-  which can be used as:
+  As in records, defining a protocol automatically defines a type
+  named `t`, which can be used as:
 
       @spec present?(Blank.t) :: boolean
       def present?(blank) do
@@ -1706,8 +1725,8 @@ defmodule Kernel do
   The `@spec` above expresses that all types allowed to implement the
   given protocol are valid argument types for the given function.
   """
-  defmacro defprotocol(name, [do: block]) do
-    Protocol.defprotocol(name, [do: block])
+  defmacro defprotocol(name, do: block) do
+    Protocol.defprotocol(name, do: block)
   end
 
   @doc """
@@ -1715,7 +1734,9 @@ defmodule Kernel do
   `defprotocol/2` for examples.
   """
   defmacro defimpl(name, opts, do_block // []) do
-    Protocol.defimpl(name, Keyword.merge(opts, do_block))
+    merged = Keyword.merge(opts, do_block)
+    merged = Keyword.put_new(merged, :for, __CALLER__.module)
+    Protocol.defimpl(name, merged)
   end
 
   @doc """
@@ -1777,7 +1798,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Inspect the given arguments according to the Binary.Inspect protocol.
+  Inspect the given arguments according to the `Binary.Inspect` protocol.
 
   ## Options
 
@@ -1787,12 +1808,19 @@ defmodule Kernel do
     always shown as tuples, defaults to false;
 
   * :limit - the limit of items that are shown in tuples, bitstrings and
-    lists. Do not apply to strings;
+    lists. Does not apply to strings;
 
   ## Examples
 
       inspect(:foo)
       #=> ":foo"
+
+  Notice the inspect protocol does not necessarily return a valid Elixir
+  terms representation. In such cases, the inspected result must start
+  with `#`. For example, inspecting a function will return:
+
+      inspect &1 + &2
+      #=> #Function<...>
 
   """
   defmacro inspect(arg, opts // []) do
@@ -2556,7 +2584,7 @@ defmodule Kernel do
 
   """
   defmacro left <> right do
-    concats = extract_concatenations({ :<>, 0, [left, right] })
+    concats = extract_concatenations({ :<>, [], [left, right] })
     quote do: << unquote_splicing(concats) >>
   end
 
@@ -2573,7 +2601,7 @@ defmodule Kernel do
 
   """
   defmacro first .. last do
-    { :{}, 0, [Elixir.Range, first, last] }
+    { :{}, [], [Elixir.Range, first, last] }
   end
 
   @doc """
@@ -2684,14 +2712,14 @@ defmodule Kernel do
   end
 
   @doc """
-  `/>` is called the pipeline operator as it is useful
+  `|>` is called the pipeline operator as it is useful
   to write pipeline style expressions. This operator
   tntroduces the expression on the left as the first
   argument to the expression on the right.
 
   ## Examples
 
-      [1,[2],3] /> List.flatten /> Enum.map(&1 * 2)
+      [1,[2],3] |> List.flatten |> Enum.map(&1 * 2)
       #=> [2,4,6]
 
   The expression above is simply translated to:
@@ -2701,24 +2729,24 @@ defmodule Kernel do
   Please be aware of operator precendence, when using
   this operator. For example, the following expression:
 
-      String.graphemes "Hello" /> Enum.reverse
+      String.graphemes "Hello" |> Enum.reverse
 
   Is translated to:
 
-      String.graphemes("Hello" /> Enum.reverse)
+      String.graphemes("Hello" |> Enum.reverse)
 
   Which will result in an error as Enum.Iterator protocol
   is not defined for binaries. Adding explicit parenthesis
   is recommended:
 
-      String.graphemes("Hello") /> Enum.reverse
+      String.graphemes("Hello") |> Enum.reverse
 
   """
-  defmacro left /> right do
+  defmacro left |> right do
     pipeline_op(left, right)
   end
 
-  defp pipeline_op(left, { :/>, _, [middle, right] }) do
+  defp pipeline_op(left, { :|>, _, [middle, right] }) do
     pipeline_op(pipeline_op(left, middle), right)
   end
 
@@ -2731,18 +2759,26 @@ defmodule Kernel do
   end
 
   defp pipeline_op(left, atom) when is_atom(atom) do
-    { { :., 0, [left, atom] }, 0, [] }
+    { { :., [], [left, atom] }, [], [] }
   end
 
   defp pipeline_op(_, other) do
-    raise ArgumentError, message: "Unsupported expression in pipeline (:/>) operator: #{inspect other}"
+    raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{inspect other}"
+  end
+
+  defmacro left /> right do
+    IO.puts "The /> pipeline operator is deprecated, please use the |> operator instead"
+    Exception.print_stacktrace __ENV__.stacktrace
+    pipeline_op(left, right)
   end
 
   @doc """
   Raises an error.
 
-  If the argument is a binary, it raises RuntimeError with the message.
-  If anything else, becomes a call to raise(argument, []).
+  If the argument is a binary, it raises `RuntimeError`
+  using the given argument as message.
+
+  If anything else, becomes a call to `raise(argument, [])`.
 
   ## Examples
 
@@ -2774,13 +2810,8 @@ defmodule Kernel do
   structure.
 
   Any module defined via `defexception` automatically
-  defines `exception(args)` that returns a new instance
-  of the record and a `exception(args, current)` that
-  updates the current exception.
-
-  Re-raising an exception will retrieve the previous
-  stacktrace so it keps the properties of the original
-  exception.
+  defines both `exception(args)` and `exception(args, current)`
+  that creates a new and updates the given exception.
 
   ## Examples
 
@@ -2788,13 +2819,35 @@ defmodule Kernel do
 
   """
   @spec raise(tuple | atom, list) :: no_return
-  def raise(exception, args) when is_tuple(exception) and tuple_size(exception) > 1 and
-      :erlang.element(2, exception) == :__exception__ do
-    :erlang.raise(:error, exception.exception(args), :erlang.get_stacktrace)
-  end
-
   def raise(exception, args) do
     :erlang.error exception.exception(args)
+  end
+
+  @doc """
+  Re-raises an exception with the given stacktrace.
+
+  ## Examples
+
+      try do
+        raise "Oops"
+      rescue
+        exception ->
+          stacktrace = System.stacktrace
+          if exception.message == "Oops" do
+            raise exception, [], stacktrace
+          end
+      end
+
+  Notice that `System.stacktrace` returns the stacktrace
+  of the last exception. That said, it is common to assign
+  the stacktrace as the first expression inside a `rescue`
+  clause as any other exception potentially raised (and
+  rescued) in between the rescue clause and the raise call
+  may change the `System.stacktrace` value.
+  """
+  @spec raise(tuple | atom, list, list) :: no_return
+  def raise(exception, args, stacktrace) do
+    :erlang.raise :error, exception.exception(args), stacktrace
   end
 
   @doc """
@@ -3127,7 +3180,7 @@ defmodule Kernel do
   end
 
   defp wrap_concatenation(other) do
-    { :::, 0, [other, { :binary, 0, nil }] }
+    { :::, [], [other, { :binary, [], nil }] }
   end
 
   # Builds cond clauses by nesting them recursively.

@@ -39,13 +39,16 @@ extract(Line, File, true, [$}|Rest], Buffer, [$}], Output, Last) ->
   NewOutput = build_interpol(i, Line, File, Buffer, Output),
   extract(Line, File, true, Rest, [], [], NewOutput, Last);
 
-%% Check for available separators "", {}, [] and () inside interpolation
+%% Check for available separators inside interpolation
 
-extract(Line, File, Interpol, [C|Rest], Buffer, [C|Search], Output, Last) when C == $); C == $]; C == $}; C == $"; C == $' ->
+extract(Line, File, Interpol, [C|Rest], Buffer, [C|Search], Output, Last) when C == $); C == $]; C == $}; C == $>; C == $"; C == $' ->
   extract(Line, File, Interpol, Rest, [C|Buffer], Search, Output, Last);
 
 extract(Line, File, Interpol, [C|Rest], Buffer, [_|_] = Search, Output, Last) when C == $"; C == $' ->
   extract(Line, File, Interpol, Rest, [C|Buffer], [C|Search], Output, Last);
+
+extract(Line, File, Interpol, [$<|Rest], Buffer, [_|_] = Search, Output, Last) ->
+  extract(Line, File, Interpol, Rest, [$<|Buffer], [$>|Search], Output, Last);
 
 extract(Line, File, Interpol, [${|Rest], Buffer, [_|_] = Search, Output, Last) ->
   extract(Line, File, Interpol, Rest, [${|Buffer], [$}|Search], Output, Last);
@@ -74,9 +77,6 @@ unescape_token(Other, _Map) -> Other.
 
 % Unescape chars. For instance, "\" "n" (two chars) needs to be converted to "\n" (one char).
 
--define(is_octal(S), S >= $0 andalso S =< $7).
--define(is_hex(S), (S >= $0 andalso S =< $9) orelse (S >= $A andalso S =< $F)).
-
 unescape_chars(String) ->
   unescape_chars(String, fun unescape_map/1).
 
@@ -85,7 +85,7 @@ unescape_chars(String, Map) ->
   Hex    = Map($x) /= false,
   unescape_chars(String, Map, Octals, Hex, <<>>).
 
-unescape_chars(<<$\\,A,B,C,Rest/binary>>, Map, true, Hex, Acc) when ?is_octal(A), ?is_octal(B), ?is_octal(C) ->
+unescape_chars(<<$\\,A,B,C,Rest/binary>>, Map, true, Hex, Acc) when ?is_octal(A), A =< $3, ?is_octal(B), ?is_octal(C) ->
   append_escaped(Rest, Map, [A,B,C], true, Hex, Acc, 8);
 
 unescape_chars(<<$\\,A,B,Rest/binary>>, Map, true, Hex, Acc) when ?is_octal(A), ?is_octal(B) ->
@@ -94,25 +94,28 @@ unescape_chars(<<$\\,A,B,Rest/binary>>, Map, true, Hex, Acc) when ?is_octal(A), 
 unescape_chars(<<$\\,A,Rest/binary>>, Map, true, Hex, Acc) when ?is_octal(A) ->
   append_escaped(Rest, Map, [A], true, Hex, Acc, 8);
 
-unescape_chars(<<$\\,$x,A,B,Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B) ->
+unescape_chars(<<$\\,P,A,B,Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B) ->
   append_escaped(Rest, Map, [A,B], Octal, true, Acc, 16);
 
-unescape_chars(<<$\\,$x,${,A,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A) ->
+unescape_chars(<<$\\,P,A,Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A) ->
   append_escaped(Rest, Map, [A], Octal, true, Acc, 16);
 
-unescape_chars(<<$\\,$x,${,A,B,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B) ->
+unescape_chars(<<$\\,P,${,A,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A) ->
+  append_escaped(Rest, Map, [A], Octal, true, Acc, 16);
+
+unescape_chars(<<$\\,P,${,A,B,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B) ->
   append_escaped(Rest, Map, [A,B], Octal, true, Acc, 16);
 
-unescape_chars(<<$\\,$x,${,A,B,C,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B), ?is_hex(C) ->
+unescape_chars(<<$\\,P,${,A,B,C,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C) ->
   append_escaped(Rest, Map, [A,B,C], Octal, true, Acc, 16);
 
-unescape_chars(<<$\\,$x,${,A,B,C,D,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D) ->
+unescape_chars(<<$\\,P,${,A,B,C,D,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D) ->
   append_escaped(Rest, Map, [A,B,C,D], Octal, true, Acc, 16);
 
-  unescape_chars(<<$\\,$x,${,A,B,C,D,E,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E) ->
+unescape_chars(<<$\\,P,${,A,B,C,D,E,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E) ->
     append_escaped(Rest, Map, [A,B,C,D,E], Octal, true, Acc, 16);
 
-unescape_chars(<<$\\,$x,${,A,B,C,D,E,F,$},Rest/binary>>, Map, Octal, true, Acc) when ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E), ?is_hex(F) ->
+unescape_chars(<<$\\,P,${,A,B,C,D,E,F,$},Rest/binary>>, Map, Octal, true, Acc) when (P == $x orelse P == $X), ?is_hex(A), ?is_hex(B), ?is_hex(C), ?is_hex(D), ?is_hex(E), ?is_hex(F) ->
   append_escaped(Rest, Map, [A,B,C,D,E,F], Octal, true, Acc, 16);
 
 unescape_chars(<<$\\,Escaped,Rest/binary>>, Map, Octals, Hex, Acc) ->
@@ -127,11 +130,12 @@ unescape_chars(<<Char, Rest/binary>>, Map, Octals, Hex, Acc) ->
 unescape_chars(<<>>, _Map, _Octals, _Hex, Acc) -> Acc.
 
 append_escaped(Rest, Map, List, Octal, Hex, Acc, Base) ->
-  Binary = unicode:characters_to_binary([list_to_integer(List, Base)]),
-  unescape_chars(Rest, Map, Octal, Hex, <<Acc/binary, Binary/binary>>).
+  Codepoint = list_to_integer(List, Base),
+  unescape_chars(Rest, Map, Octal, Hex, <<Acc/binary, Codepoint/utf8>>).
 
 % Unescape Helpers
 
+unescape_map($a) -> 7;
 unescape_map($b) -> $\b;
 unescape_map($d) -> $\d;
 unescape_map($e) -> $\e;
@@ -165,12 +169,13 @@ wrap_interpol(_Line, Form) when is_binary(Form) ->
   Form;
 
 wrap_interpol(Line, Form) ->
-  { '::', Line, [{ { '.', Line, ['Elixir.Binary.Chars', to_binary] }, Line, [Form]}, { binary, Line, nil }]}.
+  Meta = [{line,Line}],
+  { '::', Meta, [{ { '.', Meta, ['Elixir.Binary.Chars', to_binary] }, Meta, [Form]}, { binary, Meta, nil }]}.
 
 forms(String, StartLine, File) ->
   case elixir_translator:forms(String, StartLine, File, []) of
     { ok, [] } -> nil;
     { ok, [Forms] } when not is_list(Forms) -> Forms;
-    { ok, Forms } -> { '__block__', StartLine, Forms };
+    { ok, Forms } -> { '__block__', [{line,StartLine}], Forms };
     { error, Tuple } -> throw({ interpolation_error, Tuple })
   end.

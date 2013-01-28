@@ -24,17 +24,18 @@ defprotocol ProtocolTest.Plus do
 end
 
 defrecord ProtocolTest.Foo, a: 0, b: 0
-defrecord ProtocolTest.Bar, a: 0
+
+defrecord ProtocolTest.Bar, a: 0 do
+  defimpl ProtocolTest.WithAll do
+    def blank(record) do
+      Unknown.undefined(record)
+    end
+  end
+end
 
 defimpl ProtocolTest.WithAll, for: ProtocolTest.Foo do
   def blank(record) do
     record.a + record.b == 0
-  end
-end
-
-defimpl ProtocolTest.WithAll, for: ProtocolTest.Bar do
-  def blank(record) do
-    Unknown.undefined(record)
   end
 end
 
@@ -152,7 +153,7 @@ defmodule ProtocolTest do
 
   defp get_callbacks(module, name, arity) do
     callbacks = lc { :callback, info } inlist module.__info__(:attributes), do: hd(info)
-    List.keyfind(callbacks, { name, arity }, 0) /> elem(1)
+    List.keyfind(callbacks, { name, arity }, 0) |> elem(1)
   end
 
   # Assert that the given protocol is going to be dispatched.

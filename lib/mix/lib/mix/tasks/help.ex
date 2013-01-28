@@ -54,11 +54,11 @@ defmodule Mix.Tasks.Help do
   defp where_is_file(module) do
     case :code.where_is_file(atom_to_list(module) ++ '.beam') do
       :non_existing -> "not available"
-      location -> File.expand_path(File.dirname(location))
+      location -> Path.expand(Path.dirname(location))
     end
   end
 
   defp format(expression, args) do
-    :io_lib.format(expression, args) /> iolist_to_binary
+    :io_lib.format(expression, args) |> iolist_to_binary
   end
 end

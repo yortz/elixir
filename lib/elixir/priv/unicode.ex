@@ -6,22 +6,30 @@ defmodule String.Unicode do
 
   def version, do: {6,2,0}
 
-  to_binary = fn(codepoint) ->
-    :unicode.characters_to_binary([binary_to_integer(codepoint, 16)])
+  to_binary = fn
+    "" ->
+      nil
+    codepoints ->
+      codepoints = :binary.split(codepoints, " ", [:global])
+      Enum.reduce codepoints, "", fn(codepoint, acc) ->
+        acc <> << binary_to_integer(codepoint, 16) :: utf8 >>
+      end
   end
 
-  data_path = File.expand_path("../UnicodeData.txt", __FILE__)
+  data_path = Path.expand("../UnicodeData.txt", __FILE__)
 
   { codes, whitespace } = Enum.reduce File.iterator!(data_path), { [], [] }, fn(line, { cacc, wacc }) ->
     [ codepoint, _name, _category,
       _class, bidi, _decomposition,
       _numeric_1, _numeric_2, _numeric_3,
       _bidi_mirror, _unicode_1, _iso,
-      upper, lower, _title ] = :binary.split(line, ";", [:global])
+      upper, lower, title ] = :binary.split(line, ";", [:global])
+
+    title = :binary.part(title, 0, size(title) - 1)
 
     cond do
-      upper != "" or lower != "" ->
-        { [{ to_binary.(codepoint), upper, lower } | cacc], wacc }
+      upper != "" or lower != "" or title != "" ->
+        { [{ to_binary.(codepoint), to_binary.(upper), to_binary.(lower), to_binary.(title) } | cacc], wacc }
       bidi in ["B", "S", "WS"] ->
         { cacc, [to_binary.(codepoint) | wacc] }
       true ->
@@ -29,7 +37,15 @@ defmodule String.Unicode do
     end
   end
 
-  seqs_path = File.expand_path("../NamedSequences.txt", __FILE__)
+  special_path = Path.expand("../SpecialCasing.txt", __FILE__)
+
+  codes = Enum.reduce File.iterator!(special_path), codes, fn(line, acc) ->
+    [ codepoint, lower, title, upper, _comment ] = :binary.split(line, "; ", [:global])
+    key = to_binary.(codepoint)
+    :lists.keystore(key, 1, acc, { key, to_binary.(upper), to_binary.(lower), to_binary.(title) })
+  end
+
+  seqs_path = Path.expand("../NamedSequences.txt", __FILE__)
 
   seqs = Enum.map File.iterator!(seqs_path), fn(line) ->
     [ _name, codepoints ] = :binary.split(line, ";", [:global])
@@ -41,10 +57,9 @@ defmodule String.Unicode do
 
   # Downcase
 
-  lc { codepoint, _upper, lower } inlist codes, lower != "" do
-    lower = to_binary.(lower)
-    args  = quote do: [unquote(codepoint) <> t]
-    code  = quote do: unquote(lower) <> downcase(t)
+  lc { codepoint, _upper, lower, _title } inlist codes, lower && lower != codepoint do
+    args = quote do: [unquote(codepoint) <> t]
+    code = quote do: unquote(lower) <> downcase(t)
     def :downcase, args, [], do: code
   end
 
@@ -58,10 +73,9 @@ defmodule String.Unicode do
 
   # Upcase
 
-  lc { codepoint, upper, _lower } inlist codes, upper != "" do
-    upper = to_binary.(upper)
-    args  = quote do: [unquote(codepoint) <> t]
-    code  = quote do: unquote(upper) <> upcase(t)
+  lc { codepoint, upper, _lower, _title } inlist codes, upper && upper != codepoint do
+    args = quote do: [unquote(codepoint) <> t]
+    code = quote do: unquote(upper) <> upcase(t)
     def :upcase, args, [], do: code
   end
 
@@ -71,6 +85,22 @@ defmodule String.Unicode do
 
   def upcase(<< >>) do
     << >>
+  end
+
+  # Titlecase once
+
+  lc { codepoint, _upper, _lower, title } inlist codes, title && title != codepoint do
+    args = quote do: [unquote(codepoint) <> t]
+    code = quote do: { unquote(title), t }
+    def :titlecase_once, args, [], do: code
+  end
+
+  def titlecase_once(<< h, t :: binary >>) do
+    { <<h>>, t }
+  end
+
+  def titlecase_once(<< >>) do
+    { <<>>, <<>> }
   end
 
   # Strip
@@ -83,11 +113,11 @@ defmodule String.Unicode do
     def :lstrip, args, [], do: exprs
   end
 
-  def lstrip(other), do: other
+  def lstrip(other) when is_binary(other), do: other
 
   def rstrip(""), do: ""
 
-  def rstrip(string) do
+  def rstrip(string) when is_binary(string) do
     do_rstrip(string, "")
   end
 
@@ -136,25 +166,17 @@ defmodule String.Unicode do
 
   # Codepoints
 
-  def next_codepoint(<<194, char, rest :: binary>>)
-    when char in 161..191,
-    do: { <<194, char>>, rest }
+  def next_codepoint(<< cp :: utf8, rest :: binary >>) do
+    { <<cp :: utf8>>, rest }
+  end
 
-  def next_codepoint(<<first, char, rest :: binary>>)
-    when first in 195..223 and char in 128..191,
-    do: { <<first, char>>, rest }
+  def next_codepoint(<< cp, rest :: binary >>) do
+    { <<cp>>, rest }
+  end
 
-  def next_codepoint(<<first, second, char, rest :: binary>>)
-    when first == 224 and second in 160..191 and char in 128..191,
-    do: { <<first, second, char>>, rest }
-
-  def next_codepoint(<<first, second, char, rest :: binary>>)
-    when first in 225..239 and second in 128..191 and char in 128..191,
-    do: { <<first, second, char>>, rest }
-
-  def next_codepoint(<<other, rest :: binary>>), do: { <<other>>, rest }
-
-  def next_codepoint(<<>>), do: :no_codepoint
+  def next_codepoint(<<>>) do
+    :no_codepoint
+  end
 
   def codepoints(binary) when is_binary(binary) do
     do_codepoints(next_codepoint(binary))
