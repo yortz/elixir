@@ -69,7 +69,7 @@ defmodule Kernel do
 
   ## Examples
 
-      process = Process.self
+      process = Kernel.self
       process <- { :ok, "Sending myself a message" }
 
   """
@@ -105,7 +105,7 @@ defmodule Kernel do
   defmacro left -- right
 
   @doc """
-  Boolean or. Arguments needs to necessarily be booleans.
+  Boolean or. Arguments must be booleans.
   Allowed in guard clauses.
 
   ## Examples
@@ -117,7 +117,7 @@ defmodule Kernel do
   defmacro left or right
 
   @doc """
-  Boolean and. Arguments needs to necessarily be booleans.
+  Boolean and. Arguments must be booleans.
   Allowed in guard clauses.
 
   ## Examples
@@ -129,7 +129,7 @@ defmodule Kernel do
   defmacro left and right
 
   @doc """
-  Boolean xor. Arguments needs to necessarily be booleans.
+  Boolean xor. Arguments must be booleans.
   Allowed in guard clauses.
 
   ## Examples
@@ -141,7 +141,7 @@ defmodule Kernel do
   defmacro left xor right
 
   @doc """
-  Boolean not. Argument needs to necessarily be a boolean.
+  Boolean not. Argument must be a boolean.
   Allowed in guard clauses.
 
   ## Examples
@@ -153,7 +153,7 @@ defmodule Kernel do
   defmacro not arg
 
   @doc """
-  It receives any argument and returns true if it is false
+  Receives any argument and returns true if it is false
   or nil. Returns false otherwise. Not allowed in guard
   clauses.
 
@@ -168,8 +168,8 @@ defmodule Kernel do
   defmacro !arg
 
   @doc """
-  Return true if left is less than right.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Returns true if left is less than right.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -180,8 +180,8 @@ defmodule Kernel do
   defmacro left < right
 
   @doc """
-  Return true if left is more than right.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Returns true if left is more than right.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -192,8 +192,8 @@ defmodule Kernel do
   defmacro left > right
 
   @doc """
-  Return true if left is less than or equal to right.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Returns true if left is less than or equal to right.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -204,8 +204,8 @@ defmodule Kernel do
   defmacro left <= right
 
   @doc """
-  Return true if left is more than or equal to right.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Returns true if left is more than or equal to right.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -221,7 +221,7 @@ defmodule Kernel do
   This operator considers 1 and 1.0 to be equal. For strict
   comparison, use `===` instead.
 
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -240,7 +240,7 @@ defmodule Kernel do
   This operator considers 1 and 1.0 to be equal. For strict
   comparison, use `!==` instead.
 
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -254,7 +254,7 @@ defmodule Kernel do
 
   @doc """
   Returns true if the two items are strictly equal.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -269,7 +269,7 @@ defmodule Kernel do
 
   @doc """
   Returns true if the two items are strictly not equal.
-  As Erlang, Elixir can compare any term. Allowed in guard clauses.
+  Like Erlang, Elixir can compare any term. Allowed in guard clauses.
 
   ## Examples
 
@@ -316,7 +316,7 @@ defmodule Kernel do
 
   ## Examples
 
-      apply List, reverse, [[1,2,3]]
+      apply Enum, :reverse, [[1,2,3]]
       #=> [3,2,1]
 
   """
@@ -411,7 +411,7 @@ defmodule Kernel do
   end
 
   @doc """
-  As binary_to_list/1, but returns a list of integers corresponding to the bytes
+  Like binary_to_list/1, but returns a list of integers corresponding to the bytes
   from position `start` to position `stop` in `binary`. Positions in the binary
   are numbered starting from 1.
   """
@@ -466,7 +466,7 @@ defmodule Kernel do
 
   ## Examples
 
-      bit_size(<<433|16,3|3>>) #=> 19
+      bit_size(<<433::16,3::3>>) #=> 19
       bit_size(<<1,2,3>>) #=> 24
 
   """
@@ -494,7 +494,7 @@ defmodule Kernel do
 
   ## Examples
 
-      byte_size(<<433|16,3|3>>) #=> 3
+      byte_size(<<433::16,3::3>>) #=> 3
       byte_size(<<1,2,3>>) #=> 3
 
   """
@@ -810,10 +810,10 @@ defmodule Kernel do
 
       bin1 = <<1,2,3>>
       bin2 = <<4,5>>
-      bin3 = <<6,7|4>>
+      bin3 = <<6,7::4>>
 
       list_to_bitstring([bin1,1,[2,3,bin2],4|bin3])
-      #=> <<1,2,3,1,2,3,4,5,4,6,7|4>>
+      #=> <<1,2,3,1,2,3,4,5,4,6,7::size(4)>>
 
   """
   @spec list_to_bitstring(maybe_improper_list(char | binary | iolist | bitstring, binary | bitstring | [])) :: bitstring
@@ -877,7 +877,7 @@ defmodule Kernel do
   It should not be used in application programs.
 
   ## Examples
-      list_to_pid('<0.41>') #=> <0.4.1>
+      list_to_pid('<0.4.1>') #=> #PID<0.4.1>
   """
   @spec list_to_pid(char_list) :: pid
   def list_to_pid(char_list) do
@@ -905,7 +905,7 @@ defmodule Kernel do
   ## Examples
 
       make_ref()
-      #=> #Ref<0.0.0.135>
+      #=> #Reference<0.0.0.135>
 
   """
   @spec make_ref() :: reference
@@ -955,7 +955,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Returns the node where the given argmuent is located.
+  Returns the node where the given argument is located.
   The argument can be a pid, a reference, or a port.
   If the local node is not alive, nonode@nohost is returned.
 
@@ -1008,7 +1008,7 @@ defmodule Kernel do
 
   @doc """
   Returns the size of the given argument, which must be a tuple
-  or a binary. If possible, please use tuple_size or binary_size.
+  or a binary. If possible, please use `tuple_size` or `binary_size`.
   """
   @spec size(tuple|binary) :: non_neg_integer
   def size(arg) do
@@ -1023,10 +1023,10 @@ defmodule Kernel do
 
   ## Examples
 
-      current = Process.self
-      child   = spawn(fn -> current <- { Process.self, 1 + 2 } end)
+      current = Kernel.self
+      child   = spawn(fn -> current <- { Kernel.self, 1 + 2 } end)
 
-      receive
+      receive do
         { ^child, 3 } -> IO.puts "Received 3 back"
       end
 
@@ -1061,12 +1061,11 @@ defmodule Kernel do
 
   ## Examples
 
-      current = Process.self
-      child   = spawn_link(fn -> current <- { Process.self, 1 + 2 } end)
+      current = Kernel.self
+      child   = spawn_link(fn -> current <- { Kernel.self, 1 + 2 } end)
 
-      receive
-        { ^child, 3 } ->
-          IO.puts "Received 3 back"
+      receive do
+        { ^child, 3 } -> IO.puts "Received 3 back"
       end
 
   """
@@ -1093,7 +1092,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Returns a binary data which is the result of encoding the given term
+  Returns a binary which is the result of encoding the given term
   according to the Erlang external term format.
 
   This can be used for a variety of purposes, for example, writing a term
@@ -1108,8 +1107,8 @@ defmodule Kernel do
   @doc """
   The same as `term_to_binary/1` but also supports two options:
 
-  * compressed: the level of compression to be used from 0 to 9;
-  * minor_version: used to control the details of encoding. Can be 0 or 1,
+  * `compressed`: the level of compression to be used from 0 to 9;
+  * `minor_version`: used to control the details of encoding. Can be 0 or 1,
     please read http://www.erlang.org/doc/man/erlang.html#term_to_binary-2
     for more details
 
@@ -1136,7 +1135,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Returns an integer by the truncating the given number.
+  Returns an integer by truncating the given number.
   Allowed in guard clauses.
 
   ## Examples
@@ -1260,7 +1259,7 @@ defmodule Kernel do
       defmacro defkv(keywords) do
         Enum.map keywords, fn {k,v} ->
           quote do
-            def unquote(k).() do
+            def unquote(k)() do
               unquote(v)
             end
           end
@@ -1271,9 +1270,6 @@ defmodule Kernel do
 
       defkv one: 1, two: 2
 
-  Notice in the example above, we define the function as `def unquote(k).()`
-  because each entry `k` is a an atom and invoking `def unquote(k)()`
-  would be invalid Elixir syntax.
   """
   defmacro def(name, do: contents)
 
@@ -1521,7 +1517,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Check if the given structure is an exception.
+  Checks if the given structure is an exception.
 
   ## Examples
 
@@ -1546,7 +1542,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Check if the given structure is a record. It is basically
+  Checks if the given structure is a record. It is basically
   a convenient macro that checks the structure is a tuple and
   the first element matches the given kind.
 
@@ -1573,7 +1569,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Check if the given argument is a record.
+  Checks if the given argument is a record.
   """
   defmacro is_record(thing) do
     case __CALLER__.in_guard? do
@@ -1590,7 +1586,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Check if the given argument is a regex.
+  Checks if the given argument is a regex.
   """
   defmacro is_regex(thing) do
     quote do
@@ -1599,7 +1595,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Check if the given argument is a range.
+  Checks if the given argument is a range.
   """
   defmacro is_range(thing) do
     quote do
@@ -1678,7 +1674,7 @@ defmodule Kernel do
       end
 
   If the protocol is invoked with a data type that is not an Atom,
-  nor Tuple, nor List, nor BitString, Elixir will now dispatch to
+  a Tuple, a List, or a BitString, Elixir will now dispatch to
   Any. That said, the default behavior could be implemented as:
 
       defimpl Blank, for: Any do
@@ -1705,8 +1701,8 @@ defmodule Kernel do
   In the example above, we have implemented `blank?` for
   `RedBlack.Tree` that simply delegates to `RedBlack.empty?` passing
   the tree as argument. This implementation doesn't need to be defined
-  inside the `RedBlack` tree or inside the record, but anywhere in
-  the code.
+  inside the `RedBlack` tree or inside the record; it can be defined 
+  anywhere in the code.
 
   Finally, since records are simply tuples, one can add a default
   protocol implementation to any record by defining a default
@@ -1756,8 +1752,8 @@ defmodule Kernel do
 
   ## Examples
 
-  For example, in other to write tests using the ExUnit framework,
-  a developers should use the `ExUnit.Case` module:
+  For example, in order to write tests using the ExUnit framework,
+  a developer should use the `ExUnit.Case` module:
 
       defmodule AssertionTest do
         use ExUnit.Case, async: true
@@ -1815,9 +1811,9 @@ defmodule Kernel do
       inspect(:foo)
       #=> ":foo"
 
-  Notice the inspect protocol does not necessarily return a valid Elixir
-  terms representation. In such cases, the inspected result must start
-  with `#`. For example, inspecting a function will return:
+  Note that the inspect protocol does not necessarily return a valid
+  representation of an Elixir term. In such cases, the inspected result must
+  start with `#`. For example, inspecting a function will return:
 
       inspect &1 + &2
       #=> #Function<...>
@@ -2006,7 +2002,7 @@ defmodule Kernel do
         x * 2
       end
 
-  Not only the example is shorter, it solves ambiguity issues. Since
+  Not only is the example shorter, it solves ambiguity issues. Since
   `do/end` always matches the furthest call, if we used the `function`
   macro as below:
 
@@ -2037,7 +2033,7 @@ defmodule Kernel do
   The `function` macro can also be used to retrieve local or remote
   functions:
 
-      f = function(:is_atom, 2)
+      f = function(:is_atom, 1)
       f.(:foo) #=> true
 
       f = function(List, :flatten, 1)
@@ -2390,11 +2386,10 @@ defmodule Kernel do
   end
 
   @doc """
-  Allows you to destructure two lists, assigning each
-  term in the right to the left. Differently from pattern
-  matching via `=`, if the sizes of the left and right
-  lists don't match,, structuring simply stops instead
-  of raising an error.
+  Allows you to destructure two lists, assigning each term in the right to the
+  matching term in the left. Unlike pattern matching via `=`, if the sizes of
+  the left and right lists don't match, destructuring simply stops instead of
+  raising an error.
 
   ## Examples
 
@@ -2404,7 +2399,7 @@ defmodule Kernel do
       z #=> 3
 
   Notice in the example above, even though the right
-  size has more entries than the left, structuring works
+  size has more entries than the left, destructuring works
   fine. If the right size is smaller, the remaining items
   are simply assigned to nil:
 
@@ -2766,12 +2761,6 @@ defmodule Kernel do
     raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{inspect other}"
   end
 
-  defmacro left /> right do
-    IO.puts "The /> pipeline operator is deprecated, please use the |> operator instead"
-    Exception.print_stacktrace __ENV__.stacktrace
-    pipeline_op(left, right)
-  end
-
   @doc """
   Raises an error.
 
@@ -3057,7 +3046,7 @@ defmodule Kernel do
       fun = Keyword.get(opts, :as, name)
 
       quote do
-        def unquote(name).(unquote_splicing(args)) do
+        def unquote(name)(unquote_splicing(args)) do
           apply unquote(target), unquote(fun), [unquote_splicing(actual_args)]
         end
       end
@@ -3120,12 +3109,12 @@ defmodule Kernel do
   # We can skip the runtime conversion if we are
   # creating a binary made solely of series of chars.
   defmacro __c__({ :<<>>, _line, [string] }, []) when is_binary(string) do
-    binary_to_list(Macro.unescape_binary(string))
+    :unicode.characters_to_list(Macro.unescape_binary(string))
   end
 
   defmacro __c__({ :<<>>, line, pieces }, []) do
     binary = { :<<>>, line, Macro.unescape_tokens(pieces) }
-    quote do: binary_to_list(unquote(binary))
+    quote do: :unicode.characters_to_list(unquote(binary))
   end
 
   @doc """

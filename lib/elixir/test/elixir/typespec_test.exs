@@ -7,13 +7,39 @@ defmodule Typespec.TypeTest do
   # definition and not on the hassles of handling test
   # module
   defmacrop test_module([{:do, block}]) do
-    quote expand_aliases: false do
+    quote do
       { :module, T, _binary, result } = defmodule T do
         unquote(block)
       end
       :code.delete(T)
       :code.purge(T)
       result
+    end
+  end
+
+  test "invalid type specification" do
+    assert_raise ArgumentError, "invalid type specification mytype = 1", fn ->
+      test_module do
+        @type mytype = 1
+      end
+    end
+    assert_raise ArgumentError, "invalid type specification mytype = 1", fn ->
+      test_module do
+        @typep mytype = 1
+      end
+    end
+    assert_raise ArgumentError, "invalid type specification mytype = 1", fn ->
+      test_module do
+        @opaque mytype = 1
+      end
+    end
+  end
+
+  test "invalid function specification" do
+    assert_raise ArgumentError, "invalid function type specification myfun = 1", fn ->
+      test_module do
+        @spec myfun = 1
+      end
     end
   end
 
@@ -292,6 +318,18 @@ defmodule Typespec.TypeTest do
     ] = Enum.sort(specs)
   end
 
+  test "block handling" do
+    spec = test_module do
+      spec = @spec foo((() -> [ integer ])) :: integer
+      def foo(_), do: 1
+      spec
+    end
+    assert {{:foo,1},
+            {:type,_,:fun,[{:type,_,:product,[
+                     {:type,_,:fun,[{:type,_,:product,[]},{:type,_,:list,[{:type,_,:integer,[]}]}]}]},
+                     {:type,_,:integer,[]}]}} = spec
+  end
+
   # Conversion to AST
 
   test "type_to_ast" do
@@ -309,6 +347,7 @@ defmodule Typespec.TypeTest do
       (quote do: @type tuple_type() :: {integer()}),
       (quote do: @type ftype() :: (() -> any()) | (() -> integer()) | ((integer() -> integer()))),
       (quote do: @type cl() :: char_list()),
+      (quote do: @type ab() :: as_boolean(term())),
       (quote do: @type vaf() :: (... -> any())),
       (quote do: @type rng() :: 1 .. 10),
     ]
@@ -405,14 +444,14 @@ defmodule Typespec.TypeTest do
       @typep b :: any
       @spec t(b) :: b
       def t(b), do: b
-      @opaque c :: any
+      @opaque c :: atom
     end
 
     :code.delete(T)
     :code.purge(T)
 
     assert [
-      {:opaque, {:c,{:type,_,:any,[]},[]}},
+      {:opaque, {:c,{:type,_,:atom,[]},[]}},
       {:type, {:a,{:type,_,:any,[]},[]}},
       {:typep, {:b,{:type,_,:any,[]},[]}},
     ] = Kernel.Typespec.beam_types(binary)

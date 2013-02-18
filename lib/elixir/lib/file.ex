@@ -62,7 +62,7 @@ defmodule File do
 
   In order to write and read files, one must use the
   functions in the IO module. By default, a file is
-  opened on binary mode which requires the functions
+  opened in binary mode which requires the functions
   `IO.binread`, `IO.binwrite` and `IO.binreadline` to
   interact with the file. A developer may pass `:utf8`
   as an option when opening the file and then all other
@@ -104,90 +104,6 @@ defmodule File do
   alias :file,     as: F
   alias :filename, as: FN
   alias :filelib,  as: FL
-
-  @doc false
-  def expand_path(path) do
-    IO.puts "File.expand_path is deprecated, please use Path.expand instead"
-    Exception.print_stacktrace
-    Path.expand(path)
-  end
-
-  @doc false
-  def expand_path(path, relative_to) do
-    IO.puts "File.expand_path is deprecated, please use Path.expand instead"
-    Exception.print_stacktrace
-    Path.expand(path, relative_to)
-  end
-
-  @doc false
-  def basename(path) do
-    IO.puts "File.basename is deprecated, please use Path.basename instead"
-    Exception.print_stacktrace
-    FN.basename(path)
-  end
-
-  @doc false
-  def basename(path, extension) do
-    IO.puts "File.basename is deprecated, please use Path.basename instead"
-    Exception.print_stacktrace
-    FN.basename(path, extension)
-  end
-
-  @doc false
-  def dirname(path) do
-    IO.puts "File.dirname is deprecated, please use Path.dirname instead"
-    Exception.print_stacktrace
-    FN.dirname(path)
-  end
-
-  @doc false
-  def extname(path) do
-    IO.puts "File.extname is deprecated, please use Path.extname instead"
-    Exception.print_stacktrace
-    FN.extension(path)
-  end
-
-  @doc false
-  def rootname(path) do
-    IO.puts "File.rootname is deprecated, please use Path.rootname instead"
-    Exception.print_stacktrace
-    FN.rootname(path)
-  end
-
-  @doc false
-  def rootname(path, extension) do
-    IO.puts "File.rootname is deprecated, please use Path.rootname instead"
-    Exception.print_stacktrace
-    FN.rootname(path, extension)
-  end
-
-  @doc false
-  def join(paths) do
-    IO.puts "File.join is deprecated, please use Path.join instead"
-    Exception.print_stacktrace
-    FN.join(paths)
-  end
-
-  @doc false
-  def join(left, right) do
-    IO.puts "File.join is deprecated, please use Path.join instead"
-    Exception.print_stacktrace
-    FN.join(left, right)
-  end
-
-  @doc false
-  def split(path) do
-    IO.puts "File.split is deprecated, please use Path.split instead"
-    Exception.print_stacktrace
-    FN.split(path)
-  end
-
-  @doc false
-  def wildcard(glob) do
-    IO.puts "File.wildcard is deprecated, please use Path.wildcard instead"
-    Exception.print_stacktrace
-    Path.wildcard(glob)
-  end
 
   @doc """
   Returns true if the path is a regular file.
@@ -253,7 +169,7 @@ defmodule File do
     case mkdir(path) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "make directory", path: to_binary(path)
+        raise File.Error, reason: reason, action: "make directory", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -278,7 +194,7 @@ defmodule File do
     case mkdir_p(path) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "make directory (with -p)", path: to_binary(path)
+        raise File.Error, reason: reason, action: "make directory (with -p)", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -311,7 +227,7 @@ defmodule File do
       { :ok, binary } ->
         binary
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "read file", path: to_binary(path)
+        raise File.Error, reason: reason, action: "read file", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -346,7 +262,7 @@ defmodule File do
     case stat(path, opts) do
       {:ok, info}      -> info
       {:error, reason} ->
-        raise File.Error, reason: reason, action: "read file stats", path: to_binary(path)
+        raise File.Error, reason: reason, action: "read file stats", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -366,7 +282,7 @@ defmodule File do
     case write_stat(path, stat, opts) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "write file stats", path: to_binary(path)
+        raise File.Error, reason: reason, action: "write file stats", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -389,7 +305,7 @@ defmodule File do
     case touch(path, time) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "touch", path: to_binary(path)
+        raise File.Error, reason: reason, action: "touch", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -421,7 +337,7 @@ defmodule File do
       { :ok, bytes_count } -> bytes_count
       { :error, reason } ->
         raise File.CopyError, reason: reason, action: "copy",
-          source: to_binary(source), destination: to_binary(destination)
+          source: :unicode.characters_to_binary(source), destination: :unicode.characters_to_binary(destination)
     end
   end
 
@@ -472,7 +388,7 @@ defmodule File do
       :ok -> :ok
       { :error, reason } ->
         raise File.CopyError, reason: reason, action: "copy recursively",
-          source: to_binary(source), destination: to_binary(destination)
+          source: :unicode.characters_to_binary(source), destination: :unicode.characters_to_binary(destination)
     end
   end
 
@@ -546,7 +462,7 @@ defmodule File do
       { :ok, files } -> files
       { :error, reason } ->
         raise File.CopyError, reason: reason, action: "copy recursively",
-          source: to_binary(source), destination: to_binary(destination)
+          source: :unicode.characters_to_binary(source), destination: :unicode.characters_to_binary(destination)
     end
   end
 
@@ -651,7 +567,7 @@ defmodule File do
     case F.write_file(path, content, modes) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "write to file", path: to_binary(path)
+        raise File.Error, reason: reason, action: "write to file", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -688,7 +604,7 @@ defmodule File do
     case rm(path) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "remove file", path: to_binary(path)
+        raise File.Error, reason: reason, action: "remove file", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -716,7 +632,7 @@ defmodule File do
     case rmdir(path) do
       :ok -> :ok
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "remove directory", path: to_binary(path)
+        raise File.Error, reason: reason, action: "remove directory", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -789,14 +705,20 @@ defmodule File do
     case rm_rf(path) do
       { :ok, files } -> files
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "remove files and directories recursively from", path: to_binary(path)
+        raise File.Error, reason: reason, action: "remove files and directories recursively from", path: :unicode.characters_to_binary(path)
     end
   end
 
   @doc """
   Opens the given `path` according to the given list of modes.
 
-  By default, the file is opened in read mode, as a binary with utf8 encoding.
+  In order to write and read files, one must use the functions
+  in the IO module. By default, a file is opened in binary mode
+  which requires the functions `IO.binread`, `IO.binwrite` and
+  `IO.binreadline` to interact with the file. A developer may pass
+  `:utf8` as an option when opening the file and then all other
+  functions from IO are available, since they work directly with
+  Unicode data.
 
   The allowed modes:
 
@@ -898,7 +820,7 @@ defmodule File do
     case open(path, modes) do
       { :ok, device }    -> device
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "open", path: to_binary(path)
+        raise File.Error, reason: reason, action: "open", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -910,7 +832,7 @@ defmodule File do
     case open(path, modes, function) do
       { :ok, device }    -> device
       { :error, reason } ->
-        raise File.Error, reason: reason, action: "open", path: to_binary(path)
+        raise File.Error, reason: reason, action: "open", path: :unicode.characters_to_binary(path)
     end
   end
 
@@ -953,7 +875,7 @@ defmodule File do
     case F.set_cwd(path) do
       :ok -> :ok
       { :error, reason } ->
-          raise File.Error, reason: reason, action: "set current working directory to", path: to_binary(path)
+          raise File.Error, reason: reason, action: "set current working directory to", path: :unicode.characters_to_binary(path)
     end
   end
 

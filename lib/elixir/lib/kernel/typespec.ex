@@ -75,7 +75,7 @@ defmodule Kernel.Typespec do
   Elixir discourages the use of type `string()` as it might be confused
   with binaries which are referred to as "strings" in Elixir (as opposed to
   character lists). In order to use the type that is called `string()` in Erlang,
-  one has to use the `char_list()` type which is a synonym to `string()`. If yu
+  one has to use the `char_list()` type which is a synonym for `string()`. If you
   use `string()`, you'll get a warning from the compiler.
 
   If you want to refer to the "string" type (the one operated by functions in the
@@ -325,7 +325,7 @@ defmodule Kernel.Typespec do
 
   defp abstract_code(module) do
     case :beam_lib.chunks(abstract_code_beam(module), [:abstract_code]) do
-      {:ok, { _, [{ :abstract_code, { raw_abstract_v1, abstract_code } }] } } ->
+      {:ok, { _, [{ :abstract_code, { _raw_abstract_v1, abstract_code } }] } } ->
         { :ok, abstract_code }
       _ ->
         []
@@ -350,8 +350,15 @@ defmodule Kernel.Typespec do
     do_deftype(kind, type, definition, caller)
   end
 
-  def deftype(kind, type, caller) do
+  def deftype(kind, {name, _meta, args} = type, caller) when 
+                                                        is_atom(name) and
+                                                        not is_list(args) do
     do_deftype(kind, type, { :term, [line: caller.line], nil }, caller)
+  end
+
+  def deftype(_kind, other, _caller) do
+    type_spec = Macro.to_binary(other)
+    raise ArgumentError, message: "invalid type specification #{type_spec}"
   end
 
   defp do_deftype(kind, { name, _, args }, definition, caller) do
@@ -388,6 +395,11 @@ defmodule Kernel.Typespec do
     code = { { name, Kernel.length(args) }, spec }
     Module.compile_typespec(caller.module, type, code)
     code
+  end
+
+  def defspec(_type, other, _caller) do
+    spec = Macro.to_binary(other)
+    raise ArgumentError, message: "invalid function type specification #{spec}"
   end
 
   defp guard_to_constraints({ :is_subtype, meta, [{ name, _, _ }, type] }, caller) do
@@ -467,6 +479,11 @@ defmodule Kernel.Typespec do
     typespec_to_ast({:type, line, :char_list, []})
   end
 
+  defp typespec_to_ast({ :remote_type, line, [{:atom, _, :elixir}, {:atom, _, :as_boolean}, [arg]] }) do
+    typespec_to_ast({:type, line, :as_boolean, [arg]})
+  end
+
+
   defp typespec_to_ast({ :remote_type, line, [mod, name, args] }) do
     args = lc arg inlist args, do: typespec_to_ast(arg)
     dot  = { :., [line: line], [typespec_to_ast(mod), typespec_to_ast(name)] }
@@ -542,6 +559,7 @@ defmodule Kernel.Typespec do
   end
 
   # Handle funs
+
   defp typespec({:->, meta, [{[{:fun, _, arguments}], return}]}, vars, caller) when is_list(arguments) do
     typespec({:->, meta, [{arguments, return}]}, vars, caller)
   end
@@ -566,7 +584,7 @@ defmodule Kernel.Typespec do
   # Handle access macro
   defp typespec({{:., meta, [Kernel, :access]}, meta1, [target, args]}, vars, caller) do
     access = {{:., meta, [Kernel, :access]}, meta1,
-              [target, args ++ [_: (quote hygiene: false, do: any)]]}
+              [target, args ++ [_: { :any, [], [] }]]}
     typespec(Macro.expand(access, caller), vars, caller)
   end
 
@@ -591,6 +609,12 @@ defmodule Kernel.Typespec do
     { :type, line(meta), :tuple, args }
   end
 
+  # Handle blocks
+
+  defp typespec({:__block__, _meta, [arg]}, vars, caller) do
+    typespec(arg, vars, caller)
+  end
+
   # Handle variables or local calls
   defp typespec({name, meta, atom}, vars, caller) when is_atom(atom) do
     if List.member?(vars, name) do
@@ -610,6 +634,10 @@ defmodule Kernel.Typespec do
 
   defp typespec({:char_list, _meta, arguments}, vars, caller) do
     typespec((quote do: :elixir.char_list(unquote_splicing(arguments))), vars, caller)
+  end
+
+  defp typespec({:as_boolean, _meta, arguments}, vars, caller) do
+    typespec((quote do: :elixir.as_boolean(unquote_splicing(arguments))), vars, caller)
   end
 
   defp typespec({name, meta, arguments}, vars, caller) do

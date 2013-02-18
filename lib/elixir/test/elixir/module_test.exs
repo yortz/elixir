@@ -16,12 +16,12 @@ defmodule ModuleTest.ToBeUsed do
     quote do: (def before_compile, do: true)
   end
 
-  defmacro __after_compile__(ModuleTest.ToUse, bin) when is_binary(bin) do
+  defmacro __after_compile__(Macro.Env[module: ModuleTest.ToUse], bin) when is_binary(bin) do
     # IO.puts "HELLO"
   end
 
-  defmacro callback(target) do
-    value = Module.get_attribute(target, :has_callback)
+  defmacro callback(env) do
+    value = Module.get_attribute(env.module, :has_callback)
     quote do
       name  = :original_value
       args  = [1]
@@ -57,7 +57,7 @@ defmodule ModuleTest do
   Module.eval_quoted __MODULE__, contents, [], file: "sample.ex", line: 13
 
   defmacrop in_module(block) do
-    quote expand_aliases: false do
+    quote do
       defmodule Temp, unquote(block)
       :code.purge(Temp)
       :code.delete(Temp)

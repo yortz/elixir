@@ -47,22 +47,22 @@ Enum.each [:invalidapp, :invalidvsn, :noappfile, :ok], fn(dep) ->
 end
 
 defmodule MixTest.Case do
-  defmacro __using__(opts) do
+  use ExUnit.CaseTemplate
+
+  using do
     quote do
-      use ExUnit.Case, unquote(opts)
       import MixTest.Case
-
-      def teardown(_) do
-        Mix.env(:dev)
-        Mix.Task.clear
-        Mix.Shell.Process.flush
-        Mix.Deps.Converger.clear_cache
-        System.put_env("MIX_HOME", tmp_path(".mix"))
-        del_tmp_paths
-      end
-
-      defoverridable [teardown: 1]
     end
+  end
+
+  teardown do
+    Mix.env(:dev)
+    Mix.Task.clear
+    Mix.Shell.Process.flush
+    Mix.Deps.Converger.clear_cache
+    System.put_env("MIX_HOME", tmp_path(".mix"))
+    del_tmp_paths
+    :ok
   end
 
   def mix(args) do

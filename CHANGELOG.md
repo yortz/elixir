@@ -1,3 +1,30 @@
+# v0.8.1 (2013-02-17)
+
+* enhancements
+  * [ExUnit] Tests can now receive metadata set on setup/teardown callbacks
+  * [ExUnit] Add support to ExUnit.CaseTemplate to share callbacks in between test cases
+  * [IO] Add `IO.ANSI` to make it easy to write ANSI escape codes
+  * [Kernel] Better support for Unicode lists
+  * [Kernel] Reduce variables footprint in `case`/`receive` clauses
+  * [Kernel] Disable native compilation when on_load attributes is present to work around an Erlang bug
+  * [Macro] `Macro.expand` also considers macros from the current `__ENV__` module
+  * [Mix] Improve support for compilation of `.erl` files
+  * [Mix] Add support for compilation of `.yrl` and `.xrl` files
+  * [OptionParser] Switches are now overridden by default but can be kept in order if chosen
+  * [Typespec] Better error reporting for invalid typespecs
+
+* bug fix
+  * [Mix] Allow Mix projects to be generated with just one letter
+
+* backwards incompatible changes
+  * [Kernel] `before_compile` and `after_compile` callbacks now receive the environment as first argument instead of the module
+
+* deprecations
+  * [ExUnit] Explicitly defined test/setup/teardown functions are deprecated
+  * [Kernel] Tidy up and clean `quote` API
+  * [Kernel] Old `:local.(args)` syntax is deprecated
+  * [Process] `Process.self` is deprecated in favor `Kernel.self`
+
 # v0.8.0 (2013-01-28)
 
 * enhancements

@@ -52,15 +52,20 @@ do_quote({ unquote, _Meta, [Expr] }, #elixir_quote{unquote=true}, S) ->
   elixir_translator:translate_each(Expr, S);
 
 do_quote({ 'alias!', _Meta, [Expr] }, Q, S) ->
-  do_quote(Expr, Q#elixir_quote{expand_aliases=false}, S);
+  do_quote(Expr, Q#elixir_quote{aliases_hygiene=false}, S);
 
-do_quote({ '__aliases__', Meta, [H|_] = Aliases }, #elixir_quote{expand_aliases=true} = Q, S) when is_atom(H) and H /= 'Elixir' ->
+do_quote({ '__aliases__', Meta, [H|T] } = Alias, #elixir_quote{aliases_hygiene=true} = Q, S) when is_atom(H) and (H /= 'Elixir') ->
+  Annotation = case elixir_aliases:expand(Alias, S#elixir_scope.aliases, S#elixir_scope.macro_aliases) of
+    Atom when is_atom(Atom) -> Atom;
+    Aliases when is_list(Aliases) -> false
+  end,
+
   Line = ?line(Meta),
-  { TAliases, SA } = do_quote(['Elixir'|Aliases], Q, S),
+  { TAliases, SA } = do_quote([H|T], Q, S),
 
   { { tuple, Line, [
     { atom, Line, '__aliases__' },
-    meta(Meta, Q),
+    meta([{alias,Annotation}|Meta], Q),
     TAliases
   ] }, SA };
 
@@ -79,11 +84,11 @@ do_quote({ Left, Meta, nil }, Q, S) when is_atom(Left) ->
   Tuple = { tuple, Line, [
     { atom, Line, Left },
     meta(Meta, Q),
-    { atom, Line, Q#elixir_quote.var_context }
+    { atom, Line, Q#elixir_quote.vars_hygiene }
   ] },
   { Tuple, S };
 
-do_quote({ Name, Meta, ArgsOrAtom } = Tuple, #elixir_quote{expand_imports=true} = Q, S) when is_atom(Name) ->
+do_quote({ Name, Meta, ArgsOrAtom } = Tuple, #elixir_quote{imports_hygiene=true} = Q, S) when is_atom(Name) ->
   Arity = case is_atom(ArgsOrAtom) of
     true  -> 0;
     false -> length(ArgsOrAtom)

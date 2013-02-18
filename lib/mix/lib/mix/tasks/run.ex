@@ -25,7 +25,8 @@ defmodule Mix.Tasks.Run do
   """
   def run(args) do
     { opts, head } = OptionParser.parse_head(args,
-      aliases: [r: :require, pr: :parallel_require])
+      aliases: [r: :require, pr: :parallel_require],
+      switches: [parallel_require: :keep, require: :keep])
 
     Enum.each opts, fn({ key, value }) ->
       case key do
@@ -39,8 +40,7 @@ defmodule Mix.Tasks.Run do
     end
 
     Mix.Task.run Mix.project[:prepare_task], args
-    Code.eval Enum.join(head, " ")
-
+    if head != [], do: Code.eval Enum.join(head, " ")
     if opts[:no_halt], do: :timer.sleep(:infinity)
   end
 

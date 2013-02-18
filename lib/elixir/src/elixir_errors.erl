@@ -77,10 +77,10 @@ form_error(Meta, File, Module, Desc) ->
 
 %% Shows a deprecation message
 
-deprecation(Line, File, Message) -> deprecation(Line, File, Message, []).
+deprecation(Meta, File, Message) -> deprecation(Meta, File, Message, []).
 
-deprecation(Line, File, Message, Args) ->
-  io:format(file_format(Line, File, io_lib:format(Message, Args))).
+deprecation(Meta, File, Message, Args) ->
+  io:format(file_format(?line(Meta), File, io_lib:format(Message, Args))).
 
 %% Handle warnings and errors (called during module compilation)
 
@@ -108,6 +108,9 @@ handle_file_warning(_, File, {Line,erl_lint,{undefined_behaviour,Module}}) ->
       Message = io_lib:format("behaviour ~s undefined", [inspect(Module)]),
       io:format(file_format(Line, File, Message))
   end;
+
+handle_file_warning(_, _File, {Line,erl_lint,{unused_var,_Var}}) when Line =< 0 ->
+  [];
 
 handle_file_warning(_, File, {Line,erl_lint,{unused_var,Var}}) ->
   Message = format_error(erl_lint, { unused_var, format_var(Var) }),
@@ -161,10 +164,16 @@ assert_function_scope(_Meta, _Kind, #elixir_scope{function=Function}) -> Functio
 raise(Meta, File, Kind, Message) when is_list(Meta) ->
   raise(?line(Meta), File, Kind, Message);
 
+raise(none, File, Kind, Message) ->
+  raise(0, File, Kind, Message);
+
 raise(Line, File, Kind, Message) when is_integer(Line) ->
   Stacktrace = erlang:get_stacktrace(),
   Exception = Kind:new([{description, Message}, {file, iolist_to_binary(File)}, {line, Line}]),
   erlang:raise(error, Exception, Stacktrace).
+
+file_format(0, File, Message) ->
+  io_lib:format("~ts: ~ts~n", [File, Message]);
 
 file_format(Line, File, Message) ->
   io_lib:format("~ts:~w: ~ts~n", [File, Line, Message]).

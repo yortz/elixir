@@ -82,6 +82,14 @@ defmodule MacroTest do
     assert Macro.expand(quote(do: :foo), __ENV__) == :foo
   end
 
+  defmacro local_macro do
+    :local_macro
+  end
+
+  test :expand_local_macro do
+    assert Macro.expand(quote(do: local_macro), __ENV__) == :local_macro
+  end
+
   test :expand_with_imported_macro do
     assert Macro.expand(quote(do: 1 || false), __ENV__) == (quote var_context: Kernel do
       case 1 do
@@ -288,7 +296,7 @@ defmodule MacroTest do
 
   test :env_stacktrace do
     env = __ENV__.file("foo").line(12)
-    assert env.stacktrace == [{ __MODULE__, :test_env_stacktrace, 0, [file: "foo", line: 12] }]
+    assert env.stacktrace == [{ __MODULE__, :test_env_stacktrace, 1, [file: "foo", line: 12] }]
     env = env.function(nil)
     assert env.stacktrace == [{ __MODULE__, :__MODULE__, 0, [file: "foo", line: 12] }]
     env = env.module(nil)

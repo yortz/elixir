@@ -54,6 +54,7 @@ defmodule HashDict do
     contract_on: @contract_load,
     root: @node_template
 
+
   import Bitwise
 
   # Let's inline common instructions
@@ -62,6 +63,7 @@ defmodule HashDict do
   @doc """
   Creates a new empty dict.
   """
+  @spec new :: Dict.t
   def new do
     ordered()
   end
@@ -75,6 +77,7 @@ defmodule HashDict do
       #=> HashDict[a: 1, b: 2]
 
   """
+  @spec new(list({key :: term, value :: term})) :: Dict.t
   def new(pairs) do
     Enum.reduce pairs, ordered(), fn { k, v }, dict ->
       put(dict, k, v)
@@ -91,6 +94,7 @@ defmodule HashDict do
       #=> HashDict[{ "a", "a" }, { "b", "b" }]
 
   """
+  @spec new(list, (term -> {key :: term, value ::term})) :: Dict.t
   def new(list, transform) when is_function(transform) do
     Enum.reduce list, new(), fn i, dict ->
       { k, v } = transform.(i)
@@ -123,7 +127,7 @@ defmodule HashDict do
     case dict_put(dict, key, { :update, nil, fun }) do
       { dict, 0 } ->
         dict
-      { dict, 1 } ->
+      { _dict, 1 } ->
         raise KeyError, key: key
     end
   end
@@ -184,7 +188,7 @@ defmodule HashDict do
       { _, 0 } ->
         dict
       { root, -1 } ->
-        res = if depth > 0 and trie(dict, :contract_on) == size do
+        if depth > 0 and trie(dict, :contract_on) == size do
           root = node_contract(root, depth, depth - 1)
           trie(dict,
             root: root,

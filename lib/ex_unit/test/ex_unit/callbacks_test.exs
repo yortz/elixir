@@ -1,40 +1,52 @@
 Code.require_file "../../test_helper.exs", __FILE__
 
 defmodule ExUnit.CallbacksTest do
-  use ExUnit.Case, sync: false
+  use ExUnit.Case
 
-  def setup_all do
-    [my_context: :setup_all]
+  setup_all do
+    { :ok, [context: :setup_all] }
   end
 
-  def setup([my_context: context], test) do
+  setup do
+    { :ok, [initial_setup: true] }
+  end
+
+  setup context do
+    assert context[:initial_setup]
+    assert context[:context] == :setup_all
+    { :ok, [context: :setup] }
+  end
+
+  setup context do
     if Process.get(:ex_unit_callback) do
       raise "ex_unit_callback was not cleaned"
     else
-      Process.put(:ex_unit_callback, test)
+      Process.put(:ex_unit_callback, context[:test])
     end
-
-    assert context == :setup_all
-
-    [my_context: :setup]
+    :ok
   end
 
-  def teardown([my_context: context], test) do
-    assert context == :setup
-    assert Process.get(:ex_unit_callback) == test
+  teardown context do
+    assert context[:context] == :setup
+    :ok
+  end
+
+  teardown context do
+    assert Process.get(:ex_unit_callback) == context[:test]
     Process.delete(:ex_unit_callback)
+    :ok
   end
 
-  def teardown_all([my_context: context]) do
-    assert context == :setup_all
+  teardown_all context do
+    assert context[:context] == :setup_all
+    :ok
   end
 
-  test :callback do
-    assert Process.get(:ex_unit_callback) == :test_callback
+  test "callbacks can run custom code" do
+    assert Process.get(:ex_unit_callback) == :"test callbacks can run custom code"
   end
 
-  # Ensure we run at least two tests, so setup is run twice
-  test :ok do
-    assert :ok == :ok
+  test "receives context from callback", context do
+    assert context[:context] == :setup
   end
 end

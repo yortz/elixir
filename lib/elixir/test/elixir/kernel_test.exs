@@ -58,7 +58,7 @@ defmodule KernelTest do
   end
 
   test :function_from___ENV__ do
-    assert __ENV__.function == { :test_function_from___ENV__, 0 }
+    assert __ENV__.function == { :test_function_from___ENV__, 1 }
   end
 
   defp x(value) when value in [1,2,3], do: true
@@ -347,7 +347,7 @@ defmodule KernelTest do
     test :invalid_match do
       a = 3
       assert_raise CaseClauseError, fn ->
-        destructure [^a,b,c], a_list
+        destructure [^a,_b,_c], a_list
       end
     end
 

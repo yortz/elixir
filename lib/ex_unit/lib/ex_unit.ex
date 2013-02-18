@@ -13,11 +13,13 @@ defmodule ExUnit do
 
       # 2) Next we create a new TestCase and use ExUnit.Case
       defmodule AssertionTest do
-        # 3) Notice we pass async: true, this runs the test case in parallel
+        # 3) Notice we pass async: true, this runs the test case
+        #    concurrently with other test cases
         use ExUnit.Case, async: true
 
-        # 4) A test is a method which name finishes with _test
-        def test_always_pass do
+        # 4) A test is a function whose name starts with
+        #    test and receives a context
+        def test_always_pass(_) do
           assert true
         end
 
@@ -33,9 +35,13 @@ defmodule ExUnit do
 
       bin/elixir assertion_test.exs
 
-  ## Assertions
+  ## Case, callbacks and assertions
 
-  Check ExUnit.Assertions for assertions documentation.
+  Check `ExUnit.Case` and `ExUnit.Callbacks` for more information about
+  defining test cases.
+
+  The `ExUnit.Assertions` module contains a set of macros to easily
+  generate assertions with appropriate error messages.
 
   ## User config
 
@@ -123,11 +129,10 @@ defmodule ExUnit do
     ExUnit.Server.merge_options(options)
   end
 
-  @doc """
-  Registers a callback to be invoked every time a
-  new ExUnit process is spawned.
-  """
+  @doc false
   def after_spawn(callback) do
+    IO.puts "ExUnit.after_spawn is deprecated, please use setup_all instead"
+    Exception.print_stacktrace
     ExUnit.Server.add_after_spawn(callback)
   end
 

@@ -40,8 +40,8 @@ defmodule Mix.Project do
 
   # Invoked after each Mix.Project is compiled.
   @doc false
-  def __after_compile__(module, _binary) do
-    push module
+  def __after_compile__(env, _binary) do
+    push env.module
   end
 
   # Push a project into the project stack. Only
@@ -108,13 +108,6 @@ defmodule Mix.Project do
     end
   end
 
-  @doc false
-  def sources do
-    IO.puts "Mix.Project.sources is deprecated, please use Mix.Project.config_files instead"
-    Exception.print_stacktrace
-    config_files
-  end
-
   @doc """
   Returns a list of project config files (mix.exs and mix.lock).
   """
@@ -136,15 +129,17 @@ defmodule Mix.Project do
 
   defp default_config do
     [ compile_path: "ebin",
-      elixirc_exts: [:ex],
       default_env: [test: :test],
-      default_task: "compile",
+      default_task: "run",
       deps_path: "deps",
-      erlc_paths: ["src"],
+      elixirc_exts: [:ex],
+      elixirc_paths: ["lib"],
+      elixirc_watch_exts: [:ex, :eex, :exs],
       lockfile: "mix.lock",
       prepare_task: "app.start",
-      elixirc_paths: ["lib"],
-      elixirc_watch_exts: [:ex, :eex, :exs] ]
+      erlc_paths: ["src"],
+      erlc_include_path: "include",
+      erlc_options: [:debug_info] ]
   end
 
   defp get_project_config(nil), do: []

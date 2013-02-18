@@ -155,7 +155,7 @@ expand_require(Meta, Receiver, { Name, Arity } = Tuple, Args, Module, Function, 
 %% Expansion helpers
 
 expand_macro_fun(Meta, Fun, Receiver, Name, Args, Module, Requires, SEnv) ->
-  case (Receiver == Module) or is_element(Receiver, Requires) of
+  case (Receiver == Module) or is_element(Receiver, Requires) or skip_requires(SEnv) of
     true  -> ok;
     false ->
       Tuple = { unrequired_module, { Receiver, Name, length(Args), Requires } },
@@ -182,11 +182,18 @@ expand_macro_named(Meta, Receiver, Name, Arity, Args, Module, Requires, SEnv) ->
 translate_expansion(Meta, Tree, S) ->
   { TR, TS } = elixir_translator:translate_each(
     elixir_quote:linify(?line(Meta), Tree),
-    S#elixir_scope{check_clauses=false}
+    S#elixir_scope{
+      check_clauses=false,
+      macro_aliases=[] }
   ),
-  { TR, TS#elixir_scope{check_clauses=S#elixir_scope.check_clauses} }.
+  { TR, TS#elixir_scope{
+    check_clauses=S#elixir_scope.check_clauses,
+    macro_aliases=S#elixir_scope.macro_aliases } }.
 
 %% Helpers
+
+skip_requires(#elixir_scope{check_requires=false}) -> true;
+skip_requires(_) -> false.
 
 find_dispatch(Tuple, [{ Name, Values }|T]) ->
   case is_element(Tuple, Values) of

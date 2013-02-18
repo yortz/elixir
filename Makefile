@@ -46,7 +46,7 @@ erlang:
 # file, then mix and then compile eex fully
 elixir: kernel unicode lib/eex/ebin/Elixir-EEx.beam mix ex_unit eex iex
 
-kernel: $(KERNEL)
+kernel: $(KERNEL) VERSION
 $(KERNEL): lib/elixir/lib/*.ex lib/elixir/lib/*/*.ex
 	@ if [ ! -f $(KERNEL) ]; then                       \
 		echo "==> bootstrap (compile)";                 \
@@ -93,14 +93,14 @@ clean:
 
 #==> Release tasks
 
-docs:
+docs: compile
 	mkdir -p ebin
 	rm -rf docs
 	cp -R -f lib/*/ebin/*.beam ./ebin
 	bin/elixir ../exdoc/bin/exdoc
 	rm -rf ebin
 
-release_zip:
+release_zip: compile
 	rm -rf v$(VERSION).zip
 	zip -9 -r v$(VERSION).zip bin CHANGELOG.md LEGAL lib/*/ebin LICENSE README.md rel VERSION
 
@@ -109,7 +109,7 @@ release_docs: docs
 	rm -rf ../elixir-lang.github.com/docs/master
 	mv output ../elixir-lang.github.com/docs/master
 
-release_erl:
+release_erl: compile
 	@ rm -rf rel/elixir
 	@ cd rel && ../rebar generate
 

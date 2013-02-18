@@ -90,7 +90,7 @@ defmodule Kernel.QuoteTest.VarHygiene do
   end
 
   defmacro no_hygiene do
-    quote [hygiene: false] do
+    quote [hygiene: [vars: false]] do
       a = 1
     end
   end
@@ -157,10 +157,43 @@ end
 defmodule Kernel.QuoteTest.AliasHygieneTest do
   use ExUnit.Case, async: true
 
+  alias Dict, as: SuperDict
+
+  defmacro dict do
+    quote do: Dict.Bar
+  end
+
+  defmacro super_dict do
+    quote do: SuperDict.Bar
+  end
+
+  test :annotate_aliases do
+    assert quote(do: Foo.Bar) == { :__aliases__, [alias: false], [:Foo, :Bar] }
+    assert quote(do: Dict.Bar) == { :__aliases__, [alias: false], [:Dict, :Bar] }
+    assert quote(do: SuperDict.Bar) == { :__aliases__, [alias: Dict.Bar], [:SuperDict, :Bar] }
+    assert quote(do: alias!(SuperDict.Bar)) == { :__aliases__, [], [:SuperDict, :Bar] }
+  end
+
   test :expand_aliases do
-    assert Code.eval_quoted(quote do: Foo.Bar)  == { Elixir.Foo.Bar, [] }
-    assert Code.eval_quoted(quote do: alias!(Foo.Bar))  == { Foo.Bar, [] }
-    assert Code.eval_quoted(quote expand_aliases: false, do: Foo.Bar)  == { Foo.Bar, [] }
+    assert Code.eval_quoted(quote do: SuperDict.Bar) == { Elixir.Dict.Bar, [] }
+    assert Code.eval_quoted(quote do: alias!(SuperDict.Bar)) == { Elixir.SuperDict.Bar, [] }
+
+    assert Code.eval_quoted(quote do
+      alias HashDict, as: SuperDict
+      SuperDict.Bar
+    end) == { Elixir.HashDict.Bar, [] }
+
+    assert Code.eval_quoted(quote do
+      alias HashDict, as: Dict
+      require Kernel.QuoteTest.AliasHygieneTest
+      Kernel.QuoteTest.AliasHygieneTest.dict
+    end) == { Elixir.Dict.Bar, [] }
+
+    assert Code.eval_quoted(quote do
+      alias HashDict, as: SuperDict
+      require Kernel.QuoteTest.AliasHygieneTest
+      Kernel.QuoteTest.AliasHygieneTest.super_dict
+    end) == { Elixir.Dict.Bar, [] }
   end
 end
 

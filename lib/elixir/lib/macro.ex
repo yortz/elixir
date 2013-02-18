@@ -443,7 +443,7 @@ defmodule Macro do
   def expand(aliases, env)
 
   def expand({ :__aliases__, _, _ } = original, env) do
-    case :elixir_aliases.expand(original, env.aliases) do
+    case :elixir_aliases.expand(original, env.aliases, []) do
       atom when is_atom(atom) -> atom
       aliases ->
         aliases = lc alias inlist aliases, do: expand(alias, env)
@@ -478,8 +478,16 @@ defmodule Macro do
     case not is_partial?(args) do
       false -> original
       true  ->
+        module = env.module
+
+        extra  = if function_exported?(module, :__info__, 1) do
+          [{ module, module.__info__(:macros) }]
+        else
+          []
+        end
+
         expand = :elixir_dispatch.expand_import(line, { atom, length(args) }, args,
-          env.module, env.function, env.requires, env.macros, env)
+          env.module, env.function, env.requires, extra ++ env.macros, env)
         case expand do
           { :ok, _, expanded } -> expanded
           { :error, _ }     -> original

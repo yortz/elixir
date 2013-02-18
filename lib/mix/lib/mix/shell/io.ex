@@ -18,14 +18,14 @@ defmodule Mix.Shell.IO do
   Writes a message to the shell followed by new line.
   """
   def info(message) do
-    IO.puts message
+    IO.puts IO.ANSI.escape(message)
   end
 
   @doc """
   Writes an error message to the shell followed by new line.
   """
   def error(message) do
-    IO.puts :stderr, message
+    IO.puts :stderr, IO.ANSI.escape "%{red,bright}#{message}"
   end
 
   @doc """
@@ -34,6 +34,6 @@ defmodule Mix.Shell.IO do
   regex `%r/^Y(es)?$/i`.
   """
   def yes?(message) do
-    IO.gets(message <> " [Yn] ") =~ %r/^(Y(es)?)?$/i
+    IO.gets(message <> IO.ANSI.escape(" [Yn] ")) =~ %r/^(Y(es)?)?$/i
   end
 end

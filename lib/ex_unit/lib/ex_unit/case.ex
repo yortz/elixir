@@ -9,47 +9,43 @@ defmodule ExUnit.Case do
              in parallel with others. Must be used for performance
              when your test cases do not change any global state;
 
-  ## Callbacks
+  This module automatically includes all callbacks defined
+  in `ExUnit.Callbacks`. Read it for more information.
 
-  `ExUnit.Case` defines four callbacks:
+ ## Examples
 
-  * `setup_all()` and `teardown_all(context)` which are executed
-     before and after all tests respectively;
-  * `setup(context, test)` and `teardown(context, test)` which are
-     executed before and after each test, receiving the test name
-     as argument;
+     defmodule AssertionTest do
+       use ExUnit.Case, async: true
 
-  Such callbacks are useful to clean up any side-effect a test may cause,
-  as for example, state in genservers, data on filesystem, or entries in
-  a database. Data can be passed in between such callbacks as context,
-  the context value returned by `setup_all` is passed down to all other
-  callbacks. The value can then be updated in `setup` which is passed
-  down to `teardown`.
-
-  ## Examples
-
-      defmodule AssertionTest do
-        use ExUnit.Case, async: true
-
-        def test_always_pass
-          assert true
-        end
-      end
+       def test_always_pass
+         assert true
+       end
+     end
 
   """
 
   @doc false
   defmacro __using__(opts // []) do
-    if Keyword.get(opts, :async, false) do
-      ExUnit.Server.add_async_case(__CALLER__.module)
-    else
-      ExUnit.Server.add_sync_case(__CALLER__.module)
-    end
+    async  = Keyword.get(opts, :async, false)
+    parent = Keyword.get(opts, :parent, __MODULE__)
 
     quote do
+      if unquote(async) do
+        ExUnit.Server.add_async_case(__MODULE__)
+      else
+        ExUnit.Server.add_sync_case(__MODULE__)
+      end
+
+      use ExUnit.Callbacks, parent: unquote(parent)
+
       import ExUnit.Assertions
       import ExUnit.Case
     end
+  end
+
+  @doc false
+  def __exunit__(kind, context) when kind in [:setup, :teardown, :setup_all, :teardown_all] do
+    context
   end
 
   @doc """
@@ -67,10 +63,10 @@ defmodule ExUnit.Case do
       end
 
   """
-  defmacro test(message, contents) do
+  defmacro test(message, var // quote(do: _), contents) do
     contents =
       case contents do
-        [do: block] ->
+        [do: _] ->
           quote do
             unquote(contents)
             :ok
@@ -84,12 +80,15 @@ defmodule ExUnit.Case do
 
     quote do
       message = unquote(message)
+
       message = if is_binary(message) do
         :"test #{message}"
       else
         :"test_#{message}"
       end
-      def message, [], [], do: unquote(Macro.escape contents)
+
+      def message, [unquote(Macro.escape var)], [], do:
+        unquote(Macro.escape contents)
     end
   end
 end
