@@ -7,7 +7,7 @@
 -import(elixir_scope, [umergev/2, umergec/2]).
 -import(elixir_errors, [syntax_error/3, syntax_error/4, parse_error/4,
   assert_function_scope/3, assert_module_scope/3, assert_no_guard_scope/3,
-  assert_no_assign_or_guard_scope/3]).
+  assert_no_match_or_guard_scope/3]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
@@ -35,6 +35,9 @@ translate(Forms, S) ->
 %% Those macros are "low-level". They are the basic mechanism
 %% that makes the language work and cannot be partially applied
 %% nor overwritten.
+%%
+%% =, ^, import, require and alias could be made non-special
+%% forms without causing any side effects.
 
 %% Assignment operator
 
@@ -94,7 +97,7 @@ translate_each({ alias, Meta, [Ref] }, S) ->
   translate_each({ alias, Meta, [Ref,[]] }, S);
 
 translate_each({ alias, Meta, [Ref, KV] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, alias, S),
+  assert_no_match_or_guard_scope(Meta, alias, S),
   validate_opts(Meta, alias, [as], KV, S),
 
   { TRef, SR } = translate_each(Ref, S),
@@ -140,7 +143,7 @@ translate_each({ require, Meta, [Ref] }, S) ->
   translate_each({ require, Meta, [Ref, []] }, S);
 
 translate_each({ require, Meta, [Ref, KV] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'require', S),
+  assert_no_match_or_guard_scope(Meta, 'require', S),
   validate_opts(Meta, require, [as], KV, S),
 
   { TRef, SR } = translate_each(Ref, S),
@@ -173,7 +176,7 @@ translate_each({ import, Meta, [Selector, Left] }, S) ->
   translate_each({ import, Meta, [Selector, Left, []]}, S);
 
 translate_each({ import, Meta, [Left, Right, Opts] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'import', S),
+  assert_no_match_or_guard_scope(Meta, 'import', S),
   { TSelector, SL } = translate_each(Left, S),
   { TRef, SR } = translate_each(Right, SL),
 
@@ -207,7 +210,8 @@ translate_each({ '__FILE__', _Meta, Atom }, S) when is_atom(Atom) ->
   translate_each(S#elixir_scope.file, S);
 
 translate_each({ '__ENV__', Meta, Atom }, S) when is_atom(Atom) ->
-  { elixir_scope:to_erl_env({ ?line(Meta), S }), S };
+  Env = elixir_scope:to_ex_env({ ?line(Meta), S }),
+  { elixir_tree_helpers:abstract_syntax(Env), S };
 
 translate_each({ '__CALLER__', Meta, Atom }, S) when is_atom(Atom) ->
   { { var, ?line(Meta), '__CALLER__' }, S#elixir_scope{caller=true} };
@@ -232,7 +236,7 @@ translate_each({ '__aliases__', Meta, _ } = Alias, S) ->
 
 %% Quoting
 
-translate_each({ Unquote, Meta, _Args }, S) when Unquote == unquote; Unquote == unquote_splicing ->
+translate_each({ Unquote, Meta, [_|_] }, S) when Unquote == unquote; Unquote == unquote_splicing ->
   syntax_error(Meta, S#elixir_scope.file, "~p called outside quote", [Unquote]);
 
 translate_each({ quote, Meta, [Left, Right] }, S) ->
@@ -355,7 +359,7 @@ translate_each({ 'var!', Meta, [_, _] }, S) ->
 %% Functions
 
 translate_each({ fn, Meta, [[{do, { '->', _, Pairs }}]] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'fn', S),
+  assert_no_match_or_guard_scope(Meta, 'fn', S),
   translate_fn(Meta, Pairs, S);
 
 %% Comprehensions
@@ -368,7 +372,7 @@ translate_each({ Kind, Meta, Args }, S) when is_list(Args), (Kind == lc) orelse 
 translate_each({ super, Meta, Args } = Original, S) ->
   case elixir_partials:handle(Original, S) of
     error ->
-      assert_no_assign_or_guard_scope(Meta, super, S),
+      assert_no_match_or_guard_scope(Meta, super, S),
       Module = assert_module_scope(Meta, super, S),
       Function = assert_function_scope(Meta, super, S),
       elixir_def_overridable:ensure_defined(Meta, Module, Function, S),
@@ -397,20 +401,21 @@ translate_each({ 'super?', Meta, [] }, S) ->
 
 %% Variables
 
-translate_each({ '^', Meta, [ { Name, _, Kind } ] }, S) when is_list(Kind) ->
-  syntax_error(Meta, S#elixir_scope.file, "cannot use ^ with expression at ^~s, ^ must be used only with variables", [Name]);
-
-translate_each({ '^', Meta, [ { Name, _, Kind } ] }, #elixir_scope{context=assign} = S) when is_atom(Kind) ->
+translate_each({ '^', Meta, [ { Name, _, Kind } ] }, #elixir_scope{context=match} = S) when is_atom(Name), is_atom(Kind) ->
   case orddict:find({ Name, Kind }, S#elixir_scope.vars) of
     { ok, Value } ->
       { { var, Meta, Value }, S };
     error ->
-      syntax_error(Meta, S#elixir_scope.file, "unbound variable ^~s", [Name])
+      syntax_error(Meta, S#elixir_scope.file, "unbound variable ^~ts", [Name])
   end;
 
-translate_each({ '^', Meta, [ { Name, _, Kind } ] }, S) when is_atom(Kind) ->
+translate_each({ '^', Meta, [ { Name, _, Kind } ] }, S) when is_atom(Name), is_atom(Kind) ->
   syntax_error(Meta, S#elixir_scope.file,
-    "cannot access variable ^~s outside of assignment", [Name]);
+    "cannot use ^~ts outside of match clauses", [Name]);
+
+translate_each({ '^', Meta, [ Expr ] }, S) ->
+  syntax_error(Meta, S#elixir_scope.file,
+    "the unary operator ^ can only be used with variables, invalid expression ^~ts", ['Elixir.Macro':to_binary(Expr)]);
 
 translate_each({ Name, Meta, Kind }, S) when is_atom(Name), is_atom(Kind) ->
   elixir_scope:translate_var(Meta, Name, Kind, S, fun() ->
@@ -425,28 +430,21 @@ translate_each({ Atom, Meta, Args } = Original, S) when is_atom(Atom) ->
     false ->
       case elixir_partials:handle(Original, S) of
         error ->
-          case lists:keyfind(import, 1, Meta) of
-            { import, Receiver } ->
-              { TRes, TS } = translate_each({ { '.', Meta, [Receiver, Atom] }, Meta, Args },
-                S#elixir_scope{check_requires=false}),
-              { TRes, TS#elixir_scope{check_requires=S#elixir_scope.check_requires} };
-            false ->
-              Callback = fun() ->
-                case S#elixir_scope.context of
-                  guard ->
-                    Arity = length(Args),
-                    File  = S#elixir_scope.file,
-                    case Arity of
-                      0 -> syntax_error(Meta, File, "unknown variable ~s or cannot invoke local ~s/~B inside guard", [Atom, Atom, Arity]);
-                      _ -> syntax_error(Meta, File, "cannot invoke local ~s/~B inside guard", [Atom, Arity])
-                    end;
-                  _ ->
-                    translate_local(Meta, Atom, Args, S)
-                end
-              end,
+          Callback = fun() ->
+            case S#elixir_scope.context of
+              match ->
+                Arity = length(Args),
+                File  = S#elixir_scope.file,
+                case Arity of
+                  0 -> syntax_error(Meta, File, "unknown variable ~ts or cannot invoke local ~ts/~B inside guard", [Atom, Atom, Arity]);
+                  _ -> syntax_error(Meta, File, "cannot invoke local ~ts/~B inside guard", [Atom, Arity])
+                end;
+              _ ->
+                translate_local(Meta, Atom, Args, S)
+            end
+          end,
 
-              elixir_dispatch:dispatch_import(Meta, Atom, Args, S, Callback)
-          end;
+          elixir_dispatch:dispatch_import(Meta, Atom, Args, S, Callback);
         Else  -> Else
       end;
     Else -> Else
@@ -484,7 +482,13 @@ translate_each({ { '.', _, [Expr] }, Meta, Args } = Original, S) ->
   { TExpr, SE } = translate_each(Expr, S),
   case TExpr of
     { atom, _, Atom } ->
-      elixir_errors:deprecation(Meta, S#elixir_scope.file, "the :~s.() syntax is deprecated, please use ~s() instead", [Atom, Atom]),
+      case atom_to_list(Atom) of
+        [H|_] when (H >= $a andalso H =< $z); H == $_ ->
+          elixir_errors:deprecation(Meta, S#elixir_scope.file, "the :~s.() syntax is deprecated, please use ~s() instead", [Atom, Atom]);
+        _ ->
+          elixir_errors:deprecation(Meta, S#elixir_scope.file, "the :~s.() syntax is deprecated", [Atom])
+      end,
+
       translate_each({ Atom, Meta, Args }, S);
     _ ->
       case elixir_partials:handle(Original, S) of
@@ -540,13 +544,7 @@ translate_local(Meta, Name, Args, #elixir_scope{local=nil} = S) ->
   { { call, Line, { atom, Line, Name }, TArgs }, NS };
 
 translate_local(Meta, Name, Args, S) ->
-  Line = ?line(Meta),
-  { TArgs, NS } = translate_args(Args, S),
-  Remote = { remote, Line,
-    { atom, Line, S#elixir_scope.local },
-    { atom, Line, Name }
-  },
-  { { call, Line, Remote, TArgs }, NS }.
+  translate_each({ { '.', Meta, [S#elixir_scope.local, Name] }, Meta, Args }, S).
 
 expand_var_context(_Meta, Atom, _Msg, _S) when is_atom(Atom) -> Atom;
 expand_var_context(Meta, Alias, Msg, S) ->
@@ -582,9 +580,9 @@ no_alias_expansion(Other) ->
 
 translate_arg(Arg, { Acc, S }) ->
   { TArg, TAcc } = translate_each(Arg, Acc),
-  { TArg, { umergec(S, TAcc), umergev(S, TAcc) } }.
+  { TArg, { umergec(Acc, TAcc), umergev(S, TAcc) } }.
 
-translate_args(Args, #elixir_scope{context=assign} = S) ->
+translate_args(Args, #elixir_scope{context=match} = S) ->
   translate(Args, S);
 
 translate_args(Args, S) ->
@@ -660,10 +658,13 @@ translate_comprehension_do(Meta, bc, _Expr, S) ->
 translate_comprehension_do(_Meta, _Kind, Expr, S) ->
   translate_each(Expr, S).
 
-translate_comprehension_clause(_Meta, {inbits, Meta, [Left, Right]}, S) ->
+translate_comprehension_clause(_Meta, {inbits, Meta, [{ '<<>>', _, _} = Left, Right]}, S) ->
   { TRight, SR } = translate_each(Right, S),
   { TLeft, SL  } = elixir_clauses:assigns(fun elixir_translator:translate_each/2, Left, SR),
   { { b_generate, ?line(Meta), TLeft, TRight }, SL };
+
+translate_comprehension_clause(_Meta, {inbits, Meta, [_Left, _Right]}, S) ->
+  syntax_error(Meta, S#elixir_scope.file, "a bit comprehension expects a bit string << >> to be used in inbits generators");
 
 translate_comprehension_clause(_Meta, {inlist, Meta, [Left, Right]}, S) ->
   { TRight, SR } = translate_each(Right, S),

@@ -54,47 +54,52 @@ defmodule Binary.Inspect.Utils do
 
   ## escape
 
-  # It is considerably faster to loop the binary
-  # and convert it to a list as we go compared
-  # to looping the binary and creating a binary
-  # as we go.
   def escape(other, char) do
-    list_to_binary [char|do_escape(other, char)]
+    b = do_escape(other, char, <<>>)
+    << char, b :: binary, char >>
   end
 
-  defp do_escape(<<char, t :: binary>>, char) do
-    [?\\, char | do_escape(t, char)]
+  @compile {:inline, do_escape: 3}
+  defp do_escape(<<>>, _char, binary), do: binary
+  defp do_escape(<< char, t :: binary >>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, char >>)
   end
-
-  defp do_escape(<<h, t :: binary>>, char) when
-    h == ?#  or h == ?\a or
-    h == ?\b or h == ?\d or
-    h == ?\e or h == ?\f or
-    h == ?\n or h == ?\r or
-    h == ?\\ or h == ?\t or
-    h == ?\v do
-    [?\\, escape_map(h) | do_escape(t, char)]
+  defp do_escape(<<?#, ?{, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?#, ?{ >>)
   end
-
-  defp do_escape(<<h, t :: binary>>, char) do
-    [h | do_escape(t,char)]
+  defp do_escape(<<?\a, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?a >>)
   end
-
-  defp do_escape(<<>>, char) do
-    [char]
+  defp do_escape(<<?\b, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?b >>)
   end
-
-  defp escape_map(?#),  do: ?#
-  defp escape_map(?\a), do: ?a
-  defp escape_map(?\b), do: ?b
-  defp escape_map(?\d), do: ?d
-  defp escape_map(?\e), do: ?e
-  defp escape_map(?\f), do: ?f
-  defp escape_map(?\n), do: ?n
-  defp escape_map(?\r), do: ?r
-  defp escape_map(?\\), do: ?\\
-  defp escape_map(?\t), do: ?t
-  defp escape_map(?\v), do: ?v
+  defp do_escape(<<?\d, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?d >>)
+  end
+  defp do_escape(<<?\e, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?e >>)
+  end
+  defp do_escape(<<?\f, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?f >>)
+  end
+  defp do_escape(<<?\n, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?n >>)
+  end
+  defp do_escape(<<?\r, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?r >>)
+  end
+  defp do_escape(<<?\\, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?\\ >>)
+  end
+  defp do_escape(<<?\t, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?t >>)
+  end
+  defp do_escape(<<?\v, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, ?\\, ?v >>)
+  end
+  defp do_escape(<<h, t :: binary>>, char, binary) do
+    do_escape(t, char, << binary :: binary, h >>)
+  end
 end
 
 defimpl Binary.Inspect, for: Atom do
@@ -111,9 +116,12 @@ defimpl Binary.Inspect, for: Atom do
 
   ## Examples
 
-      inspect(:foo)    #=> ":foo"
-      inspect(nil)     #=> "nil"
-      inspect(Foo.Bar) #=> "Foo.Bar"
+      iex> inspect(:foo)
+      ":foo"
+      iex> inspect(nil)
+      "nil"
+      iex> inspect(Foo.Bar)
+      "Foo.Bar"
 
   """
 
@@ -186,8 +194,10 @@ defimpl Binary.Inspect, for: BitString do
 
   ## Examples
 
-      inspect("bar")   #=> "bar"
-      inspect("f\"oo") #=> "f\"oo"
+      iex> inspect("bar")
+      "\"bar\""
+      iex> inspect("f\"oo")
+      "\"f\\\"oo\""
 
   """
 
@@ -251,9 +261,12 @@ defimpl Binary.Inspect, for: List do
 
   ## Examples
 
-      inspect('bar')       #=> 'bar'
-      inspect([0|'bar'])   #=> "[0,98,97,114]"
-      inspect([:foo,:bar]) #=> "[:foo, :bar]"
+      iex> inspect('bar')
+      "'bar'"
+      iex> inspect([0|'bar'])
+      "[0,98,97,114]"
+      iex> inspect([:foo,:bar])
+      "[:foo,:bar]"
 
   """
 
@@ -293,8 +306,10 @@ defimpl Binary.Inspect, for: Tuple do
 
   ## Examples
 
-      inspect({1,2,3})            #=> "{1,2,3}"
-      inspect(ArgumentError.new)  #=> ArgumentError[message: "argument error"]
+      iex> inspect({1,2,3})
+      "{1,2,3}"
+      iex> inspect(ArgumentError.new)
+      "ArgumentError[message: \\\"argument error\\\"]"
 
   """
 
@@ -372,7 +387,8 @@ defimpl Binary.Inspect, for: Number do
 
   ## Examples
 
-      inspect(1) #=> "1"
+      iex> inspect(1)
+      "1"
 
   """
 
@@ -391,7 +407,8 @@ defimpl Binary.Inspect, for: Regex do
 
   ## Examples
 
-      inspect(%r/foo/m) #=> "%r\"foo\"m"
+      iex> inspect(%r/foo/m)
+      "%r\"foo\"m"
 
   """
 

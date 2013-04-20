@@ -26,6 +26,14 @@ defmodule Kernel.AliasTest do
     alias List, as: Nested
     assert Nested.flatten([[13]]) == [13]
   end
+
+  defmodule Elixir do
+    def sample, do: 1
+  end
+
+  test :nested_elixir_alias do
+    assert Kernel.AliasTest.Elixir.sample == 1
+  end
 end
 
 defmodule Kernel.AliasNestingGenerator do
@@ -37,6 +45,16 @@ defmodule Kernel.AliasNestingGenerator do
 
       defmodule Parent.Child do
         def b, do: Parent.a
+      end
+    end
+  end
+
+  defmacro record do
+    quote do
+      defexception Parent, message: nil
+
+      defmodule Parent.Child do
+        def b, do: Parent.new(message: "ok")
       end
     end
   end
@@ -54,28 +72,14 @@ defmodule Kernel.AliasNestingTest do
   end
 end
 
-defmodule Kernel.FullAliasNestingGenerator do
-  defmacro create do
-    quote do
-      defmodule Parent do
-        def a, do: :a
-      end
-
-      defmodule Parent.Child do
-        def b, do: Parent.a
-      end
-    end
-  end
-end
-
-defmodule Kernel.FullAliasNestingTest do
+defmodule Kernel.AliasMacroNestingTest do
   use ExUnit.Case, async: true
 
-  require Kernel.FullAliasNestingGenerator
-  Kernel.FullAliasNestingGenerator.create
+  require Kernel.AliasNestingGenerator
+  Kernel.AliasNestingGenerator.record
 
   test :aliases_nesting do
-    assert Parent.a == :a
-    assert Parent.Child.b == :a
+    assert is_record(Parent.new, Parent)
+    assert Parent.Child.b.message == "ok"
   end
 end

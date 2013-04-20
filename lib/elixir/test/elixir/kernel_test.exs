@@ -93,6 +93,20 @@ defmodule KernelTest do
       assert float_to_binary(7.0) == "7.00000000000000000000e+00"
     end
 
+    case :proplists.get_value(:float_to_binary,
+                              :proplists.get_value(:exports, :erlang.module_info, [])) do
+      2 ->
+        # We can only test this where this functionality is available
+        test :float_to_binary_with_options do
+          assert float_to_binary(7.1, [decimals: 2]) == "7.10"
+          assert float_to_binary(7.1, [scientific: 2]) == "7.10e+00"
+          assert float_to_binary(7.1, [decimals: 2, compact: true]) == "7.1"
+          assert float_to_binary(7.1, [scientific: 2, compact: true]) == "7.10e+00"
+          assert float_to_binary(7.1, [decimals: 2, compact: false]) == "7.10"
+        end
+      _ ->
+        :ok
+    end
     test :atom_to_binary_defaults_to_utf8 do
       expected  = atom_to_binary :some_binary, :utf8
       actual    = atom_to_binary :some_binary
@@ -127,22 +141,11 @@ defmodule KernelTest do
   defmodule Function do
     use ExUnit.Case, async: true
 
-    test :retrieve_remote_function do
-      assert is_function(function(:erlang, :atom_to_list, 1))
-      assert :erlang.fun_info(function(:erlang, :atom_to_list, 1), :arity) == {:arity, 1}
-      assert function(:erlang, :atom_to_list, 1).(:a) == 'a'
-    end
-
     test :remote_syntax_function do
+      assert function(:erlang, :atom_to_list, 1).(:a) == 'a'
       assert function(:erlang.atom_to_list/1) ==
              function(:erlang, :atom_to_list, 1)
       assert function(Enum.map/2) == function(Enum, :map, 2)
-    end
-
-    test :retrieve_local_function do
-      assert is_function(function(:atl, 1))
-      assert :erlang.fun_info(function(:atl, 1), :arity) == {:arity, 1}
-      assert function(:atl, 1).(:a) == 'a'
     end
 
     test :local_syntax_function do
@@ -150,9 +153,7 @@ defmodule KernelTest do
     end
 
     test :retrieve_imported_function do
-      assert is_function(function(:atom_to_list, 1))
-      assert :erlang.fun_info(function(:atom_to_list, 1), :arity) == {:arity, 1}
-      assert function(:atom_to_list, 1).(:a) == 'a'
+      assert function(atom_to_list/1).(:a) == 'a'
     end
 
     test :retrieve_dynamic_function do
@@ -160,8 +161,6 @@ defmodule KernelTest do
       b = :atom_to_list
       c = 1
 
-      assert is_function(function(a, b, c))
-      assert :erlang.fun_info(function(a, b, c), :arity) == {:arity, 1}
       assert function(a, b, c).(:a) == 'a'
     end
 
@@ -186,12 +185,19 @@ defmodule KernelTest do
     defdelegate my_flatten(list), to: List, as: :flatten
     defdelegate [map(callback, list)], to: :lists, append_first: true
 
+    dynamic = :dynamic_flatten
+    defdelegate unquote(dynamic)(list), to: List, as: :flatten
+
     test :defdelegate_with_function do
       assert my_flatten([[1]]) == [1]
     end
 
     test :defdelegate_with_appended_handle do
       assert map([1], fn(x) -> x + 1 end) == [2]
+    end
+
+    test :dynamic_defdelegate do
+      assert dynamic_flatten([[1]]) == [1]
     end
   end
 

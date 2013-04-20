@@ -5,7 +5,7 @@
 -import(elixir_translator, [translate_each/2, translate_args/2, translate_apply/7]).
 -import(elixir_scope, [umergec/2]).
 -import(elixir_errors, [syntax_error/3, syntax_error/4,
-  assert_no_function_scope/3, assert_module_scope/3, assert_no_assign_or_guard_scope/3]).
+  assert_no_function_scope/3, assert_module_scope/3, assert_no_match_or_guard_scope/3]).
 -include("elixir.hrl").
 
 -define(FUNS(Kind), Kind == def; Kind == defp; Kind == defmacro; Kind == defmacrop).
@@ -23,7 +23,7 @@ translate({ '-', _Meta, [Expr] }, S) when is_number(Expr) ->
 
 translate({ Op, Meta, Exprs }, S) when is_list(Exprs),
     Op == '<-' orelse Op == '--' ->
-  assert_no_assign_or_guard_scope(Meta, Op, S),
+  assert_no_match_or_guard_scope(Meta, Op, S),
   translate_each({ '__op__', Meta, [Op|Exprs] }, S);
 
 translate({ Op, Meta, Exprs }, S) when is_list(Exprs),
@@ -53,34 +53,46 @@ translate({ in, Meta, [Left, Right] }, #elixir_scope{extra_guards=Extra} = S) ->
 %% Functions
 
 translate({ function, Meta, [[{do,{ '->',_,Pairs}}]] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'function', S),
+  assert_no_match_or_guard_scope(Meta, 'function', S),
   elixir_translator:translate_fn(Meta, Pairs, S);
 
-translate({ function, Meta, [{ '/', _, [{{ '.', _ ,[M, F] }, _ , [] }, A]}] }, S) ->
+translate({ function, _, [{ '/', _, [{{ '.', Meta, [M, F] }, _ , []}, A]}] }, S) when is_atom(F), is_integer(A) ->
   translate({ function, Meta, [M, F, A] }, S);
 
-translate({ function, Meta, [{ '/', _, [{F, _, Q}, A]}] }, S) when is_atom(Q) ->
-  translate({ function, Meta, [F, A] }, S);
+translate({ function, MetaFA, [{ '/', _, [{F, Meta, C}, A]}] }, S) when is_atom(F), is_integer(A), is_atom(C) ->
+  assert_no_match_or_guard_scope(Meta, 'function', S),
+
+  WrappedMeta =
+    case (lists:keyfind(import, 1, Meta) == false) andalso lists:keyfind(import_fa, 1, MetaFA) of
+      { import_fa, Receiver } -> [{ import, Receiver }|Meta];
+      false -> Meta
+    end,
+
+  case elixir_dispatch:import_function(WrappedMeta, F, A, S) of
+    false -> syntax_error(WrappedMeta, S#elixir_scope.file, "cannot convert a macro to a function");
+    Else  -> Else
+  end;
 
 translate({ function, Meta, [_] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'function', S),
+  assert_no_match_or_guard_scope(Meta, 'function', S),
   syntax_error(Meta, S#elixir_scope.file, "invalid args for function");
 
 translate({ function, Meta, [_, _] = Args }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'function', S),
+  assert_no_match_or_guard_scope(Meta, 'function', S),
 
   case translate_args(Args, S) of
     { [{atom,_,Name}, {integer,_,Arity}], SA } ->
+      elixir_errors:deprecation(Meta, S#elixir_scope.file, "function(:~ts, ~B) is deprecated, please use function(~ts/~B)", [Name, Arity, Name, Arity]),
       case elixir_dispatch:import_function(Meta, Name, Arity, SA) of
         false -> syntax_error(Meta, S#elixir_scope.file, "cannot convert a macro to a function");
         Else  -> Else
       end;
     _ ->
-      syntax_error(Meta, S#elixir_scope.file, "cannot dynamically retrieve local function. use function(module, fun, arity) instead")
+      syntax_error(Meta, S#elixir_scope.file, "cannot dynamically retrieve local function, use function/3 instead")
   end;
 
 translate({ function, Meta, [_,_,_] = Args }, S) when is_list(Args) ->
-  assert_no_assign_or_guard_scope(Meta, 'function', S),
+  assert_no_match_or_guard_scope(Meta, 'function', S),
   { [A,B,C], SA } = translate_args(Args, S),
   { { 'fun', ?line(Meta), { function, A, B, C } }, SA };
 
@@ -112,7 +124,7 @@ translate({'@', Meta, [{ Name, _, Args }]}, S) ->
               }, S);
             _  ->
               syntax_error(Meta, S#elixir_scope.file,
-                "cannot dynamically set attribute @~s inside a function", [Name])
+                "cannot dynamically set attribute @~ts inside a function", [Name])
           end;
         _ when is_atom(Args) or (Args == []) ->
           case S#elixir_scope.function of
@@ -127,14 +139,14 @@ translate({'@', Meta, [{ Name, _, Args }]}, S) ->
               { elixir_tree_helpers:abstract_syntax(Contents), S }
           end;
         _ ->
-          syntax_error(Meta, S#elixir_scope.file, "expected 0 or 1 argument for @~s, got: ~p", [Name, length(Args)])
+          syntax_error(Meta, S#elixir_scope.file, "expected 0 or 1 argument for @~ts, got: ~p", [Name, length(Args)])
       end
   end;
 
 %% Case
 
 translate({'case', Meta, [Expr, KV]}, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'case', S),
+  assert_no_match_or_guard_scope(Meta, 'case', S),
   Clauses = elixir_clauses:get_pairs(Meta, do, KV, S),
   { TExpr, NS } = translate_each(Expr, S),
 
@@ -150,7 +162,7 @@ translate({'case', Meta, [Expr, KV]}, S) ->
 
 translate({'try', Meta, [Clauses]}, RawS) ->
   S = RawS#elixir_scope{noname=true},
-  assert_no_assign_or_guard_scope(Meta, 'try', S),
+  assert_no_match_or_guard_scope(Meta, 'try', S),
 
   Do = proplists:get_value('do', Clauses, nil),
   { TDo, SB } = elixir_translator:translate_each(Do, S),
@@ -169,7 +181,7 @@ translate({'try', Meta, [Clauses]}, RawS) ->
 %% Receive
 
 translate({'receive', Meta, [KV] }, S) ->
-  assert_no_assign_or_guard_scope(Meta, 'receive', S),
+  assert_no_match_or_guard_scope(Meta, 'receive', S),
   Do = elixir_clauses:get_pairs(Meta, do, KV, S, true),
 
   case lists:keyfind('after', 1, KV) of
@@ -215,7 +227,8 @@ translate({defmodule, Meta, [Ref, KV]}, S) ->
       { TRef, S }
   end,
 
-  { elixir_module:translate(Meta, FRef, Block, S#elixir_scope{check_clauses=true}), FS };
+  MS = FS#elixir_scope{check_clauses=true,local=nil},
+  { elixir_module:translate(Meta, FRef, Block, MS), FS };
 
 translate({Kind, Meta, [Call]}, S) when ?FUNS(Kind) ->
   translate({Kind, Meta, [Call, nil]}, S);
@@ -223,22 +236,9 @@ translate({Kind, Meta, [Call]}, S) when ?FUNS(Kind) ->
 translate({Kind, Meta, [Call, Expr]}, S) when ?FUNS(Kind) ->
   assert_module_scope(Meta, Kind, S),
   assert_no_function_scope(Meta, Kind, S),
-
-  { TCall, Guards } = elixir_clauses:extract_guards(Call),
-  { Name, Args }    = case elixir_clauses:extract_args(TCall) of
-    error -> syntax_error(Meta, S#elixir_scope.file,
-               "invalid syntax in ~s ~s", [Kind, 'Elixir.Macro':to_binary(TCall)]);
-    Tuple -> Tuple
-  end,
-
-  assert_no_aliases_name(Meta, Name, Args, S),
-
-  TName   = elixir_tree_helpers:abstract_syntax(Name),
-  TArgs   = elixir_tree_helpers:abstract_syntax(Args),
-  TGuards = elixir_tree_helpers:abstract_syntax(Guards),
-  TExpr   = elixir_tree_helpers:abstract_syntax(Expr),
-
-  { elixir_def:wrap_definition(Kind, Meta, TName, TArgs, TGuards, TExpr, S), S };
+  { TCall, SC } = elixir_quote:user_quote(Call, S),
+  { TExpr, SE } = elixir_quote:user_quote(Expr, SC),
+  { elixir_def:wrap_definition(Kind, Meta, TCall, TExpr, SE), SE };
 
 translate({Kind, Meta, [Name, Args, Guards, Expr]}, S) when ?FUNS(Kind) ->
   assert_module_scope(Meta, Kind, S),
@@ -334,7 +334,7 @@ rewrite_case_clauses(Clauses) ->
 expand_module(Raw, Module, #elixir_scope{module=Nesting}) when is_atom(Raw); Nesting == nil ->
   Module;
 
-expand_module({ '__aliases__', _, _ } = Alias, Module, S) ->
+expand_module({ '__aliases__', _, List } = Alias, Module, S) when List /= ['Elixir'] ->
   case elixir_aliases:expand(Alias, S#elixir_scope.aliases, S#elixir_scope.macro_aliases) of
     Atom when is_atom(Atom) ->
       Module;
@@ -358,10 +358,3 @@ spec_to_macro(callback) -> defcallback.
 % Pack a list of expressions from a block.
 pack({ 'block', _, Exprs }) -> Exprs;
 pack(Expr)                  -> [Expr].
-
-assert_no_aliases_name(Meta, '__aliases__', [Atom], #elixir_scope{file=File}) when is_atom(Atom) ->
-  Message = "function names should start with lowercase characters or underscore, invalid name ~s",
-  syntax_error(Meta, File, Message, [atom_to_binary(Atom, utf8)]);
-
-assert_no_aliases_name(_Meta, _Aliases, _Args, _S) ->
-  ok.

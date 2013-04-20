@@ -4,7 +4,9 @@
   build_table/1,
   delete_table/1,
   reset_last/1,
+  wrap_definition/5,
   wrap_definition/7,
+  store_definition/6,
   store_definition/8,
   store_each/7,
   unwrap_stored_definitions/2,
@@ -44,33 +46,52 @@ reset_last(Module) ->
 %%
 %% If we just analyzed the compiled structure (i.e. the function availables
 %% before evaluating the function body), we would see both definitions.
-wrap_definition(Kind, Meta, Name, Args, Guards, Expr, S) ->
-  Line  = ?line(Meta),
-  MetaS = elixir_scope:serialize(S),
 
-  Invoke = [
-    {atom, Line, Kind},
-    {integer, Line, Line},
-    {var, Line, '_@MODULE'},
-    Name,
-    Args,
-    Guards,
-    Expr,
-    MetaS
-  ],
+wrap_definition(Kind, Meta, Call, Expr, S) ->
+  do_wrap_definition(Kind, Meta, [
+    Call, Expr, elixir_scope:serialize(S)
+  ]).
+
+wrap_definition(Kind, Meta, Name, Args, Guards, Expr, S) ->
+  do_wrap_definition(Kind, Meta, [
+    Name, Args, Guards, Expr, elixir_scope:serialize(S)
+  ]).
+
+do_wrap_definition(Kind, Meta, Extra) ->
+  Line   = ?line(Meta),
+  Invoke =
+    [{atom, Line, Kind},
+     {integer, Line, Line},
+     {var, Line, '_@MODULE'}] ++ Extra,
 
   ?wrap_call(Line, ?MODULE, store_definition, Invoke).
 
 % Invoked by the wrap definition with the function abstract tree.
 % Each function is then added to the function table.
+store_definition(Kind, Line, Module, Call, Body, RawS) ->
+  S = elixir_scope:deserialize(RawS),
+  { NameAndArgs, Guards } = elixir_clauses:extract_guards(Call),
+
+  { Name, Args } = case elixir_clauses:extract_args(NameAndArgs) of
+    error ->
+      Format = [Kind, 'Elixir.Macro':to_binary(NameAndArgs)],
+      elixir_errors:syntax_error(Line, S#elixir_scope.file, "invalid syntax in ~ts ~ts", Format);
+    Tuple ->
+      Tuple
+  end,
+
+  assert_no_aliases_name(Line, Name, Args, S),
+  store_definition(Kind, Line, Module, Name, Args, Guards, Body, RawS).
 
 store_definition(Kind, Line, nil, _Name, _Args, _Guards, _Body, RawS) ->
   S = elixir_scope:deserialize(RawS),
-  elixir_errors:syntax_error(Line, S#elixir_scope.file, "cannot define function outside module, invalid scope for ~s", [Kind]);
+  elixir_errors:syntax_error(Line, S#elixir_scope.file, "cannot define function outside module, invalid scope for ~ts", [Kind]);
 
 store_definition(Kind, Line, Module, Name, Args, Guards, Body, RawS) ->
+  do_store_definition(Kind, Line, Module, Name, Args, Guards, Body, elixir_scope:deserialize(RawS)).
+
+do_store_definition(Kind, Line, Module, Name, Args, Guards, Body, DS) ->
   Arity = length(Args),
-  DS    = elixir_scope:deserialize(RawS),
   S     = DS#elixir_scope{function={Name,Arity}, module=Module},
   Expr  = def_body(Line, Body),
 
@@ -290,13 +311,20 @@ check_valid_defaults(_Line, _File, _Name, _Arity, 0) -> [];
 check_valid_defaults(Line, File, Name, Arity, _) ->
   elixir_errors:handle_file_warning(File, { Line, ?MODULE, { clauses_with_docs, { Name, Arity } } }).
 
+assert_no_aliases_name(Line, '__aliases__', [Atom], #elixir_scope{file=File}) when is_atom(Atom) ->
+  Message = "function names should start with lowercase characters or underscore, invalid name ~ts",
+  elixir_errors:syntax_error(Line, File, Message, [atom_to_binary(Atom, utf8)]);
+
+assert_no_aliases_name(_Meta, _Aliases, _Args, _S) ->
+  ok.
+
 %% Format errors
 
 format_error({clauses_with_docs,{Name,Arity}}) ->
-  io_lib:format("function ~s/~B has default values and multiple clauses, use a separate clause for declaring defaults", [Name, Arity]);
+  io_lib:format("function ~ts/~B has default values and multiple clauses, use a separate clause for declaring defaults", [Name, Arity]);
 
 format_error({changed_clause,{{Name,Arity},{ElseName,ElseArity}}}) ->
-  io_lib:format("function ~s/~B does not match previous clause ~s/~B", [Name, Arity, ElseName, ElseArity]);
+  io_lib:format("function ~ts/~B does not match previous clause ~ts/~B", [Name, Arity, ElseName, ElseArity]);
 
 format_error({changed_kind,{Name,Arity,Previous,Current}}) ->
-  io_lib:format("~s ~s/~B already defined as ~s", [Current, Name, Arity, Previous]).
+  io_lib:format("~ts ~ts/~B already defined as ~ts", [Current, Name, Arity, Previous]).

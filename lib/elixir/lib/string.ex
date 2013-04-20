@@ -1,17 +1,38 @@
 defmodule String do
   @moduledoc %B"""
-  A string in Elixir is a UTF-8 encoded binary.
+  A String in Elixir is a UTF-8 encoded binary.
+
+  ## String and binary operations
 
   The functions in this module act according to the
-  Unicode Standard, version 6.2.0. A codepoint is a
-  Unicode Character, which may be represented by one
-  or more bytes. For example, the character "é" is
-  represented with two bytes:
+  Unicode Standard, version 6.2.0. For example,
+  `titlecase`, `downcase`, `strip` are provided by this
+  module.
 
-      string = "é"
-      #=> "é"
-      size(string)
-      #=> 2
+  Besides this module, Elixir provides more low-level
+  operations that works directly with binaries. Some
+  of those can be found in the `Kernel` module, as:
+
+  * `binary_part/2` and `binary_part/3` - retrieves part of the binary
+  * `bit_size/1` and `byte_size/1` - size related functions
+  * `is_bitstring/1` and `is_binary/1` - type checking function
+  * Plus a bunch of conversion functions, like `binary_to_atom/2`,
+    `binary_to_integer/2`, `binary_to_term/1` and their opposite
+    like `integer_to_binary/2`
+
+  Finally, [the `:binary` module](http://erlang.org/doc/man/binary.html)
+  provides a couple other functions that works on the byte level.
+
+  ## Codepoints and graphemes
+
+  As per the Unicode Standard, a codepoint is an Unicode
+  Character, which may be represented by one or more bytes.
+  For example, the character "é" is represented with two
+  bytes:
+
+      iex> string = "é"
+      ...> byte_size(string)
+      2
 
   Furthermore, this module also presents the concept of
   graphemes, which are multiple characters that may be
@@ -19,10 +40,9 @@ defmodule String do
   the same "é" character written above could be represented
   by the letter "e" followed by the accent ́:
 
-      string = "\x{0065}\x{0301}"
-      #=> "é"
-      size(string)
-      #=> 3
+      iex> string = "\x{0065}\x{0301}"
+      ...> byte_size(string)
+      3
 
   Although the example above is made of two characters, it is
   perceived by users as one.
@@ -40,26 +60,30 @@ defmodule String do
   ## Integer codepoints
 
   Although codepoints could be represented as integers, this
-  module represents all codepoints as binaries. For example:
+  module represents all codepoints as strings. For example:
 
-      String.codepoints "josé" #=> ["j", "o", "s", "é"]
+      iex> String.codepoints "josé"
+      ["j", "o", "s", "é"]
 
   There are a couple of ways to retrieve a character integer
   codepoint. One may use the `?` special macro:
 
-      ?j #=> 106
-      ?é #=> 233
+      iex> ?j
+      106
+      iex> ?é
+      233
 
   Or also via pattern matching:
 
-      << eacute :: utf8 >> = "é"
-      eacute #=> 233
+      iex> << eacute :: utf8 >> = "é"
+      ...> eacute
+      233
 
   As we have seen above, codepoints can be inserted into
   a string by their hexadecimal code:
 
-      string = "jos\x{0065}\x{0301}"
-      #=> "josé"
+      "jos\x{0065}\x{0301}" #=>
+      "josé"
 
   ## Self-synchronization
 
@@ -72,8 +96,10 @@ defmodule String do
   characters. For example, `String.length` is going to return
   a correct result even if an invalid codepoint is fed into it.
 
-  In the future, bang version of such functions may be
-  provided which will rather raise on such invalid data.
+  In other words, this module expects invalid data to be detected
+  when retrieving data from the external source. For example, a
+  driver that reads strings from a database will be the one
+  responsible to check the validity of the encoding.
   """
 
   @type t :: binary
@@ -86,7 +112,8 @@ defmodule String do
 
   ## Examples
 
-      String.printable?("abc") #=> true
+      iex> String.printable?("abc")
+      true
 
   """
   @spec printable?(t) :: boolean
@@ -119,29 +146,44 @@ defmodule String do
   The string is split into as many parts as possible by
   default, unless the `global` option is set to false.
   If a pattern is not specified, the string is split on
-  whitespace occurrences.
+  Unicode whitespace occurrences with leading and trailing
+  whitespace ignored.
 
   It returns a list with the original string if the pattern
   can't be matched.
 
   ## Examples
 
-      String.split("a,b,c", ",")  #=> ["a", "b", "c"]
-      String.split("a,b,c", ",", global: false)  #=> ["a", "b,c"]
+      iex> String.split("foo bar")
+      ["foo", "bar"]
+      iex> String.split("foo" <> <<194,133>> <> "bar")
+      ["foo", "bar"]
+      iex> String.split(" foo bar ")
+      ["foo", "bar"]
 
-      String.split("foo bar")     #=> ["foo", "bar"]
-      String.split("1,2 3,4", [" ", ","]) #=> ["1", "2", "3", "4"]
+      iex> String.split("a,b,c", ",")
+      ["a", "b", "c"]
+      iex> String.split("a,b,c", ",", global: false)
+      ["a", "b,c"]
 
-      String.split("a,b,c", %r{,}) #=> ["a", "b", "c"]
-      String.split("a,b,c", %r{,}, global: false)  #=> ["a", "b,c"]
-      String.split("a,b", %r{\.})   #=> ["a,b"]
+      iex> String.split("1,2 3,4", [" ", ","])
+      ["1", "2", "3", "4"]
+
+      iex> String.split("a,b,c", %r{,})
+      ["a", "b", "c"]
+      iex> String.split("a,b,c", %r{,}, global: false)
+      ["a", "b,c"]
+      iex> String.split("a,b", %r{\\.})
+      ["a,b"]
 
   """
   @spec split(t) :: [t]
   @spec split(t, t | [t] | Regex.t) :: [t]
   @spec split(t, t | [t] | Regex.t, Keyword.t) :: [t]
 
-  def split(binary, pattern // " ", options // [])
+  defdelegate split(binary), to: String.Unicode
+
+  def split(binary, pattern, options // [])
 
   def split(binary, pattern, options) when is_regex(pattern) do
     Regex.split(pattern, binary, global: options[:global])
@@ -157,9 +199,12 @@ defmodule String do
 
   ## Examples
 
-      String.upcase("abcd") #=> "ABCD"
-      String.upcase("ab 123 xpto") #=> "AB 123 XPTO"
-      String.upcase("josé") #=> "JOSÉ"
+      iex> String.upcase("abcd")
+      "ABCD"
+      iex> String.upcase("ab 123 xpto")
+      "AB 123 XPTO"
+      iex> String.upcase("josé")
+      "JOSÉ"
 
   """
   @spec upcase(t) :: t
@@ -170,9 +215,12 @@ defmodule String do
 
   ## Examples
 
-      String.downcase("ABCD") #=> "abcd"
-      String.downcase("AB 123 XPTO") #=> "ab 123 xpto"
-      String.downcase("JOSÉ") #=> "josé"
+      iex> String.downcase("ABCD")
+      "abcd"
+      iex> String.downcase("AB 123 XPTO")
+      "ab 123 xpto"
+      iex> String.downcase("JOSÉ")
+      "josé"
 
   """
   @spec downcase(t) :: t
@@ -189,9 +237,12 @@ defmodule String do
 
   ## Examples
 
-      String.capitalize("abcd") #=> "Abcd"
-      String.capitalize("ﬁn")   #=> "Fin"
-      String.capitalize("josé") #=> "José"
+      iex> String.capitalize("abcd")
+      "Abcd"
+      iex> String.capitalize("ﬁn")
+      "Fin"
+      iex> String.capitalize("josé")
+      "José"
 
   """
   @spec capitalize(t) :: t
@@ -201,12 +252,13 @@ defmodule String do
   end
 
   @doc """
-  Returns a string where trailing whitespace characters
-  and new line have been removed.
+  Returns a string where trailing Unicode whitespace
+  has been removed.
 
   ## Examples
 
-      String.rstrip("   abc  ")      #=> "   abc"
+      iex> String.rstrip("   abc  ")
+      "   abc"
 
   """
   @spec rstrip(t) :: t
@@ -217,7 +269,8 @@ defmodule String do
 
   ## Examples
 
-      String.rstrip("   abc _", ?_)  #=> "   abc "
+      iex> String.rstrip("   abc _", ?_)
+      "   abc "
 
   """
   @spec rstrip(t, char) :: t
@@ -248,12 +301,13 @@ defmodule String do
   end
 
   @doc """
-  Returns a string where leading whitespace characters
-  have been removed.
+  Returns a string where leading Unicode whitespace
+  has been removed.
 
   ## Examples
 
-      String.lstrip("   abc  ")       #=> "abc  "
+      iex> String.lstrip("   abc  ")
+      "abc  "
 
   """
   defdelegate lstrip(binary), to: String.Unicode
@@ -263,7 +317,8 @@ defmodule String do
 
   ## Examples
 
-      String.lstrip("_  abc  _", ?_)  #=> "  abc  _"
+      iex> String.lstrip("_  abc  _", ?_)
+      "  abc  _"
 
   """
 
@@ -278,12 +333,13 @@ defmodule String do
   end
 
   @doc """
-  Returns a string where leading/trailing whitespace
-  and new line characters have been removed.
+  Returns a string where leading/trailing Unicode whitespace
+  has been removed.
 
   ## Examples
 
-      String.strip("   abc  ")       #=> "abc"
+      iex> String.strip("   abc  ")
+      "abc"
 
   """
   @spec strip(t) :: t
@@ -298,7 +354,8 @@ defmodule String do
 
   ## Examples
 
-      String.strip("a  abc  a", ?a)  #=> "  abc  "
+      iex> String.strip("a  abc  a", ?a)
+      "  abc  "
 
   """
   @spec strip(t, char) :: t
@@ -318,11 +375,16 @@ defmodule String do
 
   ## Examples
 
-      String.replace("a,b,c", ",", "-") #=> "a-b-c"
-      String.replace("a,b,c", ",", "-", global: false) #=> "a-b,c"
-      String.replace("a,b,c", "b", "[]", insert_replaced: 1) #=> "a,[b],c"
-      String.replace("a,b,c", ",", "[]", insert_replaced: 2) #=> "a[],b[],c"
-      String.replace("a,b,c", ",", "[]", insert_replaced: [1,1]) #=> "a[,,]b[,,]c"
+      iex> String.replace("a,b,c", ",", "-")
+      "a-b-c"
+      iex> String.replace("a,b,c", ",", "-", global: false)
+      "a-b,c"
+      iex> String.replace("a,b,c", "b", "[]", insert_replaced: 1)
+      "a,[b],c"
+      iex> String.replace("a,b,c", ",", "[]", insert_replaced: 2)
+      "a[],b[],c"
+      iex> String.replace("a,b,c", ",", "[]", insert_replaced: [1,1])
+      "a[,,]b[,,]c"
 
   """
   @spec replace(t, t, t) :: t
@@ -348,8 +410,10 @@ defmodule String do
 
   ## Examples
 
-      String.duplicate("abc", 1) #=> "abc"
-      String.duplicate("abc", 2) #=> "abcabc"
+      iex> String.duplicate("abc", 1)
+      "abc"
+      iex> String.duplicate("abc", 2)
+      "abcabc"
 
   """
   @spec duplicate(t, pos_integer) :: t
@@ -362,9 +426,12 @@ defmodule String do
 
   ## Examples
 
-      String.codepoints("josé")         #=> ["j", "o", "s", "é"]
-      String.codepoints("оптими зации") #=> ["о","п","т","и","м","и"," ","з","а","ц","и","и"]
-      String.codepoints("ἅἪῼ")          #=> ["ἅ","Ἢ","ῼ"]
+      iex> String.codepoints("josé")
+      ["j", "o", "s", "é"]
+      iex> String.codepoints("оптими зации")
+      ["о","п","т","и","м","и"," ","з","а","ц","и","и"]
+      iex> String.codepoints("ἅἪῼ")
+      ["ἅ","Ἢ","ῼ"]
 
   """
   @spec codepoints(t) :: [codepoint]
@@ -384,7 +451,8 @@ defmodule String do
 
   ## Examples
 
-      String.next_codepoint("josé") #=> { "j", "osé" }
+      iex> String.next_codepoint("josé")
+      { "j", "osé" }
 
   """
   @spec next_codepoint(t) :: {codepoint, t} | :no_codepoint
@@ -398,10 +466,14 @@ defmodule String do
 
   ## Examples
 
-      String.valid_codepoint?("a") #=> true
-      String.valid_codepoint?("ø") #=> true
-      String.valid_codepoint?("\xffff") #=> false
-      String.valid_codepoint?("asdf") #=> false
+      iex> String.valid_codepoint?("a")
+      true
+      iex> String.valid_codepoint?("ø")
+      true
+      iex> String.valid_codepoint?("\xffff")
+      false
+      iex> String.valid_codepoint?("asdf")
+      false
 
   """
   @spec valid_codepoint?(codepoint) :: boolean
@@ -413,7 +485,8 @@ defmodule String do
 
   ## Examples
 
-      String.graphemes("Ā̀stute") # => ["Ā̀","s","t","u","t","e"]
+      iex> String.graphemes("Ā̀stute")
+      ["Ā̀","s","t","u","t","e"]
 
   """
   @spec graphemes(t) :: [grapheme]
@@ -428,7 +501,8 @@ defmodule String do
 
   ## Examples
 
-      String.next_grapheme("josé") #=> { "j", "osé" }
+      iex> String.next_grapheme("josé")
+      { "j", "osé" }
 
   """
   @spec next_grapheme(t) :: grapheme | :no_grapheme
@@ -439,8 +513,10 @@ defmodule String do
 
   ## Examples
 
-      String.first("elixir")  #=> "e"
-      String.first("եոգլի") #=> "ե"
+      iex> String.first("elixir")
+      "e"
+      iex> String.first("եոգլի")
+      "ե"
 
   """
   @spec first(t) :: grapheme | nil
@@ -456,8 +532,10 @@ defmodule String do
 
   ## Examples
 
-      String.last("elixir")  #=> "r"
-      String.last("եոգլի") #=> "ի"
+      iex> String.last("elixir")
+      "r"
+      iex> String.last("եոգլի")
+      "ի"
 
   """
   @spec last(t) :: grapheme | nil
@@ -476,8 +554,10 @@ defmodule String do
 
   ## Examples
 
-      String.length("elixir")  #=> 6
-      String.length("եոգլի") #=> 5
+      iex> String.length("elixir")
+      6
+      iex> String.length("եոգլի")
+      5
 
   """
   @spec length(t) :: non_neg_integer
@@ -497,11 +577,16 @@ defmodule String do
 
   ## Examples
 
-      String.at("elixir", 0) #=> "e"
-      String.at("elixir", 1) #=> "l"
-      String.at("elixir", 10) #=> nil
-      String.at("elixir", -1) #=> "r"
-      String.at("elixir", -10) #=> nil
+      iex> String.at("elixir", 0)
+      "e"
+      iex> String.at("elixir", 1)
+      "l"
+      iex> String.at("elixir", 10)
+      nil
+      iex> String.at("elixir", -1)
+      "r"
+      iex> String.at("elixir", -10)
+      nil
 
   """
   @spec at(t, integer) :: grapheme | nil
@@ -535,11 +620,16 @@ defmodule String do
 
   ## Examples
 
-      String.slice("elixir", 1, 3) #=> "lix"
-      String.slice("elixir", 1, 10) #=> "lixir"
-      String.slice("elixir", 10, 3) #=> nil
-      String.slice("elixir", -4, 4) #=> "ixi"
-      String.slice("elixir", -10, 3) #=> nil
+      iex> String.slice("elixir", 1, 3)
+      "lix"
+      iex> String.slice("elixir", 1, 10)
+      "lixir"
+      iex> String.slice("elixir", 10, 3)
+      nil
+      iex> String.slice("elixir", -4, 4)
+      "ixir"
+      iex> String.slice("elixir", -10, 3)
+      nil
 
   """
   @spec slice(t, integer, integer) :: grapheme | nil

@@ -271,7 +271,7 @@ defmodule File do
   path. Returns `:ok` or `{ :error, reason }`.
   """
   def write_stat(path, File.Stat[] = stat, opts // []) do
-    F.write_file_info(path, setelem(stat, 0, :file_info), opts)
+    F.write_file_info(path, set_elem(stat, 0, :file_info), opts)
   end
 
   @doc """
@@ -795,7 +795,7 @@ defmodule File do
 
   ## Examples
 
-      File.open!("file.txt", [:read, :write], fn(file) ->
+      File.open("file.txt", [:read, :write], fn(file) ->
         IO.readline(file)
       end)
 
@@ -898,6 +898,31 @@ defmodule File do
   end
 
   @doc """
+  Returns list of files in the given directory.
+
+  It returns `{ :ok, [files] }` in case of success,
+  `{ :error, reason }` otherwise.
+  """
+  def ls(path // ".") do
+    case F.list_dir(path) do
+      { :ok, file_list } -> { :ok, Enum.map file_list, :unicode.characters_to_binary(&1) }
+      { :error, _ } = error -> error
+    end
+  end
+
+  @doc """
+  The same as `ls/1` but raises `File.Error`
+  in case of an error.
+  """
+  def ls!(dir // ".") do
+    case ls(dir) do
+      { :ok, value } -> value
+      { :error, reason } ->
+        raise File.Error, reason: reason, action: "list directory", path: :unicode.characters_to_binary(dir)
+    end
+  end
+
+  @doc """
   Closes the file referenced by `io_device`. It mostly returns `:ok`, except
   for some severe errors such as out of memory.
 
@@ -928,7 +953,8 @@ defmodule File do
   quotes per single quotes and write each line to a target file
   is shown below:
 
-      source = File.iterator("README.md")
+      { :ok, device } = File.open("README.md")
+      source = File.iterator(device)
       File.open "NEWREADME.md", [:write], fn(target) ->
         Enum.each source, fn(line) ->
           IO.write target, Regex.replace(%r/"/, line, "'")

@@ -1,10 +1,18 @@
 defexception ExUnit.AssertionError,  message: "assertion failed"
 
-defexception ExUnit.ExpectationError, expected: nil, actual: nil, reason: "", negation: false, prelude: "Expected" do
+defexception ExUnit.ExpectationError, expected: nil, actual: nil, reason: "", negation: false, prelude: "Expected", description: nil do
   def message(exception) do
-    "#{exception.prelude} #{inspect exception.expected} to " <>
-      if(exception.negation, do: "not ", else: "") <>
-      "be #{exception.reason} #{inspect exception.actual}"
+    if desc = exception.description do
+      "#{exception.prelude} #{desc} #{exception.full_reason} " <>
+        "#{exception.expected}. Insted got #{exception.actual}"
+    else
+      "#{exception.prelude} #{exception.expected} " <>
+        "#{exception.full_reason} #{exception.actual}"
+    end
+  end
+
+  def full_reason(exception) do
+    "to" <> if(exception.negation, do: " not ", else: " ") <> exception.reason
   end
 end
 
@@ -73,84 +81,96 @@ defmodule ExUnit.Assertions do
 
   ## START HELPERS
 
-  defmacrop negation?(op) do
-    quote do: (var!(op) == :! or var!(op) == :not)
-  end
-
-  defp translate_assertion({ :=, _, [_, _] } = expr, _else) do
-    expr
+  defp translate_assertion({ :=, _, [left, right] }, _else) do
+    quote do
+      right = unquote(right)
+      case right do
+        unquote(left) ->
+          right
+        _ ->
+          raise ExUnit.ExpectationError,
+            expected: inspect(right),
+            actual: unquote(Macro.to_binary(left)),
+            reason: "match pattern (=)"
+      end
+    end
   end
 
   defp translate_assertion({ :==, _, [left, right] }, _else) do
-    assert_operator :==, left, right, "equal to (==)"
+    assert_operator :==, left, right, "be equal to (==)"
   end
 
   defp translate_assertion({ :<, _, [left, right] }, _else) do
-    assert_operator :<, left, right, "less than"
+    assert_operator :<, left, right, "be less than"
   end
 
   defp translate_assertion({ :>, _, [left, right] }, _else) do
-    assert_operator :>, left, right, "more than"
+    assert_operator :>, left, right, "be more than"
   end
 
   defp translate_assertion({ :<=, _, [left, right] }, _else) do
-    assert_operator :<=, left, right, "less than or equal to"
+    assert_operator :<=, left, right, "be less than or equal to"
   end
 
   defp translate_assertion({ :>=, _, [left, right] }, _else) do
-    assert_operator :>=, left, right, "more than or equal to"
+    assert_operator :>=, left, right, "be more than or equal to"
   end
 
   defp translate_assertion({ :===, _, [left, right] }, _else) do
-    assert_operator :===, left, right, "equal to (===)"
+    assert_operator :===, left, right, "be equal to (===)"
   end
 
   defp translate_assertion({ :!==, _, [left, right] }, _else) do
-    assert_operator :!==, left, right, "not equal to (!==)"
+    assert_operator :!==, left, right, "be not equal to (!==)"
   end
 
   defp translate_assertion({ :!=, _, [left, right] }, _else) do
-    assert_operator :!=, left, right, "not equal to (!=)"
+    assert_operator :!=, left, right, "be not equal to (!=)"
   end
 
   defp translate_assertion({ :=~, _, [left, right] }, _else) do
-    assert_operator :=~, left, right, "a match (=~) with"
+    assert_operator :=~, left, right, "match (=~)"
   end
 
   defp translate_assertion({ :inlist, _, [left, right] }, _else) do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert List.member?(right, left), left, right, reason: "in"
+      assert List.member?(right, left), left, right, reason: "be in"
     end
   end
 
   ## Negative versions
 
-  defp translate_assertion({ op, _, [{ :=, _, [expected, received] }] }, _else) when negation?(op) do
+  defp translate_assertion({ :!, _, [{ :=, _, [left, right] }] }, _else) do
     quote do
-      try do
-        unquote(expected) = x = unquote(received)
-        flunk "Unexpected right side #{inspect x} match"
-      rescue
-        _ in [MatchError] -> true
+      right = unquote(right)
+      case right do
+        unquote(left) ->
+          raise ExUnit.ExpectationError,
+            expected: inspect(right),
+            actual: unquote(Macro.to_binary(left)),
+            reason: "match pattern (=)",
+            negation: true
+          _ ->
+            nil
       end
     end
   end
 
-  defp translate_assertion({ op, _, [{ :=~, _, [left, right] }] }, _else) when negation?(op) do
+  defp translate_assertion({ :!, _, [{ :=~, _, [left, right] }] }, _else) do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert !(left =~ right), left, right, reason: "a match (=~) with", negation: true
+      assert !(left =~ right), left, right, reason: "match (=~)", negation: true
     end
   end
 
-  defp translate_assertion({ op, _, [{ :inlist, _, [left, right] }] }, _else) when negation?(op) do
+  defp translate_assertion({ negation, _, [{ :inlist, _, [left, right] }] }, _else) when negation in [:!, :not] do
     quote do
       left  = unquote(left)
       right = unquote(right)
-      assert !List.member?(right, left), left, right, reason: "in", negation: true
+      assert !List.member?(right, left), left, right, reason: "be in", negation: true
     end
   end
 
@@ -195,7 +215,10 @@ defmodule ExUnit.Assertions do
 
   """
   def assert(value, expected, actual, opts) do
-    unless value, do: raise(ExUnit.ExpectationError, Keyword.merge([expected: expected, actual: actual], opts))
+    unless value do
+      raise ExUnit.ExpectationError,
+        Keyword.merge([expected: inspect(expected), actual: inspect(actual)], opts)
+    end
     true
   end
 
@@ -215,7 +238,7 @@ defmodule ExUnit.Assertions do
 
   You can also match against specific patterns:
 
-      assert_received { :hello, _ }
+      assert_receive { :hello, _ }
 
   """
   defmacro assert_receive(expected, timeout // 100, message // nil) do

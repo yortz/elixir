@@ -116,9 +116,12 @@ defmodule Module do
 
   ## Examples
 
-      Module.concat [Foo, Bar]    #=> Foo.Bar
-      Module.concat [Foo, "Bar"]  #=> Foo.Bar
-      Module.concat [Foo, 'Bar']  #=> Foo.Bar
+      iex> Module.concat [Foo, Bar]
+      Foo.Bar
+      iex> Module.concat [Foo, "Bar"]
+      Foo.Bar
+      iex> Module.concat [Foo, 'Bar']
+      Foo.Bar
 
   """
   def concat(list) when is_list(list) do
@@ -131,9 +134,12 @@ defmodule Module do
 
   ## Examples
 
-      Module.concat Foo, Bar    #=> Foo.Bar
-      Module.concat Foo, "Bar"  #=> Foo.Bar
-      Module.concat Foo, 'Bar'  #=> Foo.Bar
+      iex> Module.concat Foo, Bar
+      Foo.Bar
+      iex> Module.concat Foo, "Bar"
+      Foo.Bar
+      iex> Module.concat Foo, 'Bar'
+      Foo.Bar
 
   """
   def concat(left, right) do
@@ -148,11 +154,11 @@ defmodule Module do
 
   ## Examples
 
-      Module.safe_concat [Unknown, Module]
-      #=> ArgumentError
+      iex> Module.safe_concat [Unknown, Module]
+      ** (ArgumentError) argument error
 
-      Module.safe_concat [List, Chars]
-      #=> List.Chars
+      iex> Module.safe_concat [List, Chars]
+      List.Chars
 
   """
   def safe_concat(list) when is_list(list) do
@@ -167,11 +173,11 @@ defmodule Module do
 
   ## Examples
 
-      Module.safe_concat Unknown, Module
-      #=> ArgumentError
+      iex> Module.safe_concat Unknown, Module
+      ** (ArgumentError) argument error
 
-      Module.safe_concat List, Chars
-      #=> List.Chars
+      iex> Module.safe_concat List, Chars
+      List.Chars
 
   """
   def safe_concat(left, right) do
@@ -474,7 +480,8 @@ defmodule Module do
   When registering an attribute, two options can be given:
 
   * `:accumulate` - Several calls to the same attribute will
-    accumulate instead of override the previous one;
+    accumulate instead of override the previous one. New attributes
+    are always added to the top of the accumulated list.
 
   * `:persist` - The attribute will be persisted in the Erlang
     Abstract Format. Useful when interfacing with Erlang libraries.
@@ -527,6 +534,8 @@ defmodule Module do
   @doc """
   Convert a module name to binary without the Elixir prefix.
   """
+  def to_binary(Elixir), do: "Elixir"
+
   def to_binary(module) do
     "Elixir-" <> rest = Binary.Chars.to_binary(module)
     bc <<r>> inbits rest, do: <<to_dot(r)>>

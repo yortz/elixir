@@ -86,8 +86,10 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.index %r/c(d)/, "abcd"  #=> 3
-      Regex.index %r/e/, "abcd"     #=> nil
+      iex> Regex.index %r/c(d)/, "abcd"
+      2
+      iex> Regex.index %r/e/, "abcd"
+      nil
 
   """
   def index(regex(re_pattern: compiled), string) do
@@ -102,8 +104,10 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.match? %r/foo/, "foo" #=> true
-      Regex.match? %r/foo/, "bar" #=> false
+      iex> Regex.match? %r/foo/, "foo"
+      true
+      iex> Regex.match? %r/foo/, "bar"
+      false
 
   """
   def match?(regex(re_pattern: compiled), string) do
@@ -116,8 +120,10 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.run %r/c(d)/, "abcd"  #=> ["cd", "d"]
-      Regex.run %r/e/, "abcd"     #=> nil
+      iex> Regex.run %r/c(d)/, "abcd"
+      ["cd", "d"]
+      iex> Regex.run %r/e/, "abcd"
+      nil
 
   """
   def run(regex, string, options // [])
@@ -127,7 +133,7 @@ defmodule Regex do
 
     captures =
       case Keyword.get(options, :capture, :all) do
-        :groups -> groups || raise "regex was not compiled with g"
+        :groups -> groups || raise ArgumentError, message: "regex was not compiled with g"
         others  -> others
       end
 
@@ -139,10 +145,12 @@ defmodule Regex do
 
   @doc """
   Returns the given captures as a list of tuples.
+  Requires the regex to be compiled with the groups option.
 
   ## Examples
 
-      Regex.captures %r/c(?<foo>d)/g, "abcd"  #=> [{:foo, ["d"]}]
+      iex> Regex.captures %r/c(?<foo>d)/g, "abcd"
+      [foo: "d"]
 
   """
   def captures(regex(groups: groups) = regex, string, options // []) do
@@ -150,7 +158,7 @@ defmodule Regex do
       captures = if groups do
         Enum.sort(groups)
       else
-        raise "Regex was not compiled with g"
+        raise ArgumentError, message: "regex was not compiled with g"
       end
       options  = Keyword.put(options, :capture, captures)
     end
@@ -159,7 +167,7 @@ defmodule Regex do
   end
 
   @doc """
-  Returns the underlying re_pattern in the regular expression.
+  Returns the underlying `re_pattern` in the regular expression.
   """
   def re_pattern(regex(re_pattern: compiled)) do
     compiled
@@ -170,7 +178,8 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.source %r(foo) #=> "foo"
+      iex> Regex.source %r(foo)
+      "foo"
 
   """
   def source(regex(source: source)) do
@@ -178,11 +187,12 @@ defmodule Regex do
   end
 
   @doc """
-  Returns the regex options as a list.
+  Returns the regex options as a string.
 
   ## Examples
 
-      Regex.opts %r(foo)m #=> 'm'
+      iex> Regex.opts %r(foo)m
+      "m"
 
   """
   def opts(regex(options: options)) do
@@ -194,7 +204,8 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.groups %r/(?<foo>foo)/g #=> ["foo"]
+      iex> Regex.groups %r/(?<foo>foo)/g
+      [:foo]
 
   """
   def groups(regex(groups: groups)) do
@@ -209,9 +220,12 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.scan %r/c(d|e)/, "abcd abce"   #=> [["d"], ["e"]]
-      Regex.scan %r/c(?:d|e)/, "abcd abce" #=> ["cd", "ce"]
-      Regex.scan %r/e/, "abcd"             #=> []
+      iex> Regex.scan %r/c(d|e)/, "abcd abce"
+      [["d"], ["e"]]
+      iex> Regex.scan %r/c(?:d|e)/, "abcd abce"
+      ["cd", "ce"]
+      iex> Regex.scan %r/e/, "abcd"
+      []
 
   """
   def scan(regex, string, options // [])
@@ -256,11 +270,16 @@ defmodule Regex do
 
   ## Examples
 
-      Regex.replace(%r/d/, "abc", "d")       #=> "abc"
-      Regex.replace(%r/b/, "abc", "d")       #=> "adc"
-      Regex.replace(%r/b/, "abc", "[&]")     #=> "a[b]c"
-      Regex.replace(%r/b/, "abc", "[\\&]")   #=> "a[&]c"
-      Regex.replace(%r/(b)/, "abc", "[\\1]") #=> "a[b]c"
+      iex> Regex.replace(%r/d/, "abc", "d")
+      "abc"
+      iex> Regex.replace(%r/b/, "abc", "d")
+      "adc"
+      iex> Regex.replace(%r/b/, "abc", "[&]")
+      "a[b]c"
+      iex> Regex.replace(%r/b/, "abc", "[\\&]")
+      "a[&]c"
+      iex> Regex.replace(%r/(b)/, "abc", "[\\1]")
+      "a[b]c"
 
   """
   def replace(regex(re_pattern: compiled), string, replacement, options // []) do

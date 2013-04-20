@@ -42,7 +42,6 @@ defmodule Macro do
 
       extract_args(quote do: foo)        == { :foo, [] }
       extract_args(quote do: foo())      == { :foo, [] }
-      extract_args(quote do: :foo.())    == { :foo, [] }
       extract_args(quote do: foo(1,2,3)) == { :foo, [1,2,3] }
       extract_args(quote do: 1.(1,2,3))  == :error
 
@@ -52,31 +51,91 @@ defmodule Macro do
   end
 
   @doc """
-  Recursively escapes the given value so it can be inserted
-  into a syntax tree. Structures that are valid syntax nodes
-  (like atoms, integers, binaries) are represented by themselves.
+  Recursively escapes a value so it can be inserted
+  into a syntax tree.
 
   ## Examples
 
-      Macro.escape(:foo)
-      #=> :foo
+      iex> Macro.escape(:foo)
+      :foo
 
-      Macro.escape({ :a, :b, :c })
-      #=> { :{}, [], [:a, :b, :c] }
+      iex> Macro.escape({ :a, :b, :c })
+      { :{}, [], [:a, :b, :c] }
+
   """
-  def escape({ left, right }) do
-    { escape(left), escape(right) }
+  def escape(expr) do
+    do_escape(expr, false)
   end
 
-  def escape(tuple) when is_tuple(tuple) do
-    { :{}, [], escape(tuple_to_list(tuple)) }
+  defp do_escape({ { { :., meta, [left, :unquote] }, _, [expr] }, _, args }, true) do
+    all = [do_escape(meta, true), do_escape(left, true), expr, do_escape(args, true)]
+    quote do
+      apply :elixir_quote, :unquote, [unquote_splicing(all), __FILE__]
+    end
   end
 
-  def escape(list) when is_list(list) do
-    lc item inlist list, do: escape(item)
+  defp do_escape({ { :., meta, [left, :unquote] }, _, [expr] }, true) do
+    all = [do_escape(meta, true), do_escape(left, true), expr, nil]
+    quote do
+      apply :elixir_quote, :unquote, [unquote_splicing(all), __FILE__]
+    end
   end
 
-  def escape(other), do: other
+  defp do_escape({ :unquote, _meta, [expr] }, true) do
+    expr
+  end
+
+  defp do_escape({ left, right }, unquote) when
+      (not is_tuple(left) or elem(left, 1) != :unquote_splicing) and
+      (not is_tuple(right) or elem(right, 1) != :unquote_splicing) do
+    { do_escape(left, unquote), do_escape(right, unquote) }
+  end
+
+  defp do_escape({ :quote, meta, args }, true) when length(args) in 1..2 do
+    { :{}, [], do_escape([:quote, meta, args], false) }
+  end
+
+  defp do_escape(tuple, unquote) when is_tuple(tuple) do
+    { :{}, [], do_escape(tuple_to_list(tuple), unquote) }
+  end
+
+  defp do_escape(list, true) when is_list(list) do
+    do_splice(Enum.reverse(list))
+  end
+
+  defp do_escape(list, false) when is_list(list) do
+    lc item inlist list, do: do_escape(item, false)
+  end
+
+  defp do_escape(other, _unquote), do: other
+
+  defp do_splice([{ :|, meta, [{ :unquote_splicing, _, [left] }, right] }|t]) do
+    spliced = { :++, meta, [do_splice(t, [], []), left] }
+    { :++, meta, [spliced, right] }
+  end
+
+  defp do_splice(list) do
+    do_splice(list, [], [])
+  end
+
+  defp do_splice([{ :unquote_splicing, _meta, [expr] }|t], buffer, acc) do
+    do_splice(t, [], do_splice_join(do_splice_join(expr, buffer), acc))
+  end
+
+  defp do_splice([h|t], buffer, acc) do
+    do_splice t, [do_escape(h, true)|buffer], acc
+  end
+
+  defp do_splice([], buffer, acc), do: do_splice_join(buffer, acc)
+
+  defp do_splice_join([], right),   do: right
+  defp do_splice_join(left, []),    do: left
+  defp do_splice_join(left, right), do: { :++, [], [left, right] }
+
+  @doc false
+  def escape_quoted(expr) do
+    do_escape(expr, true)
+  end
 
   @doc %B"""
   Unescape the given chars. This is the unescaping behavior
@@ -93,8 +152,8 @@ defmodule Macro do
 
   ## Examples
 
-      Macro.unescape_binary "example\\n"
-      #=> "example\n"
+      iex> Macro.unescape_binary "example\\n"
+      "example\n"
 
   In the example above, we pass a string with `\n` escaped
   and we return a version with it unescaped.
@@ -105,8 +164,8 @@ defmodule Macro do
 
   @doc %B"""
   Unescape the given chars according to the map given.
-  Check `unescape/1` if you want to use the same map as
-  Elixir single- and double-quoted strings.
+  Check `unescape_binary/1` if you want to use the same map
+  as Elixir single- and double-quoted strings.
 
   ## Map
 
@@ -152,11 +211,13 @@ defmodule Macro do
 
   @doc """
   Unescape the given tokens according to the default map.
-  Check `unescape/1` and `unescape/2` for more information
-  about unescaping. Only tokens that are binaries are
-  unescaped, all others are ignored. This function is useful
-  when implementing your own sigils. Check the implementation
-  of `Kernel.__b__` for examples.
+  Check `unescape_binary/1` and `unescape_binary/2` for more
+  information about unescaping.
+
+  Only tokens that are binaries are unescaped, all others are
+  ignored. This function is useful when implementing your own
+  sigils. Check the implementation of `Kernel.__b__`
+  for examples.
   """
   def unescape_tokens(tokens) do
     :elixir_interpolation.unescape_tokens(tokens)
@@ -164,7 +225,7 @@ defmodule Macro do
 
   @doc """
   Unescape the given tokens according to the given map.
-  Check `unescape_tokens/1` and `unescaped/2` for more information.
+  Check `unescape_tokens/1` and `unescape_binary/2` for more information.
   """
   def unescape_tokens(tokens, map) do
     :elixir_interpolation.unescape_tokens(tokens, map)
@@ -175,8 +236,8 @@ defmodule Macro do
 
   ## Examples
 
-      Macro.to_binary(quote do: foo.bar(1, 2, 3))
-      #=> "foo.bar(1, 2, 3)"
+      iex> Macro.to_binary(quote do: foo.bar(1, 2, 3))
+      "foo.bar(1, 2, 3)"
 
   """
   def to_binary(tree)
@@ -366,9 +427,12 @@ defmodule Macro do
   In case the expression cannot be expanded, it returns the expression itself.
 
   Notice that `Macro.expand` is not recursive and it does not
-  expand child expressions. For example, `!some_macro` will expand as:
+  expand child expressions. In this example
 
-      iex> IO.puts Macro.to_binary Macro.expand(quote(do: !some_macro), __ENV__)
+    Macro.expand(quote(do: !some_macro), __ENV__)
+
+  `!some_macro` will expand to something like:
+
       case some_macro do
         false -> true
         nil   -> true
@@ -440,13 +504,15 @@ defmodule Macro do
       end
 
   """
-  def expand(aliases, env)
+  def expand(aliases, env) do
+    expand(aliases, env, nil)
+  end
 
-  def expand({ :__aliases__, _, _ } = original, env) do
+  defp expand({ :__aliases__, _, _ } = original, env, cache) do
     case :elixir_aliases.expand(original, env.aliases, []) do
       atom when is_atom(atom) -> atom
       aliases ->
-        aliases = lc alias inlist aliases, do: expand(alias, env)
+        aliases = lc alias inlist aliases, do: expand(alias, env, cache)
 
         case :lists.all(is_atom(&1), aliases) do
           true  -> :elixir_aliases.concat(aliases)
@@ -456,7 +522,7 @@ defmodule Macro do
   end
 
   # Expand @ calls
-  def expand({ :@, _, [{ name, _, args }] } = original, env) when is_atom(args) or args == [] do
+  defp expand({ :@, _, [{ name, _, args }] } = original, env, _cache) when is_atom(args) or args == [] do
     case (module = env.module) && Module.open?(module) do
       true  -> Module.get_attribute(module, name)
       false -> original
@@ -464,12 +530,12 @@ defmodule Macro do
   end
 
   # Expand pseudo-variables
-  def expand({ :__MODULE__, _, atom }, env) when is_atom(atom), do: env.module
-  def expand({ :__FILE__, _, atom }, env)   when is_atom(atom), do: env.file
-  def expand({ :__ENV__, _, atom }, env)    when is_atom(atom), do: env
+  defp expand({ :__MODULE__, _, atom }, env, _cache) when is_atom(atom), do: env.module
+  defp expand({ :__FILE__, _, atom }, env, _cache)   when is_atom(atom), do: env.file
+  defp expand({ :__ENV__, _, atom }, env, _cache)    when is_atom(atom), do: env
 
   # Expand possible macro import invocation
-  def expand({ atom, line, args } = original, env) when is_atom(atom) do
+  defp expand({ atom, line, args } = original, env, cache) when is_atom(atom) do
     args = case is_atom(args) do
       true  -> []
       false -> args
@@ -487,7 +553,7 @@ defmodule Macro do
         end
 
         expand = :elixir_dispatch.expand_import(line, { atom, length(args) }, args,
-          env.module, env.function, env.requires, extra ++ env.macros, env)
+          env.module, extra, to_erl_env(env, cache))
         case expand do
           { :ok, _, expanded } -> expanded
           { :error, _ }     -> original
@@ -496,23 +562,26 @@ defmodule Macro do
   end
 
   # Expand possible macro require invocation
-  def expand({ { :., _, [left, right] }, line, args } = original, env) when is_atom(right) do
+  defp expand({ { :., _, [left, right] }, line, args } = original, env, cache) when is_atom(right) do
     receiver = expand(left, env)
 
     case is_atom(receiver) and not is_partial?(args) do
       false -> original
       true  ->
         expand = :elixir_dispatch.expand_require(line, receiver, { right, length(args) },
-          args, env.module, env.function, env.requires, env)
+          args, env.module, to_erl_env(env, cache))
         case expand do
-          { :ok, expanded } -> expanded
-          { :error, _ }     -> original
+          { :ok, _receiver, expanded } -> expanded
+          { :error, _ }                -> original
         end
     end
   end
 
   # Anything else is just returned
-  def expand(other, _env), do: other
+  defp expand(other, _env, _cache), do: other
+
+  defp to_erl_env(env, nil),    do: :elixir_scope.to_erl_env(env)
+  defp to_erl_env(_env, cache), do: cache
 
   ## Helpers
 
@@ -530,16 +599,16 @@ defmodule Macro do
     do_safe_term(terms) || :ok
   end
 
-  def do_safe_term({ local, _, terms }) when local in [:{}, :[], :__aliases__] do
+  defp do_safe_term({ local, _, terms }) when local in [:{}, :[], :__aliases__] do
     do_safe_term(terms)
   end
 
-  def do_safe_term({ unary, _, [term] }) when unary in [:+, :-] do
+  defp do_safe_term({ unary, _, [term] }) when unary in [:+, :-] do
     do_safe_term(term)
   end
 
-  def do_safe_term({ left, right }), do: do_safe_term(left) || do_safe_term(right)
-  def do_safe_term(terms) when is_list(terms),  do: Enum.find_value(terms, do_safe_term(&1))
-  def do_safe_term(terms) when is_tuple(terms), do: { :unsafe, terms }
-  def do_safe_term(_), do: nil
+  defp do_safe_term({ left, right }), do: do_safe_term(left) || do_safe_term(right)
+  defp do_safe_term(terms) when is_list(terms),  do: Enum.find_value(terms, do_safe_term(&1))
+  defp do_safe_term(terms) when is_tuple(terms), do: { :unsafe, terms }
+  defp do_safe_term(_), do: nil
 end

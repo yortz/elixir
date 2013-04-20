@@ -143,7 +143,7 @@ eval_form(Line, Module, Block, Vars, RawS) ->
 functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, RawFunctions, C) ->
   Functions = case elixir_compiler:get_opt(internal, C) of
     true  -> RawFunctions;
-    false -> record_rewrite_functions(RawFunctions)
+    false -> record_rewrite_functions(Module, RawFunctions)
   end,
 
   { FinalExport, FinalFunctions } =
@@ -156,11 +156,11 @@ functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Ra
     {attribute, Line, export, lists:sort(FinalExport)} | FinalFunctions
   ] }.
 
-record_rewrite_functions(Functions) ->
+record_rewrite_functions(Module, Functions) ->
   lists:map(fun
     ({ function, Line, Name, Arity, Clauses }) ->
       Rewriten = [begin
-        { C, _, _ } = 'Elixir.Kernel.RecordRewriter':optimize_clause(Clause),
+        { C, _, _ } = 'Elixir.Kernel.RecordRewriter':optimize_clause(Module, Clause),
         C
       end || Clause <- Clauses],
       { function, Line, Name, Arity, Rewriten };
@@ -324,10 +324,10 @@ else_clause() ->
 % HELPERS
 
 eval_callbacks(Line, Module, Name, Args, RawS) ->
-  S         = RawS#elixir_scope{check_clauses=false,check_requires=false},
+  S         = RawS#elixir_scope{check_clauses=false},
   Binding   = binding_for_eval(Module, []),
   Callbacks = lists:reverse(ets:lookup_element(data_table(Module), Name, 2)),
-  Meta      = [{line,Line}],
+  Meta      = [{line,Line},{require,false}],
 
   lists:foreach(fun({M,F}) ->
     { Tree, _ } = elixir_dispatch:dispatch_require(Meta, M, F, Args, S, fun() ->
@@ -347,14 +347,14 @@ eval_callbacks(Line, Module, Name, Args, RawS) ->
 % ERROR HANDLING
 
 format_error({ internal_function_overridden, { Name, Arity } }) ->
-  io_lib:format("function ~s/~B is internal and should not be overridden", [Name, Arity]);
+  io_lib:format("function ~ts/~B is internal and should not be overridden", [Name, Arity]);
 
 format_error({ invalid_module, Module}) ->
   io_lib:format("invalid module name: ~p", [Module]);
 
 format_error({ module_defined, Module }) ->
-  io_lib:format("redefining module ~s", [elixir_errors:inspect(Module)]);
+  io_lib:format("redefining module ~ts", [elixir_errors:inspect(Module)]);
 
 format_error({ module_in_definition, Module }) ->
-  io_lib:format("cannot define module ~s because it is currently being defined",
+  io_lib:format("cannot define module ~ts because it is currently being defined",
     [elixir_errors:inspect(Module)]).

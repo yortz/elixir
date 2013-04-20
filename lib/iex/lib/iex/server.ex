@@ -4,7 +4,7 @@ defmodule IEx.Server do
   def start(config) do
     IO.puts "Interactive Elixir (#{System.version}) - press Ctrl+C to exit (type h() ENTER for help)"
     Process.put :iex_history, []
-    { _, _, scope } = :elixir.eval('import IEx.Helpers', [], 0, config.scope)
+    { _, _, scope } = :elixir.eval('require IEx.Helpers', [], 0, config.scope)
     do_loop(config.scope(scope))
   end
 
@@ -64,7 +64,7 @@ defmodule IEx.Server do
   end
 
   defp io_put(result) do
-    IO.inspect :stdio, result, IEx.inspect_opts
+    IO.puts :stdio, IO.ANSI.escape("%{yellow}#{inspect(result, IEx.inspect_opts)}")
   end
 
   defp io_error(result) do

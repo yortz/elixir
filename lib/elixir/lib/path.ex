@@ -14,6 +14,9 @@ defmodule Path do
 
   alias :filename, as: FN
 
+  @type t :: char_list | atom | binary
+  @type r :: char_list | binary
+
   @doc """
   Converts the given filename and returns an absolute name.
   Differently from `Path.expand/1`, no attempt is made to
@@ -49,11 +52,11 @@ defmodule Path do
 
   ## Examples
 
-      Path.absname("foo", "bar")
-      #=> "bar/foo"
+      iex> Path.absname("foo", "bar")
+      "bar/foo"
 
-      Path.absname("../x", "bar")
-      #=> "bar/../x"
+      iex> Path.absname("../x", "bar")
+      "bar/../x"
 
   """
   def absname(path, relative_to) do
@@ -66,11 +69,12 @@ defmodule Path do
 
   ## Examples
 
-      Path.expand("/foo/bar/../bar") == "/foo/bar"
+      iex> Path.expand("/foo/bar/../bar")
+      "/foo/bar"
 
   """
   def expand(path) do
-    normalize FN.absname(path, get_cwd(path))
+    normalize FN.absname(expand_home(path), get_cwd(path))
   end
 
   @doc """
@@ -80,12 +84,14 @@ defmodule Path do
 
   ## Examples
 
-      Path.expand("foo/bar/../bar", "/baz") == "/baz/foo/bar"
-      Path.expand("/foo/bar/../bar", "/baz") == "/foo/bar"
+      iex> Path.expand("foo/bar/../bar", "/baz")
+      "/baz/foo/bar"
+      iex> Path.expand("/foo/bar/../bar", "/baz")
+      "/foo/bar"
 
   """
   def expand(path, relative_to) do
-    normalize FN.absname(FN.absname(path, relative_to), get_cwd(path))
+    normalize FN.absname(FN.absname(expand_home(path), relative_to), get_cwd(path))
   end
 
   @doc """
@@ -188,9 +194,12 @@ defmodule Path do
 
   ## Examples
 
-      Path.relative_to("/usr/local/foo", "/usr/local") #=> "foo"
-      Path.relative_to("/usr/local/foo", "/") #=> "foo"
-      Path.relative_to("/usr/local/foo", "/etc") #=> "/usr/local/foo"
+      iex> Path.relative_to("/usr/local/foo", "/usr/local")
+      "foo"
+      iex> Path.relative_to("/usr/local/foo", "/")
+      "usr/local/foo"
+      iex> Path.relative_to("/usr/local/foo", "/etc")
+      "/usr/local/foo"
 
   """
   def relative_to(path, from) when is_list(path) and is_binary(from) do
@@ -224,14 +233,14 @@ defmodule Path do
 
   ## Examples
 
-      Path.basename("foo")
-      #=> "foo"
+      iex> Path.basename("foo")
+      "foo"
 
-      Path.basename("foo/bar")
-      #=> "bar"
+      iex> Path.basename("foo/bar")
+      "bar"
 
-      Path.basename("/")
-      #=> ""
+      iex> Path.basename("/")
+      ""
 
   """
   def basename(path) do
@@ -245,12 +254,12 @@ defmodule Path do
 
   ## Examples
 
-      Path.basename("~/foo/bar.ex", ".ex")
-      #=> "bar"
-      Path.basename("~/foo/bar.exs", ".ex")
-      #=> "bar.exs"
-      Path.basename("~/foo/bar.old.ex", ".ex")
-      #=> "bar.old"
+      iex> Path.basename("~/foo/bar.ex", ".ex")
+      "bar"
+      iex> Path.basename("~/foo/bar.exs", ".ex")
+      "bar.exs"
+      iex> Path.basename("~/foo/bar.old.ex", ".ex")
+      "bar.old"
 
   """
   def basename(path, extension) do
@@ -275,10 +284,10 @@ defmodule Path do
 
   ## Examples
 
-      Path.extname("foo.erl")
-      #=> ".erl"
-      Path.extname("~/foo/bar")
-      #=> ""
+      iex> Path.extname("foo.erl")
+      ".erl"
+      iex> Path.extname("~/foo/bar")
+      ""
 
   """
   def extname(path) do
@@ -290,10 +299,10 @@ defmodule Path do
 
   ## Examples
 
-      Path.rootname("/foo/bar")
-      #=> "/foo/bar"
-      Path.rootname("/foo/bar.ex")
-      #=> "/foo/bar"
+      iex> Path.rootname("/foo/bar")
+      "/foo/bar"
+      iex> Path.rootname("/foo/bar.ex")
+      "/foo/bar"
 
   """
   def rootname(path) do
@@ -306,10 +315,10 @@ defmodule Path do
 
   ## Examples
 
-      Path.rootname("/foo/bar.erl", ".erl")
-      #=> "/foo/bar"
-      Path.rootname("/foo/bar.erl", ".ex")
-      #=> "/foo/bar.erl"
+      iex> Path.rootname("/foo/bar.erl", ".erl")
+      "/foo/bar"
+      iex> Path.rootname("/foo/bar.erl", ".ex")
+      "/foo/bar.erl"
 
   """
   def rootname(path, extension) do
@@ -322,12 +331,12 @@ defmodule Path do
 
   ## Examples
 
-      Path.join(["~", "foo"])
-      #=> "~/foo"
-      Path.join(["foo"])
-      #=> "foo"
-      Path.join(["/", "foo", "bar"])
-      #=> "/foo/bar"
+      iex> Path.join(["~", "foo"])
+      "~/foo"
+      iex> Path.join(["foo"])
+      "foo"
+      iex> Path.join(["/", "foo", "bar"])
+      "/foo/bar"
 
   """
   def join([name1, name2|rest]), do:
@@ -342,8 +351,8 @@ defmodule Path do
 
   ## Examples
 
-      Path.join("foo", "bar")
-      #=> "foo/bar"
+      iex> Path.join("foo", "bar")
+      "foo/bar"
 
   """
   def join(left, right) when is_binary(left) and is_binary(right), do:
@@ -405,12 +414,12 @@ defmodule Path do
 
   ## Examples
 
-       Path.split("")
-       #=> ["/"]
-       Path.split("foo")
-       #=> ["foo"]
-       Path.split("/foo/bar")
-       #=> ["/", "foo", "bar"]
+       iex> Path.split("")
+       ["/"]
+       iex> Path.split("foo")
+       ["foo"]
+       iex> Path.split("/foo/bar")
+       ["/", "foo", "bar"]
 
   """
   def split(path) do
@@ -484,33 +493,31 @@ defmodule Path do
 
   # Normalize the given path by expanding "..", "." and "~".
 
-  defp normalize(path), do: do_normalize(FN.split(path))
-
-  defp do_normalize(["~"|t]) do
-    do_normalize t, [System.user_home!]
+  defp expand_home(<<?~, rest :: binary>>) do
+    System.user_home! <> rest
   end
 
-  defp do_normalize(['~'|t]) do
-    do_normalize t, [System.user_home! |> binary_to_filename_string]
+  defp expand_home('~' ++ rest) do
+    (System.user_home! |> binary_to_filename_string) ++ rest
   end
 
-  defp do_normalize(t) do
-    do_normalize t, []
+  defp expand_home(other), do: other
+
+  defp normalize(path), do: normalize(FN.split(path), [])
+
+  defp normalize([top|t], [_|acc]) when top in ["..", '..'] do
+    normalize t, acc
   end
 
-  defp do_normalize([top|t], [_|acc]) when top in ["..", '..'] do
-    do_normalize t, acc
+  defp normalize([top|t], acc) when top in [".", '.'] do
+    normalize t, acc
   end
 
-  defp do_normalize([top|t], acc) when top in [".", '.'] do
-    do_normalize t, acc
+  defp normalize([h|t], acc) do
+    normalize t, [h|acc]
   end
 
-  defp do_normalize([h|t], acc) do
-    do_normalize t, [h|acc]
-  end
-
-  defp do_normalize([], acc) do
+  defp normalize([], acc) do
     join Enum.reverse(acc)
   end
 end

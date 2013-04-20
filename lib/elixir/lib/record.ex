@@ -31,12 +31,38 @@ defmodule Record do
         @moduledoc false
         import Record.DSL
 
+        @record_fields []
+        @record_types  []
+
         values = unquote(values)
         opts   = unquote(opts)
         Record.deffunctions(values, __ENV__)
-        unquote(block)
-        Record.deftypes(values, @record_type, __ENV__)
+        value = unquote(block)
+        Record.deftypes(values, @record_types, __ENV__)
+        value
       end
+    end
+  end
+
+  @doc """
+  Import public record definition as a set of private macros (as defined by defrecordp/2)
+
+  ## Usage
+
+     Record.import Record.Module, as: macro_name
+
+  ## Example
+
+     defmodule Test do
+       Record.import File.Stat, as: :file_stat
+
+       def size(file_stat(size: size)), do: size
+     end
+
+  """
+  defmacro import(module, as: name) do
+    quote do
+      Record.defmacros(unquote(name), unquote(module).__record__(:fields), __ENV__, unquote(module))
     end
   end
 
@@ -80,7 +106,7 @@ defmodule Record do
       switch_recorder()
     ]
 
-    contents = [quote(do: @__record__ unquote(escaped))|contents]
+    contents = [quote(do: @record_fields unquote(escaped))|contents]
 
     # Special case for bootstraping purposes
     if env == Macro.Env do
@@ -124,31 +150,32 @@ defmodule Record do
       end
 
   """
-  def defmacros(name, values, env) do
+  def defmacros(name, values, env, tag // nil) do
     escaped = lc value inlist values do
       { key, value } = convert_value(value)
       { key, Macro.escape(value) }
     end
 
     contents = quote do
+
       defmacrop unquote(name)() do
-        Record.access(__MODULE__, unquote(escaped), [], __CALLER__)
+        Record.access(unquote(tag) || __MODULE__, unquote(escaped), [], __CALLER__)
       end
 
       defmacrop unquote(name)(record) when is_tuple(record) do
-        Record.to_keywords(__MODULE__, unquote(escaped), record)
+        Record.to_keywords(unquote(tag) || __MODULE__, unquote(escaped), record)
       end
 
       defmacrop unquote(name)(args) do
-        Record.access(__MODULE__, unquote(escaped), args, __CALLER__)
+        Record.access(unquote(tag) || __MODULE__, unquote(escaped), args, __CALLER__)
       end
 
       defmacrop unquote(name)(record, key) when is_atom(key) do
-        Record.get(__MODULE__, unquote(escaped), record, key)
+        Record.get(unquote(tag) || __MODULE__, unquote(escaped), record, key)
       end
 
       defmacrop unquote(name)(record, args) do
-        Record.dispatch(__MODULE__, unquote(escaped), record, args, __CALLER__)
+        Record.dispatch(unquote(tag) || __MODULE__, unquote(escaped), record, args, __CALLER__)
       end
     end
 
@@ -441,19 +468,19 @@ defmodule Record do
   #     end
   #
   #     def :atime.(value, record) do
-  #       setelem(record, 1, value)
+  #       set_elem(record, 1, value)
   #     end
   #
   #     def :mtime.(record) do
-  #       setelem(record, 2, value)
+  #       set_elem(record, 2, value)
   #     end
   #
   #     def :atime.(callback, record) do
-  #       setelem(record, 1, callback.(elem(record, 1)))
+  #       set_elem(record, 1, callback.(elem(record, 1)))
   #     end
   #
   #     def :mtime.(callback, record) do
-  #       setelem(record, 2, callback.(elem(record, 2)))
+  #       set_elem(record, 2, callback.(elem(record, 2)))
   #     end
   #
   defp accessors([{ :__exception__, _ }|t], 1) do
@@ -529,19 +556,30 @@ defmodule Record do
   ## Types/specs generation
 
   defp core_specs(values) do
-    types = lc { _, _, spec } inlist values, do: spec
+    types   = lc { _, _, spec } inlist values, do: spec
+    options = if values == [], do: [], else: [options_specs(values)]
 
     quote do
       unless Kernel.Typespec.defines_type?(__MODULE__, :t, 0) do
         @type t :: { __MODULE__, unquote_splicing(types) }
       end
 
+      unless Kernel.Typespec.defines_type?(__MODULE__, :options, 0) do
+        @type options :: unquote(options)
+      end
+
       @spec new :: t
-      @spec new(Keyword.t | tuple) :: t
-      @spec to_keywords(t) :: Keyword.t
-      @spec update(Keyword.t, t) :: t
+      @spec new(options | tuple) :: t
+      @spec to_keywords(t) :: options
+      @spec update(options, t) :: t
       @spec __index__(atom) :: non_neg_integer | nil
     end
+  end
+
+  defp options_specs([{ k, _, v }|t]) do
+    :lists.foldl fn { k, _, v }, acc ->
+      { :|, [], [{ k, v }, acc] }
+    end, { k, v }, t
   end
 
   defp accessor_specs([{ :__exception__, _, _ }|t], 1, acc) do
@@ -607,7 +645,7 @@ defmodule Record.DSL do
     escaped = lc { k, v } inlist opts, do: { k, Macro.escape(v) }
 
     quote do
-      @record_type Keyword.merge(@record_type || [], unquote(escaped))
+      @record_types Keyword.merge(@record_types || [], unquote(escaped))
     end
   end
 end

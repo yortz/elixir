@@ -3,6 +3,16 @@ Code.require_file "../test_helper.exs", __FILE__
 defrecord RecordTest.FileInfo,
   Record.extract(:file_info, from_lib: "kernel/include/file.hrl")
 
+defmodule RecordTest.FileInfo.Helper do
+  Record.import RecordTest.FileInfo, as: :file_info
+
+  def new do
+    file_info
+  end
+
+  def size(file_info(size: size)), do: size
+end
+
 defrecord RecordTest.SomeRecord, a: 0, b: 1
 defrecord RecordTest.WithNoField, []
 
@@ -32,6 +42,12 @@ end
 
 defmodule RecordTest.Macros do
   defrecordp :_user, name: "José", age: 25
+
+  defrecord Nested do
+    def nested_record_alias?(Nested[]) do
+      true
+    end
+  end
 
   def new() do
     _user()
@@ -103,6 +119,11 @@ defmodule RecordTest do
 
   test :is_record do
     assert is_record(RecordTest.FileInfo.new, RecordTest.FileInfo)
+    assert is_record(RecordTest.WithNoField.new)
+    refute is_record(empty_tuple)
+    refute is_record(a_list)
+    refute is_record(empty_tuple, RecordTest.FileInfo)
+    refute is_record(a_tuple, RecordTest.FileInfo)
     refute is_record(a_list, RecordTest.FileInfo)
     refute is_record(RecordTest.FileInfo.new, List)
   end
@@ -166,12 +187,23 @@ defmodule RecordTest do
     refute { :update_b, 2 } inlist RecordTest.DynamicName.__record__(:optimizable)
   end
 
+  test :result do
+    assert { :module, _, _, "result"} = (defrecord WithResult, foo: :bar do
+      "result"
+    end)
+  end
+
+  test :import do
+    assert RecordTest.FileInfo.Helper.new == RecordTest.FileInfo.new
+    assert RecordTest.FileInfo.Helper.size(RecordTest.FileInfo.new(size: 100)) == 100
+  end
+
   defp file_info do
     { :ok, file_info } = :file.read_file_info(__FILE__)
     file_info
   end
 
-  defp a_list do
-    [:a, :b, :c]
-  end
+  defp empty_tuple, do: {}
+  defp a_tuple, do: { :foo, :bar, :baz }
+  defp a_list,  do: [ :foo, :bar, :baz ]
 end

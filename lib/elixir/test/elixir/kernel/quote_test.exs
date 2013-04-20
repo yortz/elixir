@@ -62,6 +62,36 @@ defmodule Kernel.QuoteTest do
     end
   end
 
+  test :nested_quote do
+    assert { :quote, _, [[do: { :unquote, _, _ }]] } = quote(do: quote(do: unquote(x)))
+  end
+
+  defmacrop nested_quote_in_macro do
+    x = 1
+    quote do
+      x = unquote(x)
+      quote do
+        unquote(x)
+      end
+    end
+  end
+
+  test :nested_quote_in_macro do
+    assert nested_quote_in_macro == 1
+  end
+
+  Enum.each [foo: 1, bar: 2, baz: 3], fn { k, v } ->
+    def unquote(k)(arg) do
+      unquote(v) + arg
+    end
+  end
+
+  test :dynamic_definition_with_unquote do
+    assert foo(1) == 2
+    assert bar(2) == 4
+    assert baz(3) == 6
+  end
+
   test :splice_on_root do
     contents = [1, 2, 3]
     assert quote(do: unquote_splicing(contents)) == quote do: (1; 2; 3)
@@ -206,9 +236,30 @@ defmodule Kernel.QuoteTest.ImportsHygieneTest do
     end
   end
 
+  defmacrop get_bin_size_with_partial do
+    quote do
+      size(&1).("hello")
+    end
+  end
+
+  defmacrop get_bin_size_with_function do
+    quote do
+      function(size/1).("hello")
+    end
+  end
+
+  defmacrop get_bin_size_with_kernel_function do
+    quote do
+      Kernel.function(size/1).("hello")
+    end
+  end
+
   test :expand_imports do
     import Kernel, except: [size: 1]
     assert get_bin_size == 5
+    assert get_bin_size_with_partial == 5
+    assert get_bin_size_with_function == 5
+    assert get_bin_size_with_kernel_function == 5
   end
 
   defmacrop get_dict_size do
@@ -223,5 +274,24 @@ defmodule Kernel.QuoteTest.ImportsHygieneTest do
     import Kernel, except: [size: 1]
     import Dict, only: [size: 1]
     assert get_dict_size == 2
+  end
+
+  defmacrop with_size do
+    quote do
+      import Kernel, except: [size: 1]
+      import Dict, only: [size: 1]
+      size([a: 1, b: 2])
+    end
+  end
+
+  defmacrop with_nested_size do
+    quote do
+      with_size
+    end
+  end
+
+  test :explicitly_overriden_imports do
+    assert with_size == 2
+    assert with_nested_size == 2
   end
 end

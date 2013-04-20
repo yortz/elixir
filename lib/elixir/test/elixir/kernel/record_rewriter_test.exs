@@ -24,7 +24,7 @@ defmodule Kernel.RecordRewriterTest do
   end
 
   defp optimize_clause(clause) do
-    { clause, dict, res } = Kernel.RecordRewriter.optimize_clause(clause)
+    { clause, dict, res } = Kernel.RecordRewriter.optimize_clause(__MODULE__, clause)
     dict = Enum.map dict, fn { k, { v, _ } } -> { k, v }; other -> other; end
     { clause, dict, res }
   end
@@ -131,11 +131,6 @@ defmodule Kernel.RecordRewriterTest do
 
   test "inside list comprehension" do
     clause = clause(fn -> lc x = Macro.Env[] inlist sample, do: x end)
-    assert optimize_clause(clause) == { clause, [], nil }
-  end
-
-  test "inside bit comprehension" do
-    clause = clause(fn -> bc x = Macro.Env[] inbits sample, do: <<x>> end)
     assert optimize_clause(clause) == { clause, [], nil }
   end
 
