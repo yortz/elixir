@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule CodeTest do
   use ExUnit.Case, async: true
@@ -14,17 +14,17 @@ defmodule CodeTest do
 
   Code.eval_quoted contents, [], file: "sample.ex", line: 13
 
-  test :eval do
-    assert Code.eval("1 + 2") == { 3, [] }
-    assert { 3, _ } = Code.eval("a + b", [a: 1, b: 2], __ENV__.location)
+  test :eval_string do
+    assert Code.eval_string("1 + 2") == { 3, [] }
+    assert { 3, _ } = Code.eval_string("a + b", [a: 1, b: 2], __ENV__.location)
   end
 
   test :eval_with_scope do
-    assert Code.eval("one", [], delegate_locals_to: __MODULE__) == { 1, [] }
+    assert Code.eval_string("one", [], delegate_locals_to: __MODULE__) == { 1, [] }
   end
 
   test :eval_with_requires do
-    assert Code.eval("Kernel.if true, do: :ok", [], requires: [Z, Kernel]) == { :ok, [] }
+    assert Code.eval_string("Kernel.if true, do: :ok", [], requires: [Z, Kernel]) == { :ok, [] }
   end
 
   test :eval_quoted do
@@ -39,21 +39,21 @@ defmodule CodeTest do
 
   test :require do
     Code.require_file fixture_path("code_sample.exs")
-    assert fixture_path("code_sample.exs") inlist Code.loaded_files
+    assert fixture_path("code_sample.exs") in Code.loaded_files
     assert Code.require_file(fixture_path("code_sample.exs")) == nil
 
     Code.unload_files [fixture_path("code_sample.exs")]
-    refute fixture_path("code_sample.exs") inlist Code.loaded_files
+    refute fixture_path("code_sample.exs") in Code.loaded_files
     assert Code.require_file(fixture_path("code_sample.exs")) != nil
   end
 
   test :path_manipulation do
-    path = Path.expand("../binary", __FILE__)
+    path = Path.join(__DIR__, "binary")
     Code.prepend_path path
-    assert binary_to_list(path) inlist :code.get_path
+    assert binary_to_list(path) in :code.get_path
 
     Code.delete_path path
-    refute binary_to_list(path) inlist :code.get_path
+    refute binary_to_list(path) in :code.get_path
   end
 
   test :file do
@@ -61,8 +61,7 @@ defmodule CodeTest do
   end
 
   test :string_to_ast do
-    assert Code.string_to_ast("1 + 2") == { :ok, quote hygiene: [imports: false], line: 1, do: 1 + 2 }
-    assert Code.string_to_ast("1 + 2; 3 + 4") == { :ok, quote hygiene: [imports: false], line: 1, do: (1 + 2; 3 + 4) }
+    assert Code.string_to_ast("1 + 2") == { :ok, { :+, [line: 1], [1, 2] } }
     assert { :error, _ } = Code.string_to_ast("a.1")
   end
 
@@ -72,7 +71,7 @@ defmodule CodeTest do
   end
 
   test :string_to_ast! do
-    assert Code.string_to_ast!("1 + 2") == quote hygiene: [imports: false], line: 1, do: 1 + 2
+    assert Code.string_to_ast!("1 + 2") == { :+, [line: 1], [1, 2] }
 
     assert_raise SyntaxError, fn ->
       Code.string_to_ast!("a.1")

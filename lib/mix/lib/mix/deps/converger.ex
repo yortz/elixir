@@ -4,8 +4,6 @@
 defmodule Mix.Deps.Converger do
   @moduledoc false
 
-  import Mix.Deps, only: [available?: 1]
-
   @doc """
   Clear up the mixfile cache.
   """
@@ -20,10 +18,10 @@ defmodule Mix.Deps.Converger do
   an updated depedency in case some processing is done.
   """
   def all(rest, callback) do
-    main   = Enum.reverse Mix.Deps.Project.all
     config = [ deps_path: Path.expand(Mix.project[:deps_path]),
                root_lockfile: Path.expand(Mix.project[:lockfile]) ]
-    all(main, [], [], main, config, callback, rest)
+    { main, rest } = Mix.Deps.Retriever.all(rest, config,callback)
+    { all(Enum.reverse(main), [], [], main), rest }
   end
 
   # We traverse the tree of dependencies in a breadth-
@@ -65,27 +63,25 @@ defmodule Mix.Deps.Converger do
   # Now, since `d` was specified in a parent project, no
   # exception is going to be raised since d is considered
   # to be the authorative source.
-  defp all([dep|t], acc, upper_breadths, current_breadths, config, callback, rest) do
+  defp all([dep|t], acc, upper_breadths, current_breadths) do
     cond do
       contains_dep?(upper_breadths, dep) ->
-        all(t, acc, upper_breadths, current_breadths, config, callback, rest)
+        all(t, acc, upper_breadths, current_breadths)
       match?({ diverged_acc, true }, diverged_dep?(acc, dep)) ->
-        all(t, diverged_acc, upper_breadths, current_breadths, config, callback, rest)
+        all(t, diverged_acc, upper_breadths, current_breadths)
       true ->
-        { dep, rest } = callback.(dep, rest)
-
-        if available?(dep) and mixfile?(dep) do
-          { project, deps } = nested_deps(dep, config)
-          { acc, rest } = all(t, [dep.project(project)|acc], upper_breadths, current_breadths, config, callback, rest)
-          all(deps, acc, current_breadths, deps ++ current_breadths, config, callback, rest)
+        deps = dep.deps
+        if deps != [] do
+          acc = all(t, [dep|acc], upper_breadths, current_breadths)
+          all(deps, acc, current_breadths, deps ++ current_breadths)
         else
-          all(t, [dep|acc], upper_breadths, current_breadths, config, callback, rest)
+          all(t, [dep|acc], upper_breadths, current_breadths)
         end
     end
   end
 
-  defp all([], acc, _upper, _current, _config, _callback, rest) do
-    { acc, rest }
+  defp all([], acc, _upper, _current) do
+    acc
   end
 
   # Does the list contain the given dependency?
@@ -108,57 +104,6 @@ defmodule Mix.Deps.Converger do
       else
         { other.status({ :diverged, dep }), true }
       end
-    end
-  end
-
-  defp mixfile?(dep) do
-    File.regular?(Path.join dep.opts[:dest], "mix.exs")
-  end
-
-  # The dependency contains a Mixfile, so let's
-  # load it and retrieve its nested dependencies.
-  defp nested_deps(Mix.Dep[app: app, opts: opts], config) do
-    File.cd! opts[:dest], fn ->
-      env     = opts[:env] || :prod
-      old_env = Mix.env
-
-      try do
-        Mix.env(env)
-        project = load_project(app, config)
-
-        try do
-          { project, Enum.reverse Mix.Deps.Project.all }
-        after
-          Mix.Project.pop
-        end
-      after
-        Mix.env(old_env)
-      end
-    end
-  end
-
-  defp load_project(app, config) do
-    if cached = Mix.Server.call({ :mixfile_cache, app }) do
-      Mix.Project.post_config(config)
-      Mix.Project.push(cached)
-      cached
-    else
-      old_proj = Mix.Project.get
-
-      if File.regular?("mix.exs") do
-        Mix.Project.post_config(config)
-        Code.load_file "mix.exs"
-      end
-
-      new_proj = Mix.Project.get
-
-      if old_proj == new_proj do
-        new_proj = nil
-        Mix.Project.push new_proj
-      end
-
-      Mix.Server.cast({ :mixfile_cache, app, new_proj })
-      new_proj
     end
   end
 end

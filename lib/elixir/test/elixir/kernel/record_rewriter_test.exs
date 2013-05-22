@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defrecord BadRange, first: 0, last: 0 do
   defoverridable [first: 1]
@@ -159,6 +159,9 @@ defmodule Kernel.RecordRewriterTest do
 
     clause = clause(fn -> case something do 1 -> x = Macro.Env[]; 2 -> x = Range[] end end)
     assert optimize_clause(clause) == { clause, [x: nil], nil }
+
+    clause = clause(fn -> case something do x = Macro.Env[] -> x; x = Range[] -> x; _ -> :ok end end)
+    assert optimize_clause(clause) == { clause, [x: nil], nil }
   end
 
   test "inside case with nested tuple" do
@@ -167,6 +170,11 @@ defmodule Kernel.RecordRewriterTest do
 
     clause = clause(fn -> case something do x = Range[first: { :foo, 2 }] -> x; Range[first: { :foo, 2 }] = x -> x end end)
     assert optimize_clause(clause) == { clause, [x: Range], { Range, [nil, { :foo, nil }, nil] } }
+  end
+
+  test "empty receive" do
+    clause = clause(fn -> receive do end end)
+    assert optimize_clause(clause) == { clause, [], [] }
   end
 
   test "inside receive" do

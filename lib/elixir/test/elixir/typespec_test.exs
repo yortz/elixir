@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule Typespec.TypeTest do
   use ExUnit.Case, async: true
@@ -353,7 +353,7 @@ defmodule Typespec.TypeTest do
     ]
 
     types = test_module do
-      Module.eval_quoted __MODULE__, quote do: unquote_splicing(quoted)
+      Module.eval_quoted __MODULE__, quote do: (unquote_splicing(quoted))
       @type ++ @opaque
     end
 
@@ -408,7 +408,7 @@ defmodule Typespec.TypeTest do
     compiled = test_module do
       def a, do: 1
       def a(a), do: a
-      Module.eval_quoted __MODULE__, quote do: unquote_splicing(specs)
+      Module.eval_quoted __MODULE__, quote do: (unquote_splicing(specs))
       Enum.reverse @spec
     end
 

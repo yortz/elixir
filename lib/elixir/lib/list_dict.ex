@@ -1,4 +1,4 @@
-defmodule List.Dict do
+defmodule ListDict do
   @moduledoc """
   A Dict implementation that works on lists of two-items tuples.
 
@@ -7,19 +7,19 @@ defmodule List.Dict do
   """
 
   @doc """
-  Returns a new `List.Dict`, i.e. an empty list.
+  Returns a new `ListDict`, i.e. an empty list.
   """
   def new, do: []
 
   @doc """
-  Creates a new `List.Dict` from the given pairs.
+  Creates a new `ListDict` from the given pairs.
   """
   def new(pairs) do
     Enum.map pairs, fn({ k, v }) -> { k, v } end
   end
 
   @doc """
-  Creates a new `List.Dict` from the given pairs
+  Creates a new `ListDict` from the given pairs
   via the given transformation function.
   """
   def new(list, transform) when is_function(transform) do
@@ -65,15 +65,43 @@ defmodule List.Dict do
     end
   end
 
-  @doc """
-  Returns the value under the given key
-  raises `KeyError` if the key does not exist.
-  """
+  @doc false
   def get!(dict, key) do
+    IO.write "[WARNING] Dict.get! and ListDict.get! are deprecated, please use Dict.fetch! and ListDict.fetch! instead\n#{Exception.format_stacktrace}"
     case :lists.keyfind(key, 1, dict) do
       { ^key, value } -> value
       false -> raise(KeyError, key: key)
     end
+  end
+
+  @doc """
+  Returns the value under key from the given
+  dict in a tagged tuple, otherwise `:error`.
+  """
+  def fetch(dict, key) do
+    case :lists.keyfind(key, 1, dict) do
+      { ^key, value } -> { :ok, value }
+      false -> :error
+    end
+  end
+
+  @doc """
+  Returns the value under the given key
+  raises `KeyError` if the key does not exist.
+  """
+  def fetch!(dict, key) do
+    case :lists.keyfind(key, 1, dict) do
+      { ^key, value } -> value
+      false -> raise(KeyError, key: key)
+    end
+  end
+
+  @doc """
+  Returns the value under the given key
+  from the dict as well as the dict without that key.
+  """
+  def pop(dict, key, default // nil) do
+    { get(dict, key, default), delete(dict, key) }
   end
 
   @doc """
@@ -113,6 +141,39 @@ defmodule List.Dict do
   end
 
   @doc """
+  Splits a dict into two dicts,
+  one containing entries with key in the keys list,
+  and another containing entries with key not in keys.
+  Returns a 2-tuple of the new dicts.
+  """
+  def split(dict, keys) do
+    acc = { new(), new() }
+    Enum.reduce dict, acc, fn({ k, v }, { take, drop }) ->
+      if :lists.member(k, keys) do
+        { [{k,v}|take], drop }
+      else
+        { take, [{k,v}|drop] }
+      end
+    end
+  end
+
+  @doc """
+  Returns a new dict with only the entries
+  which key is in keys
+  """
+  def take(dict, keys) do
+    lc { k, _ } = tuple inlist dict, :lists.member(k, keys), do: tuple
+  end
+
+  @doc """
+  Returns a new dict with only the entries
+  which key is not in keys
+  """
+  def drop(dict, keys) do
+    lc { k, _ } = tuple inlist dict, not :lists.member(k, keys), do: tuple
+  end
+
+  @doc """
   Updates the key in the dict according to the given function.
   """
   def update([{key, value}|dict], key, fun) do
@@ -144,9 +205,16 @@ defmodule List.Dict do
   end
 
   @doc """
-  Returns an empty `List.Dict`.
+  Returns an empty `ListDict`.
   """
   def empty(_dict), do: []
+
+  @doc """
+  Check if the ListDict is equal to another ListDict.
+  """
+  def equal?(dict, other) do
+    :lists.keysort(1, dict) == :lists.keysort(1, other)
+  end
 
   @doc """
   Converts the dict to a list.

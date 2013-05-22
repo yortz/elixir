@@ -62,7 +62,7 @@ defmodule String do
   Although codepoints could be represented as integers, this
   module represents all codepoints as strings. For example:
 
-      iex> String.codepoints "josé"
+      iex> String.codepoints("josé")
       ["j", "o", "s", "é"]
 
   There are a couple of ways to retrieve a character integer
@@ -139,18 +139,8 @@ defmodule String do
   def printable?(_),    do: false
 
   @doc """
-  Divides a string into sub string based on a pattern,
-  returning a list of these sub string. The pattern can
-  be a string, a list of strings or a regular expression.
-
-  The string is split into as many parts as possible by
-  default, unless the `global` option is set to false.
-  If a pattern is not specified, the string is split on
-  Unicode whitespace occurrences with leading and trailing
-  whitespace ignored.
-
-  It returns a list with the original string if the pattern
-  can't be matched.
+  Splits a string on sub strings at each Unicode whitespace
+  occurrence with leading and trailing whitespace ignored.
 
   ## Examples
 
@@ -160,6 +150,20 @@ defmodule String do
       ["foo", "bar"]
       iex> String.split(" foo bar ")
       ["foo", "bar"]
+
+  """
+  @spec split(t) :: [t]
+  defdelegate split(binary), to: String.Unicode
+
+  @doc """
+  Divides a string into sub strings based on a pattern,
+  returning a list of these sub string. The pattern can
+  be a string, a list of strings or a regular expression.
+
+  The string is split into as many parts as possible by
+  default, unless the `global` option is set to false.
+
+  ## Examples
 
       iex> String.split("a,b,c", ",")
       ["a", "b", "c"]
@@ -177,12 +181,8 @@ defmodule String do
       ["a,b"]
 
   """
-  @spec split(t) :: [t]
   @spec split(t, t | [t] | Regex.t) :: [t]
   @spec split(t, t | [t] | Regex.t, Keyword.t) :: [t]
-
-  defdelegate split(binary), to: String.Unicode
-
   def split(binary, pattern, options // [])
 
   def split(binary, pattern, options) when is_regex(pattern) do
@@ -459,6 +459,61 @@ defmodule String do
   defdelegate next_codepoint(string), to: String.Unicode
 
   @doc %B"""
+  Checks whether `str` contains only valid characters.
+
+  ## Examples
+
+      iex> String.valid?("a")
+      true
+      iex> String.valid?("ø")
+      true
+      iex> String.valid?(<<0xffff :: 16>>)
+      false
+      iex> String.valid?("asd" <> <<0xffff :: 16>>)
+      false
+
+  """
+  @spec valid?(t) :: boolean
+
+  noncharacters = Enum.to_list(?\x{FDD0}..?\x{FDEF}) ++
+    [ ?\x{0FFFE}, ?\x{0FFFF}, ?\x{1FFFE}, ?\x{1FFFF}, ?\x{2FFFE}, ?\x{2FFFF},
+      ?\x{3FFFE}, ?\x{3FFFF}, ?\x{4FFFE}, ?\x{4FFFF}, ?\x{5FFFE}, ?\x{5FFFF},
+      ?\x{6FFFE}, ?\x{6FFFF}, ?\x{7FFFE}, ?\x{7FFFF}, ?\x{8FFFE}, ?\x{8FFFF},
+      ?\x{9FFFE}, ?\x{9FFFF}, ?\x{10FFFE}, ?\x{10FFFF} ]
+
+  lc noncharacter inlist noncharacters do
+    def valid?(<< unquote(noncharacter) :: utf8, _ :: binary >>), do: false
+  end
+
+  def valid?(<<_ :: utf8, t :: binary>>), do: valid?(t)
+  def valid?(<<>>), do: true
+  def valid?(_), do: false
+
+  @doc %B"""
+  Checks whether `str` is a valid character.
+
+  All characters are codepoints, but some codepoints
+  are not valid characters. They may be reserved, private,
+  or other.
+
+  More info at: http://en.wikipedia.org/wiki/Mapping_of_Unicode_characters#Noncharacters
+
+  ## Examples
+
+      iex> String.valid_character?("a")
+      true
+      iex> String.valid_character?("ø")
+      true
+      iex> String.valid_character?("\x{ffff}")
+      false
+
+  """
+  @spec valid_character?(t) :: boolean
+
+  def valid_character?(<<_ :: utf8>> = codepoint), do: valid?(codepoint)
+  def valid_character?(_), do: false
+
+  @doc %B"""
   Checks whether `str` is a valid codepoint.
 
   Note that the empty string is considered invalid, as are
@@ -470,7 +525,7 @@ defmodule String do
       true
       iex> String.valid_codepoint?("ø")
       true
-      iex> String.valid_codepoint?("\xffff")
+      iex> String.valid_codepoint?(<<0xffff :: 16>>)
       false
       iex> String.valid_codepoint?("asdf")
       false
@@ -505,11 +560,12 @@ defmodule String do
       { "j", "osé" }
 
   """
-  @spec next_grapheme(t) :: grapheme | :no_grapheme
+  @spec next_grapheme(t) :: { grapheme, t } | :no_grapheme
   defdelegate next_grapheme(string), to: String.Unicode
 
   @doc """
-  Returns the first grapheme from an utf8 string.
+  Returns the first grapheme from an utf8 string,
+  nil if the string is empty.
 
   ## Examples
 
@@ -528,7 +584,8 @@ defmodule String do
   end
 
   @doc """
-  Returns the last grapheme from an utf8 string.
+  Returns the last grapheme from an utf8 string,
+  nil if the string is empty.
 
   ## Examples
 
@@ -630,6 +687,12 @@ defmodule String do
       "ixir"
       iex> String.slice("elixir", -10, 3)
       nil
+      iex> String.slice("a", 0, 1500)
+      "a"
+      iex> String.slice("a", 1, 1500)
+      ""
+      iex> String.slice("a", 2, 1500)
+      nil
 
   """
   @spec slice(t, integer, integer) :: grapheme | nil
@@ -662,10 +725,74 @@ defmodule String do
     acc <> char
   end
 
+  defp do_slice(:no_grapheme, start_pos, _, current_pos, acc) when start_pos == current_pos do
+    acc
+  end
+
   defp do_slice(:no_grapheme, _, _, _, acc) do
     case acc do
       "" -> nil
       _ -> acc
     end
   end
+
+  @doc """
+  Converts a string to an integer. If successful, returns a
+  tuple of form {integer, remainder of string}. If unsuccessful,
+  returns :error.
+
+  ## Examples
+
+      iex> String.to_integer("34")
+      {34,""}
+      iex> String.to_integer("34.5")
+      {34,".5"}
+      iex> String.to_integer("three")
+      :error
+
+  """
+  @spec to_integer(t) :: {integer, t} | :error
+  
+  def to_integer(string) do
+    {result, remainder} = :string.to_integer(binary_to_list(string))
+    case result do
+      :error -> :error
+      _ -> {result, list_to_binary(remainder)}
+    end
+  end
+
+  @doc """
+  Converts a string to a float. If successful, returns a
+  tuple of form {float, remainder of string}. If unsuccessful,
+  returns :error. If given an integer value, will return
+  same as to_integer/1.
+
+  ## Examples
+
+      iex> String.to_float("34")
+      {34.0,""}
+      iex> String.to_float("34.25")
+      {34.25,""}
+	    iex> String.to_float("56.5xyz")
+	    {56.5,"xyz"}
+      iex> String.to_float("pi")
+      :error
+
+  """
+  @spec to_float(t) :: {integer, t} | :error
+
+  def to_float(string) do
+    charlist = binary_to_list(string)
+    {result, remainder} = :string.to_float(charlist)
+    case result do
+      :error -> 
+        {int_result, int_remainder} = :string.to_integer(charlist)
+        case int_result do
+          :error -> :error
+          _ -> {float(int_result), list_to_binary(int_remainder)}
+        end
+      _ -> {result, list_to_binary(remainder)}
+    end
+  end
+
 end

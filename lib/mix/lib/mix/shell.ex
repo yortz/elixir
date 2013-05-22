@@ -27,12 +27,19 @@ defmodule Mix.Shell do
   defcallback cmd(command :: binary) :: integer
 
   @doc """
+  Returns if we should output application name to shell.
+  """
+  def output_app? do
+    Mix.Server.call(:output_app?)
+  end
+
+  @doc """
   An implementation of the command callback that
   is shared accross different shells.
   """
   def cmd(command, callback) do
     port = Port.open({ :spawn, to_char_list(command) },
-      [:stream, :binary, :exit_status, :hide])
+      [:stream, :binary, :exit_status, :hide, :use_stdio, :stderr_to_stdout])
     do_cmd(port, callback)
   end
 

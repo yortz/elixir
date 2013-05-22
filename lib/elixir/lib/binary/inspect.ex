@@ -11,8 +11,6 @@ defprotocol Binary.Inspect do
   printing.
   """
 
-  @only [BitString, List, Tuple, Atom, Number, Function, PID, Port, Reference]
-
   def inspect(thing, opts)
 end
 
@@ -34,15 +32,15 @@ defmodule Binary.Inspect.Utils do
   end
 
   defp do_container_join([h], opts, _counter) do
-    Binary.Inspect.inspect(h, opts)
+    Kernel.inspect(h, opts)
   end
 
   defp do_container_join([h|t], opts, counter) when is_list(t) do
-    Binary.Inspect.inspect(h, opts) <> "," <> do_container_join(t, opts, decrement(counter))
+    Kernel.inspect(h, opts) <> "," <> do_container_join(t, opts, decrement(counter))
   end
 
   defp do_container_join([h|t], opts, _counter) do
-    Binary.Inspect.inspect(h, opts) <> "|" <> Binary.Inspect.inspect(t, opts)
+    Kernel.inspect(h, opts) <> "|" <> Kernel.inspect(t, opts)
   end
 
   defp do_container_join([], _opts, _counter) do
@@ -276,7 +274,7 @@ defimpl Binary.Inspect, for: List do
     cond do
       :io_lib.printable_list(thing) ->
         escape(:unicode.characters_to_binary(thing), ?')
-      Keyword.keyword?(thing) ->
+      keyword?(thing) ->
         "[" <> join_keywords(thing, opts) <> "]"
       true ->
         container_join(thing, "[", "]", opts)
@@ -285,7 +283,7 @@ defimpl Binary.Inspect, for: List do
 
   defp join_keywords(thing, opts) do
     Enum.join(lc {key, value} inlist thing do
-      key_to_binary(key, opts) <> ": " <> Binary.Inspect.inspect(value, opts)
+      key_to_binary(key, opts) <> ": " <> Kernel.inspect(value, opts)
     end, ", ")
   end
 
@@ -295,6 +293,16 @@ defimpl Binary.Inspect, for: List do
       other -> other
     end
   end
+
+  defp keyword?([{ key, _value } | rest]) when is_atom(key) do
+    case atom_to_list(key) do
+      'Elixir-' ++ _ -> false
+      _ -> keyword?(rest)
+    end
+  end
+
+  defp keyword?([]),     do: true
+  defp keyword?(_other), do: false
 end
 
 defimpl Binary.Inspect, for: Tuple do
@@ -317,27 +325,11 @@ defimpl Binary.Inspect, for: Tuple do
 
   def inspect(tuple, opts) do
     unless opts[:raw] do
-      record_protocol(tuple, opts)
+      record_inspect(tuple, opts)
     end || container_join(tuple, "{", "}", opts)
   end
 
   ## Helpers
-
-  defp record_protocol(tuple, opts) do
-    name = elem(tuple, 0)
-
-    if is_atom(name) and match?("Elixir-" <> _, atom_to_binary(name)) do
-      unless name in [BitString, List, Tuple, Atom, Number, Any] do
-        try do
-          target = Module.concat(Binary.Inspect, name)
-          target.inspect(tuple, opts)
-        rescue
-          UndefinedFunctionError ->
-            record_inspect(tuple, opts)
-        end
-      end
-    end
-  end
 
   defp record_inspect(record, opts) do
     list = tuple_to_list(record)
@@ -367,12 +359,12 @@ defimpl Binary.Inspect, for: Tuple do
   end
 
   defp record_join([f], [v], opts) do
-    atom_to_binary(f, :utf8) <> ": " <> Binary.Inspect.inspect(v, opts)
+    atom_to_binary(f, :utf8) <> ": " <> Kernel.inspect(v, opts)
   end
 
   defp record_join([fh|ft], [vh|vt], opts) do
     atom_to_binary(fh, :utf8) <> ": " <>
-      Binary.Inspect.inspect(vh, opts) <> ", " <>
+      Kernel.inspect(vh, opts) <> ", " <>
       record_join(ft, vt, opts)
   end
 
@@ -392,12 +384,28 @@ defimpl Binary.Inspect, for: Number do
 
   """
 
+  @digits 20
+  @limit  :math.pow(10, @digits)
+
   def inspect(thing, _) when is_integer(thing) do
-    list_to_binary integer_to_list(thing)
+    integer_to_binary(thing)
   end
 
-  def inspect(thing, _) do
-    list_to_binary :io_lib.format("~p", [thing])
+  to_binary = :proplists.get_value(:float_to_binary,
+                :proplists.get_value(:exports, :erlang.module_info, []))
+
+  if to_binary == 2 do
+    def inspect(thing, _) when thing > @limit do
+      float_to_binary(thing, scientific: @digits)
+    end
+
+    def inspect(thing, _) do
+      float_to_binary(thing, compact: true, decimals: @digits)
+    end
+  else
+    def inspect(thing, _) do
+      float_to_binary(thing)
+    end
   end
 end
 
@@ -413,11 +421,11 @@ defimpl Binary.Inspect, for: Regex do
   """
 
   def inspect(regex, _opts) when size(regex) == 5 do
-    "%r" <> Binary.Inspect.inspect(Regex.source(regex), []) <> Regex.opts(regex)
+    "%r" <> Kernel.inspect(Regex.source(regex), []) <> Regex.opts(regex)
   end
 
   def inspect(other, opts) do
-    Binary.Inspect.inspect other, Keyword.put(opts, :raw, true)
+    Kernel.inspect other, Keyword.put(opts, :raw, true)
   end
 end
 

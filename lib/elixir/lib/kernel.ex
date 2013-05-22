@@ -134,13 +134,16 @@ defmodule Kernel do
   defmacro left and right
 
   @doc """
-  Boolean xor. Arguments must be booleans.
+  Boolean exclusive-or. Arguments must be booleans. Returns true if and only if
+  both arguments are different.
   Allowed in guard clauses.
 
   ## Examples
 
       iex> true xor false
       true
+      iex> true xor true
+      false
 
   """
   defmacro left xor right
@@ -296,7 +299,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> apply fn x -> x * 2 end, [2]
+      iex> apply(fn x -> x * 2 end, [2])
       4
 
   """
@@ -307,7 +310,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> apply Enum, :reverse, [[1,2,3]]
+      iex> apply(Enum, :reverse, [[1,2,3]])
       [3,2,1]
 
   """
@@ -373,12 +376,12 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> binary_part "foo", 1, 2
+      iex> binary_part("foo", 1, 2)
       "oo"
 
   A negative length can be used to extract bytes at the end of a binary:
 
-      iex> binary_part "foo", 3, -1
+      iex> binary_part("foo", 3, -1)
       "o"
 
   """
@@ -1317,6 +1320,45 @@ defmodule Kernel do
   """
   defmacro defp(name, args, guards, do: contents)
 
+  @doc """
+  Defines a macro with the given name and contents.
+
+  ## Examples
+
+      defmodule MyLogic do
+        defmacro unless(expr, opts) do
+          quote do
+            if !unquote(expr), unquote(opts)
+          end
+        end
+      end
+
+      require MyLogic
+      MyLogic.unless false do
+        IO.puts "It works"
+      end
+
+  """
+  defmacro defmacro(name, do: contents)
+
+  @doc """
+  The same as `def/4` but generates a macro.
+  """
+  defmacro defmacro(name, args, guards, do: contents)
+
+  @doc """
+  Defines a macro that is private. Private macros
+  can only be accessible from the same module it is defined.
+
+  Check `defmacro/2` for more information
+  """
+  defmacro defmacrop(name, do: contents)
+
+  @doc """
+  The same as `def/4` but generates a private macro.
+  """
+  defmacro defmacrop(name, args, guards, do: contents)
+
   @doc %B"""
   Defines a record.
 
@@ -1389,6 +1431,26 @@ defmodule Kernel do
 
   Which provides faster get and set times for record operations.
 
+  ## Runtime introspection
+
+  At runtime, developers can use `__record__` to get information
+  about the given record:
+
+      FileInfo.__record__(:name)
+      #=> FileInfo
+
+      FileInfo.__record__(:fields)
+      #=> [atime: nil, accesses: 0]
+
+  In order to quickly access the index of a field, one can use
+  the `__index__` function:
+
+      FileInfo.__index__(:atime)
+      #=> 0
+
+      FileInfo.__index__(:unknown)
+      #=> nil
+
   ## Compile-time introspection
 
   At the compile time, one can access following information about the record
@@ -1443,8 +1505,14 @@ defmodule Kernel do
 
   See `Record.import/2` and `defrecordp/2` documentation for more information
   """
-  defmacro defrecord(name, fields, opts // [], do_block // []) do
-    Record.defrecord(name, fields, Keyword.merge(opts, do_block))
+
+  defmacro defrecord(name, fields, do_block // [])
+
+  defmacro defrecord(name, fields, do_block) do
+    case is_list(fields) and Keyword.get(fields, :do, false) do
+      false -> Record.defrecord(name, fields, do_block)
+      other -> Record.defrecord(name, Keyword.delete(fields, :do), do: other)
+    end
   end
 
   @doc """
@@ -1525,11 +1593,13 @@ defmodule Kernel do
     fields = [{ :__exception__, :__exception__ }|fields]
     record = Record.defrecord(name, fields, opts)
 
-    check  = quote do
-      Exception.check! Module.concat(__MODULE__, unquote(name))
-    end
+    quote do
+      unquote(record)
 
-    [record, check]
+      unless :erlang.function_exported(unquote(name), :message, 1) do
+        raise "expected exception #{inspect unquote(name)} to implement message/1"
+      end
+    end
   end
 
   @doc """
@@ -1582,7 +1652,7 @@ defmodule Kernel do
       false ->
         quote do
           result = unquote(thing)
-          is_tuple(result) and tuple_size(unquote(thing)) > 0
+          is_tuple(result) and tuple_size(result) > 0
             and :erlang.element(1, result) == unquote(kind)
         end
     end
@@ -1601,7 +1671,7 @@ defmodule Kernel do
       false ->
         quote do
           result = unquote(thing)
-          is_tuple(result) and tuple_size(unquote(thing)) > 0
+          is_tuple(result) and tuple_size(result) > 0
             and is_atom(:erlang.element(1, result))
         end
     end
@@ -1842,7 +1912,14 @@ defmodule Kernel do
 
   """
   defmacro inspect(arg, opts // []) do
-    quote do: Binary.Inspect.inspect(unquote(arg), unquote(opts))
+    quote do
+      arg = unquote(arg)
+      opts = unquote(opts)
+      case is_tuple(arg) && Keyword.get(opts, :raw, false) do
+        true  -> Binary.Inspect.Tuple.inspect(arg, opts)
+        false -> Binary.Inspect.inspect(arg, opts)
+      end
+    end
   end
 
   @doc """
@@ -2009,7 +2086,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> div 5, 2
+      iex> div(5, 2)
       2
 
   """
@@ -2024,7 +2101,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> rem 5, 2
+      iex> rem(5, 2)
       1
 
   """
@@ -2038,9 +2115,9 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> nil? 1
+      iex> nil?(1)
       false
-      iex> nil? nil
+      iex> nil?(nil)
       true
 
   """
@@ -2184,7 +2261,7 @@ defmodule Kernel do
   defmacro function(module, function, arity)
 
   @doc """
-  Matches the given condition against the match clauses.
+  Matches the given expression against the match clauses.
 
   ## Examples
 
@@ -2194,9 +2271,9 @@ defmodule Kernel do
         value -> value
       end
 
-  In the example above, we compare `thing` with each given
-  match clause and execute the first one that matches. If no
-  clause matches, an error is raised.
+  In the example above, we compare `thing` with each given match
+  clause and evaluate the expression corresponding to the first clause
+  that matches. If no clause matches, an error is raised.
 
   Since Elixir variables can be assigned more than once, variables
   in a match clause will always be assigned instead of matching with
@@ -2217,22 +2294,11 @@ defmodule Kernel do
       end
 
   The example above will actually fail because 10 does not match 1.
-
-  Finally, `case` accepts an `else:` branch as a fallback if none
-  of the clauses match:
-
-      case thing do
-        { :selector, i, value } when is_integer(i) ->
-          value
-        _ ->
-          thing
-      end
-
   """
   defmacro case(condition, blocks)
 
   @doc """
-  Execute the given expressions and catch any error, exit
+  Evaluate the given expressions and catch any error, exit
   or throw that may have happened.
 
   ## Examples
@@ -2312,7 +2378,7 @@ defmodule Kernel do
 
   ## Variable visibility
 
-  Since an expression inside `try` may not have been evaluted
+  Since an expression inside `try` may not have been evaluated
   due to an exception, any variable created inside `try` cannot
   be accessed externaly. For instance:
 
@@ -2436,7 +2502,7 @@ defmodule Kernel do
 
       if(foo, do: bar)
 
-  In the example above, bar will be returned if foo evalutes to
+  In the example above, bar will be returned if foo evaluates to
   true (i.e. it is not false nor nil). Otherwise, nil will be returned.
 
   An else option can be given to specify the opposite:
@@ -2477,8 +2543,9 @@ defmodule Kernel do
   end
 
   @doc """
-  Execute the first clause where the condition returns true,
-  raises an error otherwise.
+  Evaluates the expression corresponding to the first clause that
+  evaluates to true. Raises an error if all conditions evaluate to
+  to falsy values (nil or false).
 
   ## Examples
 
@@ -2513,9 +2580,18 @@ defmodule Kernel do
   end
 
   @doc """
-  Provides a unless macro that executes the expression
-  unless a value evalutes to true. Check `if` for examples
-  and documentation.
+  Evaluates and returns the do-block passed in as a second argument
+  unless clause evaluates to true.
+  Returns nil otherwise.
+  See also `if`.
+
+  ## Examples
+
+      iex> unless(1, do: "Hello")
+      nil
+      iex> unless(false, do: "Hello")
+      "Hello"
+
   """
   defmacro unless(clause, options) do
     do_clause   = Keyword.get(options, :do, nil)
@@ -2533,7 +2609,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> destructure [x,y,z], [1,2,3,4,5]
+      iex> destructure([x,y,z], [1,2,3,4,5])
       ...> {x, y, z}
       {1, 2, 3}
 
@@ -2542,7 +2618,7 @@ defmodule Kernel do
   fine. If the right size is smaller, the remaining items
   are simply assigned to nil:
 
-      iex> destructure [x,y,z], [1]
+      iex> destructure([x,y,z], [1])
       ...> {x, y, z}
       {1, nil, nil}
 
@@ -2550,7 +2626,7 @@ defmodule Kernel do
   on the left side of a match:
 
       x = 1
-      destructure [^x,y,z], [1,2,3]
+      destructure([^x,y,z], [1,2,3])
 
   The example above will only work if x matches
   the first value from the right side. Otherwise,
@@ -2574,7 +2650,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> binary_to_integer "123"
+      iex> binary_to_integer("123")
       123
 
   """
@@ -2613,7 +2689,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> binary_to_float "2.2017764e+0"
+      iex> binary_to_float("2.2017764e+0")
       2.2017764
 
   """
@@ -2633,7 +2709,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> integer_to_binary 123
+      iex> integer_to_binary(123)
       "123"
 
   """
@@ -2653,7 +2729,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> integer_to_binary 77
+      iex> integer_to_binary(77)
       "77"
 
   """
@@ -2673,7 +2749,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> float_to_binary 7.0
+      iex> float_to_binary(7.0)
       "7.00000000000000000000e+00"
 
   """
@@ -2689,37 +2765,40 @@ defmodule Kernel do
 
   @doc """
   Returns a binary which corresponds to the text representation
-  of `some_float`.
+  of `float`.
 
   ## Options
 
   * `:decimals` — number of decimal points to show
   * `:scientific` — number of decimal points to show, in scientific format
-  * `:compact` — If true, use the most compact representation. Ignored with the `scientific` option
+  * `:compact` — If true, use the most compact representation (ignored with the `scientific` option)
 
   ## Examples
 
       float_to_binary 7.1, [decimals: 2, compact: true] #=> "7.1"
 
   """
-  defmacro float_to_binary(some_float, options) do
-    options = :lists.reverse(:lists.foldl(fn({:compact, false}, acc) -> acc -- [:compact]
-                                            ({:compact, true}, acc) -> [:compact|acc]
-                                            (x, acc) -> [x|acc]
-                                          end, [], options))
-    case :proplists.get_value(:float_to_binary,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.float_to_binary(unquote(some_float), unquote(options))
-      :undefined ->
-        case :proplists.get_value(:float_to_list,
-                                  :proplists.get_value(:exports, :erlang.module_info, [])) do
-          2 ->
-            quote do: list_to_binary(float_to_list(unquote(some_float), unquote(options)))
-          1 ->
-            throw(:badarg)
-        end
-    end
+  def float_to_binary(float, options) do
+    :erlang.float_to_binary(float, expand_compact(options))
+  end
+
+  @doc """
+  Returns a list which corresponds to the text representation
+  of `float`.
+
+  ## Options
+
+  * `:decimals` — number of decimal points to show
+  * `:scientific` — number of decimal points to show, in scientific format
+  * `:compact` — If true, use the most compact representation (ignored with the `scientific` option)
+
+  ## Examples
+
+      float_to_list 7.1, [decimals: 2, compact: true] #=> '7.1'
+
+  """
+  def float_to_list(float, options) do
+    :erlang.float_to_list(float, expand_compact(options))
   end
 
   @doc """
@@ -2728,7 +2807,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> binary_to_atom "my_atom"
+      iex> binary_to_atom("my_atom")
       :my_atom
 
   """
@@ -2744,10 +2823,10 @@ defmodule Kernel do
   ## Examples
 
       iex> :my_atom
-      ...> binary_to_existing_atom "my_atom"
+      ...> binary_to_existing_atom("my_atom")
       :my_atom
 
-      iex> binary_to_existing_atom "this_atom_will_never_exist"
+      iex> binary_to_existing_atom("this_atom_will_never_exist")
       ** (ArgumentError) argument error
 
   """
@@ -2763,7 +2842,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> atom_to_binary :my_atom
+      iex> atom_to_binary(:my_atom)
       "my_atom"
 
   """
@@ -2815,9 +2894,10 @@ defmodule Kernel do
   end
 
   @doc """
-  Provides a short-circuit operator that executes the second
-  expression only if the first one evalutes to true (i.e. it is
-  not nil nor false). Returns the first expression otherwise.
+  Provides a short-circuit operator that evaluates and returns
+  the second expression only if the first one evaluates to true
+  (i.e. it is not nil nor false). Returns the first expression
+  otherwise.
 
   ## Examples
 
@@ -2846,9 +2926,9 @@ defmodule Kernel do
   end
 
   @doc """
-  Provides a short-circuit operator that executes the second
-  expression only if the first one does not evalute to true (i.e. it
-  is not nil nor false). Returns the first expression otherwise.
+  Provides a short-circuit operator that evaluates and returns the second
+  expression only if the first one does not evaluate to true (i.e. it
+  is either nil or false). Returns the first expression otherwise.
 
   ## Examples
 
@@ -2878,8 +2958,7 @@ defmodule Kernel do
 
   @doc """
   Returns true if the element on the left is equal (==) to
-  any of the items in the right. For now, it only accepts
-  a list as the right argument.
+  any of the items in the right.
 
   ## Examples
 
@@ -2890,6 +2969,9 @@ defmodule Kernel do
   This macro simply translates the expression above to:
 
       x == 1 or x == 2 or x == 3
+
+  with the exception that the expression on the left of `in`
+  is evaluated only once.
 
   ## Clauses
 
@@ -3030,7 +3112,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> raise ArgumentError, message: "Sample"
+      iex> raise(ArgumentError, message: "Sample")
       ** (ArgumentError) Sample
 
   """
@@ -3165,14 +3247,9 @@ defmodule Kernel do
       true ->
         fields =
           try do
-            module = caller.module
-
-            # We are using the access protocol in the same
-            # module that defines it. It works, but we need
-            # to read the field values from @record_fields.
-            case atom do
-              ^module -> Module.get_attribute(module, :record_fields)
-              _ -> atom.__record__(:fields)
+            case :lists.member(atom, caller.context_modules) and Module.open?(atom) do
+              true  -> Module.get_attribute(atom, :record_fields)
+              false -> atom.__record__(:fields)
             end
           rescue
             UndefinedFunctionError ->
@@ -3181,7 +3258,7 @@ defmodule Kernel do
               # conflicts.
               case :code.ensure_loaded(atom) do
                 { :error, _ } ->
-                  raise "expected module #{inspect atom} to be loaded and defined"
+                  :elixir_aliases.ensure_loaded(caller.line, caller.file, atom, caller.context_modules)
                 _ ->
                   raise "cannot use module #{inspect atom} in access protocol because it does not export __record__/1"
               end
@@ -3346,7 +3423,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> Regex.match? %r(foo), "foo"
+      iex> Regex.match?(%r(foo), "foo")
       true
 
   """
@@ -3367,7 +3444,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> Regex.match? %R(f\#{1,3}o), "f\#o"
+      iex> Regex.match?(%R(f\#{1,3}o), "f\#o")
       true
 
   """
@@ -3470,6 +3547,11 @@ defmodule Kernel do
   end
 
   defp build_cond_clauses([], acc), do: acc
+
+  defp expand_compact([{ :compact, false }|t]), do: expand_compact(t)
+  defp expand_compact([{ :compact, true }|t]),  do: [:compact|expand_compact(t)]
+  defp expand_compact([h|t]),                   do: [h|expand_compact(t)]
+  defp expand_compact([]),                      do: []
 
   defp split_words(string, modifiers) do
     mod = case modifiers do

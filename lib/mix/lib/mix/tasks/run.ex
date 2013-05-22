@@ -6,13 +6,13 @@ defmodule Mix.Tasks.Run do
   @moduledoc """
   Run the given expression in the application context.
 
-  Before running the code, it invokes the prepare task
+  Before running the code, it invokes the app.start task
   which defaults to compile and load your project.
 
   ## Command line options
 
-  * `--require`, `-r` - Requires a file before running the command
-  * `--parallel-require`, `-pr` - Requires a file in parallel
+  * `--require`, `-r` - Requires pattern before running the command
+  * `--parallel-require`, `-pr` - Requires pattern in parallel
   * `--no-halt` - Does not halt the system after running the command
   * `--no-compile` - Do not compile even if files require compilation;
   * `--no-start` - Do not start applications after compilation;
@@ -21,6 +21,10 @@ defmodule Mix.Tasks.Run do
 
       mix run Hello.world
       mix run "Some.function with_args"
+
+  Command line options given to the `elixir` executable can be passed as:
+
+      elixir --sname hello -S mix run "My.code"
 
   """
   def run(args) do
@@ -39,8 +43,8 @@ defmodule Mix.Tasks.Run do
       end
     end
 
-    Mix.Task.run Mix.project[:prepare_task], args
-    if head != [], do: Code.eval Enum.join(head, " ")
+    Mix.Task.run "app.start", args
+    if head != [], do: Code.eval_string Enum.join(head, " ")
     if opts[:no_halt], do: :timer.sleep(:infinity)
   end
 

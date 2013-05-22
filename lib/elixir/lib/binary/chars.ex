@@ -51,9 +51,9 @@ defimpl Binary.Chars, for: List do
 
   ## Examples
 
-      iex> to_binary 'foo'
+      iex> to_binary('foo')
       "foo"
-      iex> to_binary ["foo", 'bar']
+      iex> to_binary(["foo", 'bar'])
       "foobar"
 
   """
@@ -66,11 +66,28 @@ defimpl Binary.Chars, for: Number do
   @doc """
   Simply converts the number (integer or a float) to a binary.
   """
+
+  @digits 20
+  @limit  :math.pow(10, @digits)
+
   def to_binary(thing) when is_integer(thing) do
-    list_to_binary integer_to_list(thing)
+    integer_to_binary(thing)
   end
 
-  def to_binary(thing) do
-    list_to_binary float_to_list(thing)
+  to_binary = :proplists.get_value(:float_to_binary,
+                :proplists.get_value(:exports, :erlang.module_info, []))
+
+  if to_binary == 2 do
+    def to_binary(thing) when thing > @limit do
+      float_to_binary(thing, scientific: @digits)
+    end
+
+    def to_binary(thing) do
+      float_to_binary(thing, compact: true, decimals: @digits)
+    end
+  else
+    def to_binary(thing) do
+      float_to_binary(thing)
+    end
   end
 end

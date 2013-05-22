@@ -14,15 +14,7 @@
 %% Handle inspecting for exceptions
 
 inspect(Atom) when is_atom(Atom) ->
-  case atom_to_list(Atom) of
-    "Elixir-" ++ Rest -> [to_dot(R) || R <- Rest];
-    Else -> Else
-  end;
-
-inspect(Other) -> Other.
-
-to_dot($-) -> $.;
-to_dot(L)  -> L.
+  'Elixir.Binary.Inspect.Atom':inspect(Atom, []).
 
 %% Raised during macros translation.
 
@@ -37,7 +29,7 @@ syntax_error(Meta, File, Message) when is_binary(Message) ->
 
 syntax_error(Meta, File, Format, Args)  ->
   Message = io_lib:format(Format, Args),
-  raise(Meta, File, 'Elixir.SyntaxError', iolist_to_binary(Message)).
+  raise(Meta, File, 'Elixir.SyntaxError', unicode:characters_to_binary(Message)).
 
 %% Raised on tokenizing/parsing
 
@@ -61,7 +53,7 @@ parse_error(Meta, File, Error, Token) ->
 
   BinToken = if
     Token == [] -> <<>>;
-    true        -> iolist_to_binary(Token)
+    true        -> unicode:characters_to_binary(Token)
   end,
 
   Message = <<BinError / binary, BinToken / binary >>,
@@ -93,6 +85,9 @@ handle_file_warning(_, _File, { _Line, sys_core_fold, useless_building }) -> [];
 
 %% This is an Erlang bug, it considers { tuple, _ }.call to always fail
 handle_file_warning(_, _File, { _Line, v3_kernel, bad_call }) -> [];
+
+%% We handle unused local warnings ourselves
+handle_file_warning(_, _File, { _Line, erl_lint, { unused_function, _ } }) -> [];
 
 %% Rewrite
 handle_file_warning(_, File, {Line,erl_lint,{undefined_behaviour_func,{Fun,Arity},Module}}) ->

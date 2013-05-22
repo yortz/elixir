@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Kernel.CLI.InitTest do
   use ExUnit.Case, async: true
@@ -18,16 +18,16 @@ defmodule Kernel.CLI.OptionParsingTest do
 
   test :path do
     root = fixture_path("../../..") |> to_char_list
-    list = elixir('-e "IO.inspect :code.get_path" -pa "#{root}/*" -pz "#{root}/lib/*"')
-    { path, _ } = Code.eval list, []
+    list = elixir('-pa "#{root}/*" -pz "#{root}/lib/*" -e "IO.inspect :code.get_path"')
+    { path, _ } = Code.eval_string list, []
 
     # pa
-    assert Path.expand('ebin', root) inlist path
-    assert Path.expand('lib', root) inlist path
-    assert Path.expand('src', root) inlist path
+    assert Path.expand('ebin', root) in path
+    assert Path.expand('lib', root) in path
+    assert Path.expand('src', root) in path
 
     # pz
-    assert Path.expand('lib/list', root) inlist path
+    assert Path.expand('lib/list', root) in path
   end
 end
 
@@ -63,6 +63,10 @@ defmodule Kernel.CLI.SyntaxErrorTest do
     assert :string.str(message, elixir('-e "[1,2"')) == 0
     message = '** (SyntaxError) nofile:1: syntax error before: \'end\''
     assert :string.str(message, elixir('-e "case 1 end"')) == 0
+    message = '** (SyntaxError) nofile:1: invalid token: あ'
+    assert :string.str(message, elixir('-e "あ"')) == 0
+    message = '** (SyntaxError) nofile:1: invalid token: æ'
+    assert :string.str(message, elixir('-e "æ"')) == 0
   end
 end
 

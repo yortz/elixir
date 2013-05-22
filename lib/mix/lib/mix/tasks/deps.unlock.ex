@@ -2,13 +2,12 @@ defmodule Mix.Tasks.Deps.Unlock do
   use Mix.Task
 
   @shortdoc "Unlock the given dependencies"
+  @recursive true
 
   @moduledoc """
   Unlock the given dependencies. If no dependencies
   are given, unlock all.
   """
-
-  import Mix.Deps, only: [all: 0, by_name!: 1]
 
   def run([]) do
     Mix.Deps.Lock.write([])

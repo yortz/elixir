@@ -27,6 +27,27 @@ defimpl List.Chars, for: List do
 end
 
 defimpl List.Chars, for: Number do
-  def to_char_list(integer) when is_integer(integer), do: integer_to_list(integer)
-  def to_char_list(float)   when is_float(float),     do: float_to_list(float)
+  @digits 20
+  @limit  :math.pow(10, @digits)
+
+  def to_char_list(thing) when is_integer(thing) do
+    integer_to_list(thing)
+  end
+
+  to_list = :proplists.get_value(:float_to_list,
+              :proplists.get_value(:exports, :erlang.module_info, []))
+
+  if to_list == 2 do
+    def to_char_list(thing) when thing > @limit do
+      float_to_list(thing, scientific: @digits)
+    end
+
+    def to_char_list(thing) do
+      float_to_list(thing, compact: true, decimals: @digits)
+    end
+  else
+    def to_char_list(thing) do
+      float_to_list(thing)
+    end
+  end
 end

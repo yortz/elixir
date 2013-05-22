@@ -127,6 +127,150 @@ defmodule Mix.Project do
     opts
   end
 
+  @doc """
+  Returns true if project is an umbrella project.
+  """
+  def umbrella? do
+    config[:apps_path] != nil
+  end
+
+  @doc """
+  Returns the path to the apps directory.
+  """
+  def apps_path do
+    Path.expand(config[:apps_path])
+  end
+
+  @doc """
+  Runs `fun` in the current project.
+
+  The goal of this function is to transparently abstract umbrella projects.
+  So if you want to gather data from a project, like beam files, you can
+  use this function to transparently go through the project, regardless
+  if it is an umbrella project or not.
+  """
+  def recur(fun) do
+    if apps_path = config[:apps_path] do
+      paths = Path.wildcard(Path.join(apps_path, "*"))
+      paths = Enum.filter(paths, File.dir?(&1))
+
+      projects = Enum.map paths, fn path ->
+        dir = Path.basename(path)
+        app = dir |> String.downcase |> binary_to_atom
+        { app, path }
+      end
+
+      projects = topsort_projects(projects, Path.expand(apps_path))
+
+      results = Enum.map projects, fn { app, app_path } ->
+        in_project(app, app_path, fun)
+      end
+
+      results
+    else
+      [fun.(get)]
+    end
+  end
+
+  @doc """
+  Runs the given `fun` inside the given project by changing
+  the current working directory and loading the given project
+  into the project stack.
+  """
+  def in_project(app, app_path, post_config // [], fun)
+
+  def in_project(app, ".", post_config, fun) do
+    cached = load_project(app, post_config)
+    result = try do
+      fun.(cached)
+    after
+      Mix.Project.pop
+    end
+    result
+  end
+
+  def in_project(app, app_path, post_config, fun) do
+    File.cd! app_path, fn ->
+      in_project(app, ".", post_config, fun)
+    end
+  end
+
+  @doc """
+  Returns the paths this project compiles to.
+  """
+  def compile_paths do
+    recur(fn _ -> Path.expand config[:compile_path] end)
+  end
+
+  @doc """
+  Returns all load paths for this project.
+  """
+  def load_paths do
+    paths =
+      recur(fn _ ->
+        Enum.map(config[:load_paths], Path.expand(&1))
+      end) |> List.concat
+    paths ++ compile_paths
+  end
+
+  # Loads mix.exs in the current directory or loads the project from the
+  # mixfile cache and pushes the project to the project stack.
+  defp load_project(app, post_config) do
+    if cached = Mix.Server.call({ :mixfile_cache, app }) do
+      post_config(post_config)
+      push(cached)
+      cached
+    else
+      old_proj = get
+
+      if File.regular?("mix.exs") do
+        post_config(post_config)
+        Code.load_file "mix.exs"
+      end
+
+      new_proj = get
+
+      if old_proj == new_proj do
+        new_proj = nil
+        push new_proj
+      end
+
+      Mix.Server.cast({ :mixfile_cache, app, new_proj })
+      new_proj
+    end
+  end
+
+  # Sort projects in dependency order
+  defp topsort_projects(projects, apps_path) do
+    graph = :digraph.new
+
+    Enum.each projects, fn { app, app_path } ->
+      :digraph.add_vertex(graph, app, app_path)
+    end
+
+    Enum.each projects, fn { app, app_path } ->
+      in_project app, app_path, fn _ ->
+        Enum.each Mix.Deps.children, fn dep ->
+          if Mix.Deps.available?(dep) and Mix.Deps.in_umbrella?(dep, apps_path) do
+            :digraph.add_edge(graph, dep.app, app)
+          end
+        end
+      end
+    end
+
+    unless :digraph_utils.is_acyclic(graph) do
+      raise Mix.Error, message: "Could not dependency sort umbrella projects. " <>
+        "There are cycles in the dependency graph."
+    end
+
+    vertices = :digraph_utils.topsort(graph)
+    projects = Enum.map vertices, fn app ->
+      :digraph.vertex(graph, app)
+    end
+    :digraph.delete(graph)
+    projects
+  end
+
   defp default_config do
     [ compile_path: "ebin",
       default_env: [test: :test],
@@ -135,8 +279,8 @@ defmodule Mix.Project do
       elixirc_exts: [:ex],
       elixirc_paths: ["lib"],
       elixirc_watch_exts: [:ex, :eex, :exs],
+      load_paths: [],
       lockfile: "mix.lock",
-      prepare_task: "app.start",
       erlc_paths: ["src"],
       erlc_include_path: "include",
       erlc_options: [:debug_info] ]

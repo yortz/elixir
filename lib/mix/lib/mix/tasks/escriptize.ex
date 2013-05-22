@@ -56,17 +56,19 @@ defmodule Mix.Tasks.Escriptize do
   defp escriptize(project, force) do
     script_name  = project[:escript_name] || project[:app]
     filename     = project[:escript_path] || atom_to_binary(script_name)
-    compile_path = project[:compile_path] || "ebin"
     embed        = Keyword.get(project, :escript_embed_elixir, true)
-    beams        = Mix.Project.config_files ++ Path.wildcard('#{compile_path}/*.beam')
+    beams        = all_beams()
 
     cond do
+      !script_name ->
+        raise Mix.Error, message: "Could not generate escript, no name given, " <>
+          "set :escript_name or :app in the project settings"
       beams == [] ->
-        Mix.shell.error "Could not generate escript #{filename}, no beam files available"
-        :noop
+        raise Mix.Error, message: "Could not generate escript #{filename}, " <>
+          "no beam files available"
       force or Mix.Utils.stale?(beams, [filename]) ->
         files = gen_main(script_name, project[:escript_main_module])
-        files = files ++ get_files(compile_path)
+        files = files ++ all_files()
 
         if embed do
           extra_apps = project[:escript_embed_extra_apps] || []
@@ -75,9 +77,9 @@ defmodule Mix.Tasks.Escriptize do
           end
         end
 
-        files = Enum.reduce Mix.Deps.all || [], files, fn(dep, acc) ->
-          dep_files(dep.app) ++ acc
-        end
+        # We might get duplicate files in umbrella projects from applications
+        # sharing the same dependencies
+        files = Enum.uniq(files, fn {name, _} -> name end)
 
         case :zip.create 'mem', files, [:memory] do
           { :ok, { 'mem', zip } } ->
@@ -95,8 +97,33 @@ defmodule Mix.Tasks.Escriptize do
 
         set_perms(filename)
         Mix.shell.info "Generated escript #{filename}"
+        :ok
       true ->
         :noop
+    end
+  end
+
+  defp all_beams() do
+    Mix.Project.recur(fn _ -> get_beams() end) |> List.concat
+  end
+
+  defp get_beams() do
+    compile_path = Mix.project[:compile_path] || "ebin"
+    configs      = Mix.Project.config_files
+    beams        = Path.wildcard('#{compile_path}/*.beam')
+    beams        = Enum.map(beams, Path.absname(&1))
+    configs ++ beams
+  end
+
+  defp all_files() do
+    Mix.Project.recur(fn _ -> get_compiled_files() end) |> List.concat
+  end
+
+  defp get_compiled_files() do
+    compile_path = Mix.project[:compile_path] || "ebin"
+    files = get_files(compile_path)
+    Enum.reduce Mix.Deps.all || [], files, fn(dep, acc) ->
+      dep_files(dep.app) ++ acc
     end
   end
 
@@ -139,6 +166,7 @@ defmodule Mix.Tasks.Escriptize do
         def main(args) do
           case :application.start(:elixir) do
             :ok ->
+              args = Enum.map(args, :unicode.characters_to_binary(&1))
               Kernel.CLI.run fn -> @module.main(args) end, true
             _   ->
               IO.puts :stderr, IO.ANSI.escape("%{red, bright} Elixir is not in the code path, aborting.")

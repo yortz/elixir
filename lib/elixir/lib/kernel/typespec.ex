@@ -46,9 +46,9 @@ defmodule Kernel.Typespec do
 
       <<_ :: _ * 8>>
 
-  ### Functions
+  ### Anonymous functions
 
-  Any function:
+  Any anonymous function:
 
       (fun(...) -> any)
       or
@@ -56,13 +56,13 @@ defmodule Kernel.Typespec do
       or
       (... -> any)
 
-  Function with arity of zero:
+  Anonymous function with arity of zero:
 
       (fun() -> type)
       or
       (() -> type)
 
-  Function with some arity:
+  Anonymous function with some arity:
 
       (fun(type, type) -> type)
       or
@@ -279,7 +279,7 @@ defmodule Kernel.Typespec do
         lc { :attribute, _, kind, { name, _, args } = type } inlist abstract_code, kind in [:opaque, :type] do
           cond do
             kind == :opaque -> { :opaque, type }
-            List.member?(exported_types, { name, length(args) }) -> { :type, type }
+            :lists.member({ name, length(args) }, exported_types) -> { :type, type }
             true -> { :typep, type }
           end
         end
@@ -333,9 +333,9 @@ defmodule Kernel.Typespec do
   end
 
   defp abstract_code_beam(module) when is_atom(module) do
-    case :code.which(module) do
-      :non_existing -> module
-      file -> file
+    case :code.get_object_code(module) do
+      { ^module, beam, _filename } -> beam
+      :error -> module
     end
   end
 
@@ -350,9 +350,8 @@ defmodule Kernel.Typespec do
     do_deftype(kind, type, definition, caller)
   end
 
-  def deftype(kind, {name, _meta, args} = type, caller) when 
-                                                        is_atom(name) and
-                                                        not is_list(args) do
+  def deftype(kind, {name, _meta, args} = type, caller)
+      when is_atom(name) and not is_list(args) do
     do_deftype(kind, type, { :term, [line: caller.line], nil }, caller)
   end
 
@@ -617,7 +616,7 @@ defmodule Kernel.Typespec do
 
   # Handle variables or local calls
   defp typespec({name, meta, atom}, vars, caller) when is_atom(atom) do
-    if List.member?(vars, name) do
+    if :lists.member(name, vars) do
       { :var, line(meta), name }
     else
       typespec({name, meta, []}, vars, caller)

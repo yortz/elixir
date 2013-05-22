@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Kernel.RescueTest do
   use ExUnit.Case, async: true
@@ -93,18 +93,6 @@ defmodule Kernel.RescueTest do
     assert result == "an exception"
   end
 
-  test :rescue_defined_variable do
-    var = Protocol.UndefinedError[protocol: Foo]
-
-    result = try do
-      raise Protocol.UndefinedError, protocol: Foo
-    rescue
-      ^var -> true
-    end
-
-    assert result, "Expected to rescue with success"
-  end
-
   test :rescue_named_defined_variable do
     expected = RuntimeError
 
@@ -146,7 +134,7 @@ defmodule Kernel.RescueTest do
       x in [FunctionClauseError] -> x.message
     end
 
-    assert result == "no function clause matching: Kernel.RescueTest.zero(1)"
+    assert result == "no function clause matching in Kernel.RescueTest.zero/1"
   end
 
   test :badarg_error do
@@ -260,17 +248,6 @@ defmodule Kernel.RescueTest do
     end
 
     assert result == "undefined function: DoNotExist.for_sure/0"
-  end
-
-  test :pattern_matching do
-    result = try do
-      raise Protocol.UndefinedError, protocol: Foo
-    rescue
-      Protocol.UndefinedError[protocol: Bar] -> false
-      Protocol.UndefinedError[protocol: Foo] = x -> x.message
-    end
-
-    assert result == "protocol Foo not implemented for nil"
   end
 
   defp zero(0), do: 0

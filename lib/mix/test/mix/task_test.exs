@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Mix.TaskTest do
   use MixTest.Case
@@ -18,7 +18,7 @@ defmodule Mix.TaskTest do
 
   test :clear do
     Mix.Task.run("hello")
-    assert Mix.Task.clear == ["hello"]
+    assert match?([ {"hello", _} ], Mix.Task.clear)
   end
 
   test :reenable do
@@ -42,8 +42,8 @@ defmodule Mix.TaskTest do
   test :all_modules do
     Mix.Task.load_all
     modules = Mix.Task.all_modules
-    assert Mix.Tasks.Hello   inlist modules
-    assert Mix.Tasks.Compile inlist modules
+    assert Mix.Tasks.Hello in modules
+    assert Mix.Tasks.Compile in modules
   end
 
   test :moduledoc do

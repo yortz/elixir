@@ -15,7 +15,7 @@ eval_quoted(Module, Quoted, RawBinding, Opts) ->
     false -> Line = 1
   end,
 
-  { Value, FinalBinding, _Scope } = elixir:eval_quoted([Quoted], Binding, Line, Scope#elixir_scope{check_clauses=false}),
+  { Value, FinalBinding, _Scope } = elixir:eval_quoted([Quoted], Binding, Line, Scope),
   { Value, FinalBinding }.
 
 scope_for_eval(Module, #elixir_scope{} = S) ->
@@ -42,7 +42,7 @@ docs_table(Module) ->
 
 translate(Meta, Ref, Block, S) ->
   Line            = ?line(Meta),
-  MetaBlock       = elixir_tree_helpers:abstract_syntax(Block),
+  MetaBlock       = elixir_tree_helpers:elixir_to_erl(Block),
   { MetaS, Vars } = elixir_scope:serialize_with_vars(Line, S),
 
   Args = [{integer, Line, Line}, Ref, MetaBlock, Vars, MetaS],
@@ -50,8 +50,13 @@ translate(Meta, Ref, Block, S) ->
 
 %% The compilation hook.
 
-compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
+compile(Line, Module, Block, Vars, #elixir_scope{context_modules=FileModules} = RawS) when is_atom(Module) ->
   C = elixir_compiler:get_opts(),
+  S = case lists:member(Module, FileModules) of
+    true  -> RawS;
+    false -> RawS#elixir_scope{context_modules=[Module|FileModules]}
+  end,
+
   File = S#elixir_scope.file,
   FileList = binary_to_list(File),
 
@@ -60,12 +65,13 @@ compile(Line, Module, Block, Vars, #elixir_scope{} = S) when is_atom(Module) ->
 
   try
     Result = eval_form(Line, Module, Block, Vars, S),
-    { Export, Private, Def, Defmacro, Defmacrop, Functions } = elixir_def:unwrap_stored_definitions(FileList, Module),
+    { Export, Private, Def, Defmacro, Functions } = elixir_def:unwrap_stored_definitions(FileList, Module),
 
-    { All, Forms0 } = functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Functions, C),
-    Forms1          = specs_form(Line, Module, Defmacro, Defmacrop, Forms0, C),
+    { All, Forms0 } = functions_form(Line, File, Module, Export, Private, Def, Defmacro, Functions, C),
+    Forms1          = specs_form(Line, Module, Private, Defmacro, Forms0, C),
     Forms2          = attributes_form(Line, File, Module, Forms1),
 
+    elixir_import:ensure_all_imports_used(Line, File, Module),
     elixir_import:ensure_no_local_conflict(Line, File, Module, All),
     elixir_import:ensure_no_import_conflict(Line, File, Module, All),
 
@@ -140,7 +146,8 @@ eval_form(Line, Module, Block, Vars, RawS) ->
   Value.
 
 %% Return the form with exports and function declarations.
-functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, RawFunctions, C) ->
+
+functions_form(Line, File, Module, Export, Private, Def, Defmacro, RawFunctions, C) ->
   Functions = case elixir_compiler:get_opt(internal, C) of
     true  -> RawFunctions;
     false -> record_rewrite_functions(Module, RawFunctions)
@@ -149,10 +156,15 @@ functions_form(Line, File, Module, Export, Private, Def, Defmacro, Defmacrop, Ra
   { FinalExport, FinalFunctions } =
     add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C),
 
-  Recorded = elixir_import:recorded_locals(Module),
-  elixir_def_local:check_unused_local_macros(File, Recorded, Defmacrop),
+  Recorded =
+    case ets:lookup(data_table(Module), 'on_load') of
+      [] -> elixir_import:recorded_locals(Module);
+      [{on_load,OnLoad}] -> elixir_import:recorded_locals(Module) ++ OnLoad
+    end,
 
-  { FinalExport ++ Private, [
+  elixir_def_local:check_unused_local(File, Recorded, Private),
+  PrivateTuple = [Tuple || { Tuple, _, _, _, _ } <- Private],
+  { FinalExport ++ PrivateTuple, [
     {attribute, Line, export, lists:sort(FinalExport)} | FinalFunctions
   ] }.
 
@@ -191,8 +203,8 @@ attributes_form(Line, _File, Module, Current) ->
 
 %% Specs
 
-specs_form(Line, Module, Defmacro, DefmacropWithLine, Forms, C) ->
-  Defmacrop = [Tuple || { Tuple, _, _ } <- DefmacropWithLine],
+specs_form(Line, Module, Private, Defmacro, Forms, C) ->
+  Defmacrop = [Tuple || { Tuple, defmacrop, _, _, _ } <- Private],
   case elixir_compiler:get_opt(internal, C) of
     true -> Forms;
     _    ->
@@ -289,11 +301,11 @@ add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C) ->
   end.
 
 functions_clause(Def) ->
-  { clause, 0, [{ atom, 0, functions }], [], [elixir_tree_helpers:abstract_syntax(Def)] }.
+  { clause, 0, [{ atom, 0, functions }], [], [elixir_tree_helpers:elixir_to_erl(Def)] }.
 
 macros_clause(Module, Def, Defmacro) ->
   All = handle_builtin_macros(Module, Def, Defmacro),
-  { clause, 0, [{ atom, 0, macros }], [], [elixir_tree_helpers:abstract_syntax(All)] }.
+  { clause, 0, [{ atom, 0, macros }], [], [elixir_tree_helpers:elixir_to_erl(All)] }.
 
 handle_builtin_macros('Elixir.Kernel', Def, Defmacro) ->
   ordsets:subtract(ordsets:union(Defmacro,
@@ -305,14 +317,14 @@ module_clause(Module) ->
 
 docs_clause(Module, true) ->
   Docs = ordsets:from_list(ets:tab2list(docs_table(Module))),
-  { clause, 0, [{ atom, 0, docs }], [], [elixir_tree_helpers:abstract_syntax(Docs)] };
+  { clause, 0, [{ atom, 0, docs }], [], [elixir_tree_helpers:elixir_to_erl(Docs)] };
 
 docs_clause(_Module, _) ->
   { clause, 0, [{ atom, 0, docs }], [], [{ atom, 0, nil }] }.
 
 moduledoc_clause(Line, Module, true) ->
   Docs = 'Elixir.Module':get_attribute(Module, moduledoc),
-  { clause, 0, [{ atom, 0, moduledoc }], [], [elixir_tree_helpers:abstract_syntax({ Line, Docs })] };
+  { clause, 0, [{ atom, 0, moduledoc }], [], [elixir_tree_helpers:elixir_to_erl({ Line, Docs })] };
 
 moduledoc_clause(_Line, _Module, _) ->
   { clause, 0, [{ atom, 0, moduledoc }], [], [{ atom, 0, nil }] }.
@@ -323,8 +335,7 @@ else_clause() ->
 
 % HELPERS
 
-eval_callbacks(Line, Module, Name, Args, RawS) ->
-  S         = RawS#elixir_scope{check_clauses=false},
+eval_callbacks(Line, Module, Name, Args, S) ->
   Binding   = binding_for_eval(Module, []),
   Callbacks = lists:reverse(ets:lookup_element(data_table(Module), Name, 2)),
   Meta      = [{line,Line},{require,false}],
@@ -332,15 +343,20 @@ eval_callbacks(Line, Module, Name, Args, RawS) ->
   lists:foreach(fun({M,F}) ->
     { Tree, _ } = elixir_dispatch:dispatch_require(Meta, M, F, Args, S, fun() ->
       apply(M, F, Args),
-      { { nil, 0 }, S }
+      { { atom, 0, nil }, S }
     end),
 
-    try
-      erl_eval:exprs([Tree], Binding)
-    catch
-      Kind:Reason ->
-        Info = { M, F, Args, [{ file, binary_to_list(S#elixir_scope.file) }, { line, Line }] },
-        erlang:raise(Kind, Reason, [Info|erlang:get_stacktrace()])
+    case Tree of
+      { atom, _, Atom } ->
+        Atom;
+      _ ->
+        try
+          erl_eval:exprs([Tree], Binding)
+        catch
+          Kind:Reason ->
+            Info = { M, F, Args, [{ file, binary_to_list(S#elixir_scope.file) }, { line, Line }] },
+            erlang:raise(Kind, Reason, [Info|erlang:get_stacktrace()])
+        end
     end
   end, Callbacks).
 

@@ -4,7 +4,7 @@
 
 For more about Elixir, installation and documentation, [check Elixir's website](http://elixir-lang.org/).
 
-# Usage
+## Usage
 
 If you want to contribute to Elixir or run it from source, clone this repository to your machine, compile and test it:
 
@@ -20,23 +20,11 @@ However, if tests fail, it is likely you have an outdated Erlang version (Elixir
 
 If you have the correct version and tests still fail, feel free to [open an issue][2].
 
-# Contributing
+## Contributing
 
-If you want to contribute, Elixir code is divided in applications inside the `lib` folder:
+We appreciate any contribution to Elixir, so check out our [CONTRIBUTING.md](CONTRIBUTING.md) guide for more information. We usually keep a list of features and bugs [in the issue tracker][2].
 
-* `elixir` - Contains Elixir's kernel and stdlib;
-
-* `eex` - Template engine that allows you to embed Elixir;
-
-* `ex_unit` - Simple test framework that ships with Elixir;
-
-* `iex` — IEx, Elixir's interactive shell
-
-* `mix` — Elixir's build tool
-
-We usually keep a list of features and bugs [in the issue tracker][2].
-
-# Important links
+## Important links
 
 * #elixir-lang on freenode IRC
 * [Website][1]
@@ -47,7 +35,7 @@ We usually keep a list of features and bugs [in the issue tracker][2].
   [2]: https://github.com/elixir-lang/elixir/issues
   [3]: http://groups.google.com/group/elixir-lang-core
 
-# License
+## License
 
 "Elixir" and the Elixir logo are copyright (c) 2012 Plataformatec.
 

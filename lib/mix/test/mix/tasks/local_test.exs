@@ -1,4 +1,4 @@
-Code.require_file "../../../test_helper.exs", __FILE__
+Code.require_file "../../test_helper.exs", __DIR__
 
 defmodule Mix.Tasks.LocalTest do
   use MixTest.Case
@@ -24,5 +24,18 @@ defmodule Mix.Tasks.LocalTest do
     # Remove it!
     Mix.Tasks.Local.Uninstall.run ["local.sample"]
     refute File.regular? tmp_path("userhome/.mix/tasks/Elixir-Mix-Tasks-Local-Sample.beam")
+  end
+
+  test "manage mix paths" do
+    File.rm_rf! tmp_path("userhome")
+    System.put_env "MIX_PATH", tmp_path("userhome/.mix")
+
+    # Install on MIX_PATH manually
+    File.cp fixture_path("beams/Elixir-Mix-Tasks-Local-Sample.beam"),
+            tmp_path("userhome/.mix/tasks/Elixir-Mix-Tasks-Local-Sample.beam")
+
+    # Run it
+    Mix.Task.run "local.sample"
+    assert_received { :mix_shell, :info, ["sample"] }
   end
 end

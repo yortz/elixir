@@ -1,7 +1,7 @@
 -module(elixir_literal).
 -export([translate/2]).
 -import(elixir_translator, [translate_each/2, translate_args/2]).
--import(elixir_scope, [umergev/2, umergec/2]).
+-import(elixir_scope, [umergec/2]).
 -include("elixir.hrl").
 -compile({parse_transform, elixir_transform}).
 
@@ -29,33 +29,23 @@ translate({ '{}', Meta, Args } = Original, S) when is_list(Args) ->
 translate({ '[]', _Meta, [] }, S) ->
   { { nil, 0 }, S };
 
-translate({ '[]', _Meta, Args } = Original, S) when is_list(Args) ->
+translate({ '[]', Meta, Args } = Original, S) when is_list(Args) ->
   case elixir_partials:handle(Original, S, allow_tail) of
     error ->
       [RTail|RArgs] = lists:reverse(Args),
 
       case RTail of
         {'|',_,[Left,Right]} ->
-          Exprs = [Left|RArgs],
-          { Tail, ST } = translate_each(Right, S),
-          ListS = umergec(S, ST);
+          RExprs = [Left|RArgs],
+          TailFun = fun(ST) -> translate_each(Right, ST) end;
         _ ->
-          Exprs = [RTail|RArgs],
-          Tail = { nil, 0 },
-          ST = S,
-          ListS = S
+          RExprs = [RTail|RArgs],
+          TailFun = fun(ST) -> { { nil, ?line(Meta) }, ST } end
       end,
 
-      { FExprs, FS } = case S#elixir_scope.context of
-        match ->
-          elixir_tree_helpers:build_reverse_list(fun elixir_translator:translate_each/2, Exprs, 0, ListS, Tail);
-        _ ->
-          { TArgs, { SC, SV } } =
-            elixir_tree_helpers:build_reverse_list(fun elixir_translator:translate_arg/2, Exprs, 0, { ListS, ListS }, Tail),
-          { TArgs, umergec(SV, SC) }
-      end,
-
-      { FExprs, umergev(ST, FS) };
+      { Exprs, SE } = translate_args(lists:reverse(RExprs), S),
+      { Tail, ST }  = TailFun(SE),
+      { elixir_tree_helpers:list_to_cons(?line(Meta), Exprs, Tail), ST };
     Else -> Else
   end;
 
@@ -75,7 +65,7 @@ translate(Atom, S) when is_atom(Atom) ->
   { { atom, 0, Atom }, S };
 
 translate(Bitstring, S) when is_bitstring(Bitstring) ->
-  { elixir_tree_helpers:abstract_syntax(Bitstring), S }.
+  { elixir_tree_helpers:elixir_to_erl(Bitstring), S }.
 
 %% Helpers
 
@@ -106,37 +96,28 @@ build_bitstr_each(Fun, [{'::',_,[H,V]}|T], Meta, S, Acc) ->
 build_bitstr_each(Fun, [H|T], Meta, S, Acc) ->
   build_bitstr_each(Fun, T, Meta, S, Acc, H, default, default).
 
-build_bitstr_each(Fun, T, Meta, S, Acc, H, Size, Types) when is_list(H) ->
-  case is_default_or_utf(Types) of
-    true ->
-      { NewAcc, NewS } = lists:foldl(fun(L, { LA, LS }) ->
-        { FL, FS } = Fun(L, LS),
-        { [{ bin_element, ?line(Meta), FL, Size, Types }|LA], FS }
-      end, { Acc, S }, H),
-      build_bitstr_each(Fun, T, Meta, NewS, NewAcc);
-    false ->
-      build_bitstr_default(Fun, T, Meta, S, Acc, H, Size, Types)
-  end;
-
-build_bitstr_each(Fun, T, Meta, S, Acc, H, Size, Types) when is_bitstring(H) ->
-  case is_default_or_utf(Types) of
-    true ->
-      Line = ?line(Meta),
-      { bin, _, Elements } = elixir_tree_helpers:abstract_syntax(H),
-      NewAcc = lists:foldl(fun({ bin_element, _, Expr, _, _ }, FinalAcc) ->
-        [{ bin_element, Line, Expr, Size, Types }|FinalAcc]
-      end, Acc, Elements),
-      build_bitstr_each(Fun, T, Meta, S, NewAcc);
-    false ->
-      build_bitstr_default(Fun, T, Meta, S, Acc, H, Size, Types)
-  end;
-
 build_bitstr_each(Fun, T, Meta, S, Acc, H, Size, Types) ->
-  build_bitstr_default(Fun, T, Meta, S, Acc, H, Size, Types).
-
-build_bitstr_default(Fun, T, Meta, S, Acc, H, Size, Types) ->
   { Expr, NS } = Fun(H, S),
-  build_bitstr_each(Fun, T, Meta, NS, [{ bin_element, ?line(Meta), Expr, Size, Types }|Acc]).
+  case (is_default_or_utf(Types) andalso Expr) of
+    { bin, _, BinElements } ->
+      build_bitstr_each(Fun, T, Meta, NS, rehash_bin_elements(BinElements, Size, Types, []) ++ Acc);
+    { cons, _, _, _ } = Cons ->
+      build_bitstr_each(Fun, T, Meta, NS, rehash_cons(Cons, Size, Types, []) ++ Acc);
+    { nil, _ } ->
+      build_bitstr_each(Fun, T, Meta, NS, Acc);
+    _ ->
+      build_bitstr_each(Fun, T, Meta, NS, [{ bin_element, ?line(Meta), Expr, Size, Types }|Acc])
+  end.
+
+rehash_cons({ nil, _ }, _Size, _Types, Acc) -> Acc;
+rehash_cons({ cons, Line, Left, Right }, Size, Types, Acc) ->
+  rehash_cons(Right, Size, Types, [{ bin_element, Line, Left, Size, Types }|Acc]).
+
+rehash_bin_elements([{ bin_element, Line, Expr, _S, _T }|T], Size, Types, Acc) ->
+  rehash_bin_elements(T, Size, Types, [{ bin_element, Line, Expr, Size, Types }|Acc]);
+
+rehash_bin_elements([], _Size, _Types, Acc) ->
+  Acc.
 
 is_default_or_utf(default) -> true;
 is_default_or_utf([UTF|_]) when UTF == utf8; UTF == utf16; UTF == utf32 -> true;

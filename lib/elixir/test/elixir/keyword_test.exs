@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule KeywordTest do
   use ExUnit.Case, async: true
@@ -12,7 +12,7 @@ defmodule KeywordTest do
   test :ambiguity do
     # This raises a warning, so let's leave it commented
     # assert quote(do: [a:b])  == [a: { :b, 0, :quoted }]
-    assert [{ :::, [], [{ :a, [], _ },{ :b, [], _ }] }] = quote(do: [a::b])
+    assert [{ :::, _, [{ :a, _, _ },{ :b, _, _ }] }] = quote(do: [a::b])
   end
 
   test :optional_comma do
@@ -31,6 +31,7 @@ defmodule KeywordTest do
   test :keyword? do
     assert Keyword.keyword?([])
     assert Keyword.keyword?([a: 1])
+    assert Keyword.keyword?([{Foo,1}])
     refute Keyword.keyword?([{}])
     refute Keyword.keyword?(<<>>)
   end
@@ -54,11 +55,11 @@ defmodule KeywordTest do
     assert Keyword.get(create_empty_keywords, :first_key, "default") == "default"
   end
 
-  test :get! do
-    assert Keyword.get!(create_keywords, :first_key) == 1
+  test :fetch! do
+    assert Keyword.fetch!(create_keywords, :first_key) == 1
 
     error = assert_raise KeyError, fn ->
-      Keyword.get!(create_keywords, :unknown)
+      Keyword.fetch!(create_keywords, :unknown)
     end
 
     assert error.key == :unknown
@@ -164,6 +165,12 @@ defmodule Keyword.DuplicatedTest do
     assert Keyword.delete(create_keywords, :first_key) == [second_key: 2]
     assert Keyword.delete(create_keywords, :other_key) == create_keywords
     assert Keyword.delete(create_empty_keywords, :other_key) == []
+  end
+
+  test :delete_first do
+    assert Keyword.delete_first(create_keywords, :first_key) == [first_key: 2, second_key: 2]
+    assert Keyword.delete_first(create_keywords, :other_key) == [first_key: 1, first_key: 2, second_key: 2]
+    assert Keyword.delete_first(create_empty_keywords, :other_key) == []
   end
 
   test :put do

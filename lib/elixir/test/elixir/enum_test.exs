@@ -1,7 +1,31 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule EnumTest.List do
   use ExUnit.Case, async: true
+
+  test :empty? do
+    assert Enum.empty?([])
+    refute Enum.empty?([1,2,3])
+    refute Enum.empty?(1..3)
+  end
+
+  test :member? do
+    assert Enum.member?([1, 2, 3], 2)
+    refute Enum.member?([], 0)
+    refute Enum.member?([1, 2, 3], 0)
+    assert Enum.member?(1..3, 2)
+    refute Enum.member?(1..3, 0)
+  end
+
+  test :count do
+    assert Enum.count([1,2,3]) == 3
+    assert Enum.count([]) == 0
+  end
+
+  test :count_fun do
+    assert Enum.count([1,2,3], fn(x) -> rem(x, 2) == 0 end) == 1
+    assert Enum.count([], fn(x) -> rem(x, 2) == 0 end) == 0
+  end
 
   test :all? do
     assert Enum.all?([2,4,6], fn(x) -> rem(x, 2) == 0 end)
@@ -23,22 +47,19 @@ defmodule EnumTest.List do
     refute Enum.any?([])
   end
 
-  test :at! do
-    assert Enum.at!([2,4,6], 0) == 2
-    assert Enum.at!([2,4,6], 2) == 6
+  test :at do
+    assert Enum.at([2,4,6], 0) == 2
+    assert Enum.at([2,4,6], 2) == 6
+    assert Enum.at([2,4,6], 4) == nil
+    assert Enum.at([2,4,6], 4, :none) == :none
+  end
+
+  test :fetch! do
+    assert Enum.fetch!([2,4,6], 0) == 2
+    assert Enum.fetch!([2,4,6], 2) == 6
     assert_raise Enum.OutOfBoundsError, fn ->
-      Enum.at!([2,4,6], 4)
+      Enum.fetch!([2,4,6], 4)
     end
-  end
-
-  test :count do
-    assert Enum.count([1,2,3]) == 3
-    assert Enum.count([]) == 0
-  end
-
-  test :count_fun do
-    assert Enum.count([1,2,3], fn(x) -> rem(x, 2) == 0 end) == 1
-    assert Enum.count([], fn(x) -> rem(x, 2) == 0 end) == 0
   end
 
   test :drop do
@@ -75,11 +96,6 @@ defmodule EnumTest.List do
     assert Enum.find_index([2,3,4], fn(x) -> rem(x, 2) == 1 end) == 1
   end
 
-  test :empty? do
-    assert Enum.empty?([])
-    refute Enum.empty?([1,2,3])
-  end
-
   test :each do
     try do
       assert Enum.each([], fn(x) -> x end) == :ok
@@ -95,6 +111,12 @@ defmodule EnumTest.List do
       Process.delete(:enum_test_each)
       Process.delete(:enum_test_indexed_each)
     end
+  end
+
+  test :fetch do
+    assert Enum.fetch([2,4,6], 0) == { :ok, 2 }
+    assert Enum.fetch([2,4,6], 2) == { :ok, 6 }
+    assert Enum.fetch([2,4,6], 4) == :error
   end
 
   test :first do
@@ -240,8 +262,14 @@ defmodule EnumTest.List do
     assert Enum.take_while([], fn(_) -> true end) == []
   end
 
+  test :to_list do
+    assert Enum.to_list([]) == []
+    assert Enum.to_list(1 .. 3) == [1, 2, 3]
+  end
+
   test :uniq do
     assert Enum.uniq([1,2,3,2,1]) == [1,2,3]
+    assert Enum.uniq([1,2,3,2,1], fn x -> x end) == [1,2,3]
   end
 
   test :zip do
@@ -251,6 +279,34 @@ defmodule EnumTest.List do
     assert Enum.zip([], [1]) == []
     assert Enum.zip([1], []) == [{ 1, nil }]
     assert Enum.zip([], []) == []
+  end
+
+  test :max do
+    assert Enum.max([1]) == 1
+    assert Enum.max([1,2,3]) == 3
+    assert Enum.max([1,[],:a,{}]) == []
+    assert_raise Enum.EmptyError, fn ->
+      assert Enum.max([])
+    end
+
+    assert Enum.max(["a", "aa", "aaa"], fn(x) -> String.length(x) end) == "aaa"
+    assert_raise Enum.EmptyError, fn ->
+      Enum.max([], fn(x) -> String.length(x) end)
+    end
+  end
+
+  test :min do
+    assert Enum.min([1]) == 1
+    assert Enum.min([1,2,3]) == 1
+    assert Enum.min([[],:a,{}]) == :a
+    assert_raise Enum.EmptyError, fn ->
+      assert Enum.min([])
+    end
+
+    assert Enum.min(["a", "aa", "aaa"], fn(x) -> String.length(x) end) == "a"
+    assert_raise Enum.EmptyError, fn ->
+      Enum.min([], fn(x) -> String.length(x) end)
+    end
   end
 end
 
@@ -280,18 +336,18 @@ defmodule EnumTest.Range do
     assert Enum.any?(range)
   end
 
-  test :at! do
-    assert Enum.at!(2..6, 0) == 2
-    assert Enum.at!(2..6, 4) == 6
-    assert Enum.at!(-2..-6, 0) == -2
-    assert Enum.at!(-2..-6, 4) == -6
+  test :fetch! do
+    assert Enum.fetch!(2..6, 0) == 2
+    assert Enum.fetch!(2..6, 4) == 6
+    assert Enum.fetch!(-2..-6, 0) == -2
+    assert Enum.fetch!(-2..-6, 4) == -6
 
     assert_raise Enum.OutOfBoundsError, fn ->
-      assert Enum.at!(2..6, 8)
+      assert Enum.fetch!(2..6, 8)
     end
 
     assert_raise Enum.OutOfBoundsError, fn ->
-      assert Enum.at!(-2..-6, 8)
+      assert Enum.fetch!(-2..-6, 8)
     end
   end
 
@@ -533,6 +589,7 @@ defmodule EnumTest.Range do
 
   test :uniq do
     assert Enum.uniq(1..3) == [1,2,3]
+    assert Enum.uniq(1..3, fn x -> x end) == [1,2,3]
   end
 
   test :zip do
@@ -547,6 +604,24 @@ defmodule EnumTest.Range do
     assert Enum.zip(1..2, 1..2) == [{1, 1}, {2, 2}]
     assert Enum.zip(1..4, 1..2) == [{1, 1}, {2, 2}, {3, nil}, {4, nil}]
     assert Enum.zip(1..2, 1..4) == [{1, 1}, {2, 2}]
+  end
+
+  test :max do
+    assert Enum.max(1..1) == 1
+    assert Enum.max(1..3) == 3
+    assert Enum.max(3..1) == 3
+
+    assert Enum.max(1..1, fn(x) -> :math.pow(-2, x) end) == 1
+    assert Enum.max(1..3, fn(x) -> :math.pow(-2, x) end) == 2
+  end
+
+  test :min do
+    assert Enum.min([1]) == 1
+    assert Enum.min([1,2,3]) == 1
+    assert Enum.min([[],:a,{}]) == :a
+
+    assert Enum.min(1..1, fn(x) -> :math.pow(-2, x) end) == 1
+    assert Enum.min(1..3, fn(x) -> :math.pow(-2, x) end) == 3
   end
 end
 

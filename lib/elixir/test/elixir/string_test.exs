@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule StringTest do
   use ExUnit.Case, async: true
@@ -169,7 +169,7 @@ defmodule StringTest do
     assert String.first("ελιξήριο") == "ε"
     assert String.first("סם חיים") == "ס"
     assert String.first("がガちゃ") == "が"
-    assert String.first("Ā̀stute") == "Ā̀"        
+    assert String.first("Ā̀stute") == "Ā̀"
     assert String.first("") == nil
   end
 
@@ -193,7 +193,7 @@ defmodule StringTest do
     assert String.length("ειξήριολ") == 8
     assert String.length("סם ייםח") == 7
     assert String.length("がガちゃ") == 4
-    assert String.length("Ā̀stute") == 6    
+    assert String.length("Ā̀stute") == 6
     assert String.length("") == 0
   end
 
@@ -224,8 +224,28 @@ defmodule StringTest do
     assert String.slice("ειξήριολ", -10, 3) == nil
     assert String.slice("elixir", 8, 2) == nil
     assert String.slice("あいうえお", 6, 2) == nil
-    assert String.slice("ειξήριολ", 8, 1) == nil
-    assert String.slice("", 0, 1) == nil
+    assert String.slice("ειξήριολ", 8, 1) == ""
+    assert String.slice("ειξήριολ", 9, 1) == nil
+    assert String.slice("", 0, 1) == ""
+    assert String.slice("", 1, 1) == nil
+  end
+
+  test :valid? do
+    assert String.valid?("afds")
+    assert String.valid?("øsdfh")
+    assert String.valid?("dskfjあska")
+
+    refute String.valid?(<<0xffff :: 16>>)
+    refute String.valid?("asd" <> <<0xffff :: 16>>)
+  end
+
+  test :valid_character? do
+    assert String.valid_character?("a")
+    assert String.valid_character?("ø")
+    assert String.valid_character?("あ")
+
+    refute String.valid_character?("\x{ffff}")
+    refute String.valid_character?("ab")
   end
 
   test :valid_codepoint? do
@@ -233,8 +253,32 @@ defmodule StringTest do
     assert String.valid_codepoint?("ø")
     assert String.valid_codepoint?("あ")
 
-    refute String.valid_codepoint?("\xffff")
+    refute String.valid_codepoint?(<<0xffff :: 16>>)
     refute String.valid_codepoint?("ab")
   end
 
+  test :to_integer do
+    assert String.to_integer("12") === {12,""}
+    assert String.to_integer("-12") === {-12,""}
+    assert String.to_integer("123456789") === {123456789,""}
+    assert String.to_integer("12.5") === {12,".5"}
+    assert String.to_integer("7.5e-3") === {7,".5e-3"}
+    assert String.to_integer("12x") === {12,"x"}
+    assert String.to_integer("three") === :error
+  end
+
+  test :to_float do
+    assert String.to_float("12") === {12.0,""}
+    assert String.to_float("-12") === {-12.0,""}
+    assert String.to_float("123456789") === {123456789.0,""}
+    assert String.to_float("12.5") === {12.5,""}
+    assert String.to_float("-12.5") === {-12.5,""}
+    assert String.to_float("7.5e3") === {7.5e3,""}
+    assert String.to_float("7.5e-3") === {7.5e-3,""}
+    assert String.to_float("12x") === {12.0,"x"}
+    assert String.to_float("12.5x") === {12.5,"x"}
+    assert String.to_float("pi") === :error
+  end
+
+  
 end

@@ -142,12 +142,15 @@ defmodule IO do
   Inspects the item with options using the given device.
   """
   def inspect(device, item, opts) do
-    puts device, Binary.Inspect.inspect(item, opts)
+    puts device, Kernel.inspect(item, opts)
     item
   end
 
   @doc """
-  Gets `count` bytes from the IO device. It returns:
+  Gets a number of bytes from the io device. If the
+  io device is a unicode device, count implies
+  the number of unicode codepoints to be retrieved.
+  Otherwise, the number of raw bytes. It returns:
 
   * `data` - The input characters.
 
@@ -157,8 +160,43 @@ defmodule IO do
     for instance {:error, :estale} if reading from an
     NFS file system.
   """
-  def getb(device // group_leader(), prompt, count // 1) do
+  def getn(prompt, count // 1)
+
+  def getn(prompt, count) when is_integer(count) do
+    getn(group_leader, prompt, count)
+  end
+
+  def getn(device, prompt) do
+    getn(device, prompt, 1)
+  end
+
+  @doc """
+  Gets a number of bytes from the io device. If the
+  io device is a unicode device, count implies
+  the number of unicode codepoints to be retrieved.
+  Otherwise, the number of raw bytes.
+  """
+  def getn(device, prompt, count) do
     :io.get_chars(map_dev(device), to_iodata(prompt), count)
+  end
+
+  @doc false
+  def getb(prompt, count // 1)
+
+  def getb(prompt, count) when is_integer(count) do
+    IO.write "[WARNING] IO.getb is deprecated, please use IO.getn instead\n#{Exception.format_stacktrace}"
+    getn(prompt, count)
+  end
+
+  def getb(device, prompt) do
+    IO.write "[WARNING] IO.getb is deprecated, please use IO.getn instead\n#{Exception.format_stacktrace}"
+    getn(device, prompt)
+  end
+
+  @doc false
+  def getb(device, prompt, count) do
+    IO.write "[WARNING] IO.getb is deprecated, please use IO.getn instead\n#{Exception.format_stacktrace}"
+    getn(device, prompt, count)
   end
 
   @doc """

@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Kernel.Overridable do
   def sample do
@@ -147,7 +147,7 @@ defmodule Kernel.OverridableTest do
   end
 
   test "overridable definitions are private" do
-    refute {:"with_super (overridable 0)",0} inlist Overridable.__info__(:exports)
+    refute {:"with_super (overridable 0)",0} in Overridable.__info__(:exports)
   end
 
   test "invalid super call" do

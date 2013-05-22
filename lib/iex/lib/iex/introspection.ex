@@ -53,7 +53,7 @@ defmodule IEx.Introspection do
   end
 
   def h(function, arity) when is_atom(function) and is_integer(arity) do
-    h([__MODULE__, Kernel, Kernel.SpecialForms], function, arity)
+    h([IEx.Helpers, Kernel, Kernel.SpecialForms], function, arity)
   end
 
   def h(_, _) do
@@ -148,7 +148,7 @@ defmodule IEx.Introspection do
   defp print_doc({ { fun, _ }, _line, kind, args, doc }) do
     args = Enum.map_join(args, ", ", print_doc_arg(&1))
     IO.puts IO.ANSI.escape("%{yellow}* #{kind} #{fun}(#{args})\n")
-    IO.write IO.ANSI.escape_fragment("%{yellow}") <> doc <> IO.ANSI.escape_fragment("%{reset}")
+    if doc, do: IO.write IO.ANSI.escape_fragment("%{yellow}") <> doc <> IO.ANSI.escape_fragment("%{reset}")
   end
 
   defp print_doc_arg({ ://, _, [left, right] }) do

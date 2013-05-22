@@ -1,3 +1,55 @@
+# v0.8.3 (2013-05-22)
+
+* enhancements
+  * [CLI] Flags `-p` and `-pr` fails if pattern match no files
+  * [CLI] Support `--hidden` and `--cookie` flags for distributed Erlang
+  * [Enum] Add `Enum.to_list/1`, `Enum.member?/2`, `Enum.uniq/2`, `Enum.max/1`, `Enum.max/2`, `Enum.min/1` and `Enum.min/2`
+  * [ExUnit] Add `ExUnit.CaptureIO` for IO capturing during tests
+  * [ExUnit] Consider load time on ExUnit time reports
+  * [IEx] Support `ls` with colored output
+  * [IEx] Add `#iex:break` to break incomplete expressions
+  * [Kernel] Add `Enum.at`, `Enum.fetch` and `Enum.fetch!`
+  * [Kernel] Add `String.to_integer` and `String.to_float`
+  * [Kernel] Add `Dict.take`, `Dict.drop`, `Dict.split`, `Dict.pop` and `Dict.fetch!`
+  * [Kernel] Many optimizations for code compilation
+  * [Kernel] `in` can be used with right side expression outside guards
+  * [Kernel] Add `Node.get_cookie/0` and `Node.set_cookie/2`
+  * [Kernel] Add `__DIR__`
+  * [Kernel] Expand macros and attributes on quote, import, alias and require
+  * [Kernel] Improve warnings related to default arguments
+  * [Keyword] Add `Keyword.delete_first/2`
+  * [Mix] Add `local.rebar` to download a local copy of rebar, and change `deps.compile` to use it if needed
+  * [Mix] Support umbrella applications
+  * [Mix] Load beam files available at `MIX_PATH` on CLI usage
+  * [String] Add `String.valid?` and `String.valid_character?`
+
+* bug fix
+  * [ExUnit] Handle exit messages from in ExUnit
+  * [ExUnit] Failures on ExUnit's setup_all now invalidates all tests
+  * [Kernel] Ensure we don't splice keyword args unecessarily
+  * [Kernel] Private functions used by private macros no longer emit an unused warning
+  * [Kernel] Ensure Elixir won't trip on empty receive blocks
+  * [Kernel] `String.slice` now returns an empty string when out of range by 1
+  * [Mix] Generate manifest files after compilation to avoid depending on directory timestamps and to remove unused .beam files
+  * [Path] `Path.expand/2` now correctly expands `~` in the second argument
+  * [Regex] Fix badmatch with `Regex.captures(%r/(.)/g, "cat")`
+  * [URI] Downcase host and scheme and URIs
+
+* deprecations
+  * [Code] `Code.eval` is deprecated in favor of `Code.eval_string`
+  * [Exception] `Exception.format_entry` is deprecated in favor of `Exception.format_stacktrace_entry`
+  * [ExUnit] `assert left inlist right` is deprecated in favor of `assert left in right`
+  * [IO] `IO.getb` is deprecated in favor of `IO.getn`
+  * [List] `List.member?/2` is deprecated in favor of `Enum.member?/2`
+  * [Kernel] `var_context` in quote was deprecated in favor of `context`
+  * [Kernel] `Enum.at!` and `Dict.get!` is deprecated in favor of `Enum.fetch!` and `Dict.fetch!`
+
+* backwards incompatible changes
+  * [Dict] `List.Dict` was moved to `ListDict`
+  * [IO] `IO.gets`, `IO.getn` and friends now return binaries when reading from stdio
+  * [Kernel] Precedence of `|>` has changed to lower to support constructs like `1..5 |> Enum.to_list`
+  * [Mix] `mix escriptize` now receives arguments as binaries
+
 # v0.8.2 (2013-04-20)
 
 * enhancements
@@ -73,7 +125,7 @@
   * [Binary] Support syntax shortcut for specifying size in bit syntax
   * [CLI] Support `--app` option to start an application and its dependencies
   * [Dict] Support `put_new` in `Dict` and `Keyword`
-  * [Dict] Add `List.Dict` and a faster `HashDict` implementation
+  * [Dict] Add `ListDict` and a faster `HashDict` implementation
   * [ExUnit] ExUnit now supports multiple runs in the same process
   * [ExUnit] Failures in ExUnit now shows a tailored stacktrace
   * [ExUnit] Introduce `ExUnit.ExpectationError` to provide better error messages
@@ -100,7 +152,7 @@
   * [Kernel] The AST now allows metadata to be attached to each node. This means the second item in the AST is no longer an integer (representing the line), but a keywords list. Code that relies on the line information from AST or that manually generate AST nodes need to be properly updated
 
 * deprecations
-  * [Dict] Deprecate `Binary.Dict` and `OrdDict` in favor of `HashDict` and `List.Dict`
+  * [Dict] Deprecate `Binary.Dict` and `OrdDict` in favor of `HashDict` and `ListDict`
   * [File] Deprecate path related functions in favor of the module `Path`
   * [Kernel] The `/>` operator has been deprecated in favor of `|>`
   * [Mix] `Mix.Project.sources` is deprecated in favor of `Mix.Project.config_files`
@@ -129,7 +181,6 @@
 
 * deprecations
   * [Enum] `Enum.qsort` is deprecated in favor of `Enum.sort`
-  * [ExUnit] `assert left in right` is deprecated in favor of `assert left inlist right`
   * [List] `List.sort` and `List.uniq` have been deprecated in favor of their `Enum` counterparts
   * [Record] Default-based generated functions are deprecated
   * [Typespec] Enhancements and deprecations to the `@spec/@callback` and the fun type syntax

@@ -23,6 +23,27 @@ defmodule Mix.Utils do
   end
 
   @doc """
+  Gets all extra paths defined in the environment variable
+  MIX_PATH. MIX_PATH may contain multiple paths. If on windows,
+  those paths should be separated by `;`, if on unix systems,
+  use `:`.
+  """
+  def mix_path do
+    if path = System.get_env("MIX_PATH") do
+      String.split(path, path_separator)
+    else
+      []
+    end
+  end
+
+  defp path_separator do
+    case :os.type do
+      { :win32, _ } -> ";"
+      { :unix, _ }  -> ":"
+    end
+  end
+
+  @doc """
   Gets the source location of a module as a binary.
   """
   def source(module) do
@@ -92,17 +113,21 @@ defmodule Mix.Utils do
   end
 
   @doc """
-  Executes a function but preserves the given path mtime
-  properties.
+  Generates a manifest containing all files generated
+  during a given compilation step. It receives the manifest
+  file name and a function to execute. The result of the
+  function is compared to the manifest in order do detect
+  the files removed from the manifest file.
   """
-  def preserving_mtime(path, fun) do
-    previous = last_modified(path)
-
-    try do
-      fun.()
-    after
-      File.touch!(path, previous)
-    end
+  def manifest(file, fun) do
+    old =
+      case File.read(file) do
+        { :ok, contents } -> String.split(contents, "\n")
+        { :error, _ } -> []
+      end
+    current = fun.()
+    File.write!(file, Enum.join(current, "\n"))
+    { current, old -- current }
   end
 
   @doc """
@@ -307,4 +332,45 @@ defmodule Mix.Utils do
 
   defp to_lower_char(char) when char in ?A..?Z, do: char + 32
   defp to_lower_char(char), do: char
+
+	@doc """
+	Opens and reads content from either a URL or a local filesystem path.
+	Used by local.install and local.rebar.
+	"""
+	def read_path(path) do
+    cond do
+      is_url?(path)  -> read_url(path)
+      is_file?(path) -> read_file(path)
+      :else          -> raise Mix.Error, message: "expected #{path} to be a url or a local file path"
+    end
+  end
+
+  defp read_file(path) do
+    File.read!(path)
+  end
+
+  defp read_url(path) do
+    if URI.parse(path).scheme == "https" do
+      :ssl.start
+    end
+
+    :inets.start
+
+    case :httpc.request(binary_to_list(path)) do
+      { :ok, { { _, status, _ }, _, body } } when status in 200..299 ->
+        iolist_to_binary(body)
+      { :ok, { { _, status, _ }, _, _ } } ->
+        raise Mix.Error, message: "could not access url #{path}, got status: #{status}"
+      { :error, reason } ->
+        raise Mix.Error, message: "could not access url #{path}, error: #{inspect reason}"
+    end
+  end
+
+  defp is_file?(path) do
+    File.regular?(path)
+  end
+
+  defp is_url?(path) do
+    URI.parse(path).scheme in ["http", "https"]
+  end
 end

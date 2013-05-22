@@ -2,6 +2,7 @@ defmodule Mix.Tasks.Deps.Compile do
   use Mix.Task
 
   @shortdoc "Compile dependencies"
+  @recursive true
 
   @moduledoc """
   Compile dependencies.
@@ -23,14 +24,17 @@ defmodule Mix.Tasks.Deps.Compile do
 
   """
 
-  import Mix.Deps, only: [all: 0, available?: 1, by_name!: 1, format_dep: 1]
+  import Mix.Deps, only: [ all: 0, available?: 1, by_name: 2, compile_paths: 1,
+                           depending: 2, format_dep: 1, make?: 1, mix?: 1, rebar?: 1 ]
 
   def run(args) do
     case OptionParser.parse(args) do
       { _, [] } ->
         do_compile Enum.filter(all, available?(&1))
       { _, tail } ->
-        do_compile by_name!(tail)
+        all_deps = all
+        deps = by_name(tail, all_deps)
+        do_compile(deps ++ depending(deps, all_deps))
     end
   end
 
@@ -44,38 +48,33 @@ defmodule Mix.Tasks.Deps.Compile do
       shell.info "* Compiling #{app}"
 
       deps_path = opts[:dest]
-      ebin = Path.join(deps_path, "ebin") |> binary_to_list
-
-      # Avoid compilation conflicts
-      :code.del_path(ebin |> Path.expand)
 
       root_path = Path.expand(Mix.project[:deps_path])
 
       config = [
         deps_path: root_path,
-        root_lockfile:  Path.expand(Mix.project[:lockfile])
+        root_lockfile: Path.expand(Mix.project[:lockfile])
       ]
 
-      File.cd! deps_path, fn ->
-        cond do
-          opts[:compile] -> do_compile app, opts[:compile]
-          mix?           -> do_mix dep, config
-          rebar?         -> do_command app, "rebar", "compile deps_dir=#{inspect root_path}"
-          make?          -> do_command app, "make"
-          true           -> shell.error "Could not compile #{app}, no mix.exs, rebar.config or Makefile " <>
-                             "(pass :compile as an option to customize compilation, set it to :noop to do nothing)"
-        end
+      ebins = Enum.map compile_paths(dep), binary_to_list(&1)
+
+      # Avoid compilation conflicts
+      Enum.each ebins, fn ebin -> :code.del_path(ebin |> Path.expand) end
+
+      cond do
+        opts[:compile] -> File.cd! deps_path, fn -> do_compile app, opts[:compile] end
+        mix?(dep)      -> File.cd! deps_path, fn -> do_mix dep, config end
+        rebar?(dep)    -> File.cd! deps_path, fn -> do_rebar app, root_path end
+        make?(dep)     -> File.cd! deps_path, fn -> do_command app, "make" end
+        true           -> shell.error "Could not compile #{app}, no mix.exs, rebar.config or Makefile " <>
+                           "(pass :compile as an option to customize compilation, set it to :noop to do nothing)"
       end
 
-      Code.prepend_path ebin
+      Enum.each ebins, Code.prepend_path &1
     end
 
     Mix.Deps.Lock.touch
   end
-
-  defp mix?,   do: File.regular?("mix.exs")
-  defp rebar?, do: Enum.any? ["rebar.config", "rebar.config.script"], File.regular?(&1)
-  defp make?,  do: File.regular?("Makefile")
 
   defp check_unavailable!(app, { :unavailable, _ }) do
     raise Mix.Error, message: "Cannot compile dependency #{app} because " <>
@@ -86,16 +85,15 @@ defmodule Mix.Tasks.Deps.Compile do
     :ok
   end
 
-  defp do_mix(Mix.Dep[app: app, opts: opts, project: project], config) do
+  defp do_mix(Mix.Dep[app: app, opts: opts], config) do
     env       = opts[:env] || :prod
     old_env   = Mix.env
-    old_tasks = Mix.Task.clear
 
     try do
       Mix.env(env)
-      Mix.Project.post_config(config)
-      Mix.Project.push project
-      Mix.Task.run "compile", ["--no-deps"]
+      Mix.Project.in_project(app, ".", config, fn _ ->
+        Mix.Task.run "compile", ["--no-deps"]
+      end)
     catch
       kind, reason ->
         Mix.shell.error "could not compile dependency #{app}, mix compile failed. " <>
@@ -103,8 +101,6 @@ defmodule Mix.Tasks.Deps.Compile do
         :erlang.raise(kind, reason, System.stacktrace)
     after
       Mix.env(old_env)
-      Mix.Project.pop
-      Mix.Task.set_tasks(old_tasks)
     end
   end
 
@@ -130,4 +126,33 @@ defmodule Mix.Tasks.Deps.Compile do
         "In case you want to recompile this dependency, please run: mix deps.compile #{app}"
     end
   end
+
+  defp do_rebar(app, root_path) do
+    do_command app, find_rebar(app), "compile deps_dir=#{inspect root_path}"
+  end
+
+  defp find_rebar(app) do
+    cond do
+      File.regular?("./rebar") ->
+        Path.join(File.cwd!, "rebar")
+
+      File.regular?(Mix.Tasks.Local.Rebar.local_rebar_path) ->
+        Mix.Tasks.Local.Rebar.local_rebar_path
+
+      System.find_executable("rebar") ->
+        "rebar"
+
+      true ->
+        shell = Mix.shell
+        shell.info "Could not find rebar, which is needed to build #{app}"
+        shell.info "I can install a local copy which is just used by mix"
+        unless shell.yes?("Shall I install this local copy?") do
+          raise Mix.Error, message: "could not find rebar to compile " <>
+            "dependency #{app}, please ensure rebar is available"
+        end
+        Mix.Task.run "local.rebar", []
+        Mix.Tasks.Local.Rebar.local_rebar_path
+    end
+  end
+
 end

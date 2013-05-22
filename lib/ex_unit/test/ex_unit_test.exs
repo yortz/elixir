@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule ExUnit.NilFormatter do
   @behaviour ExUnit.Formatter
@@ -7,7 +7,7 @@ defmodule ExUnit.NilFormatter do
     :ok
   end
 
-  def suite_finished(:ok, _ms) do
+  def suite_finished(:ok, _run_us, _load_us) do
     1
   end
 

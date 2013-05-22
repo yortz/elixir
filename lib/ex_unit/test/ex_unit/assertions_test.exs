@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule ExUnit.AssertionsTest.Value do
   def tuple, do: { 2, 1 }
@@ -113,26 +113,26 @@ defmodule ExUnit.AssertionsTest do
     end
   end
 
-  test :assert_inlist_when_is_member do
-    true = assert 'foo' inlist ['foo', 'bar']
+  test :assert_in_when_is_member do
+    true = assert 'foo' in ['foo', 'bar']
   end
 
-  test :assert_inlist_when_is_not_member do
+  test :assert_in_when_is_not_member do
     try do
-      "This should never be tested" = assert 'foo' inlist 'bar'
+      "This should never be tested" = assert 'foo' in 'bar'
     rescue
       error in [ExUnit.ExpectationError] ->
         "Expected 'foo' to be in 'bar'" = error.message
     end
   end
 
-  test :refute_inlist_when_is_not_member do
-    false = refute 'baz' inlist ['foo', 'bar']
+  test :refute_in_when_is_not_member do
+    false = refute 'baz' in ['foo', 'bar']
   end
 
-  test :refute_inlist_when_is_member do
+  test :refute_in_when_is_member do
     try do
-      "This should never be tested" = refute 'foo' inlist ['foo', 'bar']
+      "This should never be tested" = refute 'foo' in ['foo', 'bar']
     rescue
       error in [ExUnit.ExpectationError] ->
         "Expected 'foo' to not be in ['foo','bar']" = error.message
@@ -219,7 +219,7 @@ defmodule ExUnit.AssertionsTest do
     end
   rescue
     error in [ExUnit.AssertionError] ->
-      "Expected exception SyntaxError, got FunctionClauseError (no function clause matching: :lists.flatten(1))" = error.message
+      "Expected exception SyntaxError, got FunctionClauseError (no function clause matching in :lists.flatten/1)" = error.message
   end
 
   test :assert_operator_greater_pass do

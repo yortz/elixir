@@ -86,9 +86,9 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.index %r/c(d)/, "abcd"
+      iex> Regex.index(%r/c(d)/, "abcd")
       2
-      iex> Regex.index %r/e/, "abcd"
+      iex> Regex.index(%r/e/, "abcd")
       nil
 
   """
@@ -104,9 +104,9 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.match? %r/foo/, "foo"
+      iex> Regex.match?(%r/foo/, "foo")
       true
-      iex> Regex.match? %r/foo/, "bar"
+      iex> Regex.match?(%r/foo/, "bar")
       false
 
   """
@@ -116,13 +116,14 @@ defmodule Regex do
 
   @doc """
   Runs the regular expression against the given string.
-  It returns a list with all matches or nil if no match ocurred.
+  It returns a list with all matches, nil if no match ocurred, or []
+  if it matched, /g was specified, but nothing was captured.
 
   ## Examples
 
-      iex> Regex.run %r/c(d)/, "abcd"
+      iex> Regex.run(%r/c(d)/, "abcd")
       ["cd", "d"]
-      iex> Regex.run %r/e/, "abcd"
+      iex> Regex.run(%r/e/, "abcd")
       nil
 
   """
@@ -139,6 +140,7 @@ defmodule Regex do
 
     case :re.run(string, compiled, [{ :capture, captures, return }]) do
       :nomatch -> nil
+      :match   -> []
       { :match, results } -> results
     end
   end
@@ -149,7 +151,7 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.captures %r/c(?<foo>d)/g, "abcd"
+      iex> Regex.captures(%r/c(?<foo>d)/g, "abcd")
       [foo: "d"]
 
   """
@@ -178,7 +180,7 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.source %r(foo)
+      iex> Regex.source(%r(foo))
       "foo"
 
   """
@@ -191,7 +193,7 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.opts %r(foo)m
+      iex> Regex.opts(%r(foo)m)
       "m"
 
   """
@@ -204,7 +206,7 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.groups %r/(?<foo>foo)/g
+      iex> Regex.groups(%r/(?<foo>foo)/g)
       [:foo]
 
   """
@@ -220,11 +222,11 @@ defmodule Regex do
 
   ## Examples
 
-      iex> Regex.scan %r/c(d|e)/, "abcd abce"
+      iex> Regex.scan(%r/c(d|e)/, "abcd abce")
       [["d"], ["e"]]
-      iex> Regex.scan %r/c(?:d|e)/, "abcd abce"
+      iex> Regex.scan(%r/c(?:d|e)/, "abcd abce")
       ["cd", "ce"]
-      iex> Regex.scan %r/e/, "abcd"
+      iex> Regex.scan(%r/e/, "abcd")
       []
 
   """

@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule HashDictTest do
   use ExUnit.Case, async: true
@@ -18,11 +18,11 @@ defmodule HashDictTest do
     smoke_test(1200..1)
   end
 
-  test :get! do
+  test :fetch! do
     dict = filled_dict(8)
-    assert HashDict.get!(dict, 1) == 1
+    assert HashDict.fetch!(dict, 1) == 1
     assert_raise KeyError, fn ->
-      HashDict.get!(dict, 11)
+      HashDict.fetch!(dict, 11)
     end
   end
 
@@ -30,6 +30,12 @@ defmodule HashDictTest do
     assert HashDict.empty filled_dict(8)   == HashDict.new
     assert HashDict.empty filled_dict(20)  == HashDict.new
     assert HashDict.empty filled_dict(120) == HashDict.new
+  end
+
+  test :fetch do
+    dict = filled_dict(8)
+    assert HashDict.fetch(dict, 4)  == { :ok, 4 }
+    assert HashDict.fetch(dict, 16) == :error
   end
 
   test :has_key? do
@@ -81,47 +87,52 @@ defmodule HashDictTest do
   test :to_list do
     list = filled_dict(8) |> HashDict.to_list
     assert length(list) == 8
-    assert { 1, 1 } inlist list
+    assert { 1, 1 } in list
 
     list = filled_dict(20) |> HashDict.to_list
     assert length(list) == 20
-    assert { 1, 1 } inlist list
+    assert { 1, 1 } in list
 
     list = filled_dict(120) |> HashDict.to_list
     assert length(list) == 120
-    assert { 1, 1 } inlist list
+    assert { 1, 1 } in list
   end
 
   test :keys do
     list = filled_dict(8) |> HashDict.keys
     assert length(list) == 8
-    assert 1 inlist list
+    assert 1 in list
 
     list = filled_dict(20) |> HashDict.keys
     assert length(list) == 20
-    assert 1 inlist list
+    assert 1 in list
 
     list = filled_dict(120) |> HashDict.keys
     assert length(list) == 120
-    assert 1 inlist list
+    assert 1 in list
   end
 
   test :values do
     list = filled_dict(8) |> HashDict.values
     assert length(list) == 8
-    assert 1 inlist list
+    assert 1 in list
 
     list = filled_dict(20) |> HashDict.values
     assert length(list) == 20
-    assert 1 inlist list
+    assert 1 in list
 
     list = filled_dict(120) |> HashDict.values
     assert length(list) == 120
-    assert 1 inlist list
+    assert 1 in list
   end
 
   test :enum do
-    assert Enum.count(filled_dict(8)) == 8
+    dict = filled_dict(10)
+    assert Enum.empty?(HashDict.new)
+    refute Enum.empty?(dict)
+    assert Enum.member?(dict, { 5, 5 })
+    refute Enum.member?(dict, { 5, 8 })
+    assert Enum.count(dict) == 10
     assert Enum.map(filled_dict(3), fn({ k, v }) -> k + v end) == [2,4,6]
   end
 

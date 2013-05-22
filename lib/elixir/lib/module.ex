@@ -31,7 +31,7 @@ defmodule Module do
   Evalutes the quotes contents in the given module context.
 
   A list of environment options can also be given as argument.
-  Check `Code.eval` for more information.
+  Check `Code.eval_string` for more information.
 
   Raises an error if the module was already compiled.
 
@@ -116,11 +116,11 @@ defmodule Module do
 
   ## Examples
 
-      iex> Module.concat [Foo, Bar]
+      iex> Module.concat([Foo, Bar])
       Foo.Bar
-      iex> Module.concat [Foo, "Bar"]
+      iex> Module.concat([Foo, "Bar"])
       Foo.Bar
-      iex> Module.concat [Foo, 'Bar']
+      iex> Module.concat([Foo, 'Bar'])
       Foo.Bar
 
   """
@@ -134,11 +134,11 @@ defmodule Module do
 
   ## Examples
 
-      iex> Module.concat Foo, Bar
+      iex> Module.concat(Foo, Bar)
       Foo.Bar
-      iex> Module.concat Foo, "Bar"
+      iex> Module.concat(Foo, "Bar")
       Foo.Bar
-      iex> Module.concat Foo, 'Bar'
+      iex> Module.concat(Foo, 'Bar')
       Foo.Bar
 
   """
@@ -154,10 +154,10 @@ defmodule Module do
 
   ## Examples
 
-      iex> Module.safe_concat [Unknown, Module]
+      iex> Module.safe_concat([Unknown, Module])
       ** (ArgumentError) argument error
 
-      iex> Module.safe_concat [List, Chars]
+      iex> Module.safe_concat([List, Chars])
       List.Chars
 
   """
@@ -173,10 +173,10 @@ defmodule Module do
 
   ## Examples
 
-      iex> Module.safe_concat Unknown, Module
+      iex> Module.safe_concat(Unknown, Module)
       ** (ArgumentError) argument error
 
-      iex> Module.safe_concat List, Chars
+      iex> Module.safe_concat(List, Chars)
       List.Chars
 
   """
@@ -320,7 +320,7 @@ defmodule Module do
     assert_not_compiled!(:defines?, module)
     table = function_table_for(module)
     case ETS.lookup(table, tuple) do
-      [{ _, ^kind, _, _, _, _, _, _ }] -> true
+      [{ _, ^kind, _, _, _, _, _ }] -> true
       _ -> false
     end
   end
@@ -339,7 +339,7 @@ defmodule Module do
   def definitions_in(module) do
     assert_not_compiled!(:definitions_in, module)
     table = function_table_for(module)
-    lc { tuple, _, _, _, _, _, _, _ } inlist ETS.tab2list(table), do: tuple
+    lc { tuple, _, _, _, _, _, _ } inlist ETS.tab2list(table), do: tuple
   end
 
   @doc """
@@ -358,7 +358,7 @@ defmodule Module do
   def definitions_in(module, kind) do
     assert_not_compiled!(:definitions_in, module)
     table = function_table_for(module)
-    lc { tuple, stored_kind, _, _, _, _, _, _ } inlist ETS.tab2list(table), stored_kind == kind, do: tuple
+    lc { tuple, stored_kind, _, _, _, _, _ } inlist ETS.tab2list(table), stored_kind == kind, do: tuple
   end
 
   @doc """
@@ -368,20 +368,20 @@ defmodule Module do
   """
   def make_overridable(module, tuples) do
     assert_not_compiled!(:make_overridable, module)
-    table = function_table_for(module)
+
     lc tuple inlist tuples do
-      case ETS.lookup(table, tuple) do
-        [clause] ->
-          ETS.delete(table, tuple)
+      case :elixir_def.lookup_definition(module, tuple) do
+        false ->
+          { name, arity } = tuple
+          raise "Cannot make function #{name}/#{arity} overridable because it was not defined"
+        clause ->
+          :elixir_def.delete_definition(module, tuple)
 
           old    = get_attribute(module, :__overridable)
           new    = [ { tuple, { 1, clause, false } } ]
           merged = :orddict.merge(fn(_k, { count, _, _ }, _v2) -> { count + 1, clause, false } end, old, new)
 
           put_attribute(module, :__overridable, merged)
-        _ ->
-          { name, arity } = tuple
-          raise "Cannot make function #{name}/#{arity} overridable because it was not defined"
       end
     end
   end
@@ -412,7 +412,7 @@ defmodule Module do
     acc   = ETS.lookup_element(table, :__acc_attributes, 2)
 
     new =
-      if List.member?(acc, key) do
+      if :lists.member(key, acc) do
         case ETS.lookup(table, key) do
           [{^key,old}] -> [value|old]
           [] -> [value]
@@ -449,7 +449,7 @@ defmodule Module do
       [{^key,old}] -> old
       [] ->
         acc = ETS.lookup_element(table, :__acc_attributes, 2)
-        if List.member?(acc, key), do: [], else: nil
+        if :lists.member(key, acc), do: [], else: nil
     end
   end
 

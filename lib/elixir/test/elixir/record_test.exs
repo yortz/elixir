@@ -1,7 +1,12 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defrecord RecordTest.FileInfo,
   Record.extract(:file_info, from_lib: "kernel/include/file.hrl")
+
+defrecord RecordTest.SomeRecord, a: 0, b: 1
+defrecord RecordTest.WithNoField, []
+
+## Record import
 
 defmodule RecordTest.FileInfo.Helper do
   Record.import RecordTest.FileInfo, as: :file_info
@@ -13,8 +18,7 @@ defmodule RecordTest.FileInfo.Helper do
   def size(file_info(size: size)), do: size
 end
 
-defrecord RecordTest.SomeRecord, a: 0, b: 1
-defrecord RecordTest.WithNoField, []
+## Dynamic names and overridable
 
 name = RecordTest.DynamicName
 defrecord name, a: 0, b: 1 do
@@ -27,6 +31,11 @@ defrecord name, a: 0, b: 1 do
   def update_b(_, _) do
     :not_optimizable
   end
+end
+
+defmodule RecordTest.DynamicOpts do
+  @a [foo: 1..30]
+  defrecord State, (lc {name, _interval} inlist @a, do: {name, nil})
 end
 
 ## With types
@@ -181,10 +190,10 @@ defmodule RecordTest do
   end
 
   test :optimizable do
-    assert { :b, 1 } inlist RecordTest.SomeRecord.__record__(:optimizable)
-    assert { :b, 2 } inlist RecordTest.SomeRecord.__record__(:optimizable)
-    assert { :update_b, 2 } inlist RecordTest.SomeRecord.__record__(:optimizable)
-    refute { :update_b, 2 } inlist RecordTest.DynamicName.__record__(:optimizable)
+    assert { :b, 1 } in RecordTest.SomeRecord.__record__(:optimizable)
+    assert { :b, 2 } in RecordTest.SomeRecord.__record__(:optimizable)
+    assert { :update_b, 2 } in RecordTest.SomeRecord.__record__(:optimizable)
+    refute { :update_b, 2 } in RecordTest.DynamicName.__record__(:optimizable)
   end
 
   test :result do

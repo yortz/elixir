@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Kernel.AliasTest.Nested do
   def value, do: 1
@@ -25,6 +25,16 @@ defmodule Kernel.AliasTest do
   test :overwriten_alias do
     alias List, as: Nested
     assert Nested.flatten([[13]]) == [13]
+  end
+
+  test :lexical do
+    if true do
+      alias OMG, as: List
+    else
+      alias ABC, as: List
+    end
+
+    assert List.flatten([1,[2],3]) == [1,2,3]
   end
 
   defmodule Elixir do

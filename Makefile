@@ -44,7 +44,7 @@ erlang:
 # Since Mix depends on EEx and EEx depends on
 # Mix, we first compile EEx without the .app
 # file, then mix and then compile eex fully
-elixir: kernel unicode lib/eex/ebin/Elixir-EEx.beam mix ex_unit eex iex
+elixir: kernel lib/eex/ebin/Elixir-EEx.beam mix ex_unit eex iex
 
 kernel: $(KERNEL) VERSION
 $(KERNEL): lib/elixir/lib/*.ex lib/elixir/lib/*/*.ex
@@ -54,6 +54,7 @@ $(KERNEL): lib/elixir/lib/*.ex lib/elixir/lib/*/*.ex
 	fi
 	@ echo "==> kernel (compile)";
 	@ $(ELIXIRC) "lib/elixir/lib/**/*.ex" -o lib/elixir/ebin;
+	@ $(MAKE) unicode
 	@ rm -rf lib/elixir/ebin/elixir.app
 	@ cd lib/elixir && $(REBAR) compile
 
@@ -93,11 +94,13 @@ clean:
 
 #==> Release tasks
 
+SOURCE_REF = $(shell head="$$(git rev-parse HEAD)" tag="$$(git tag --points-at $$head | tail -1)" ; echo "$${tag:-$$head}\c")
+
 docs: compile
 	mkdir -p ebin
 	rm -rf docs
 	cp -R -f lib/*/ebin/*.beam ./ebin
-	bin/elixir ../exdoc/bin/exdoc "Elixir" "$(VERSION)" -m Kernel -u "https://github.com/elixir-lang/elixir/blob/master/%{path}#L%{line}"
+	bin/elixir ../ex_doc/bin/ex_doc "Elixir" "$(VERSION)" -m Kernel -u "https://github.com/elixir-lang/elixir" --source-ref "$(call SOURCE_REF)"
 	rm -rf ebin
 
 release_zip: compile

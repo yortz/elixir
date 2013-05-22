@@ -2,7 +2,7 @@ defmodule Keyword do
   @moduledoc """
   A keyword is a list of tuples where the first element
   of the tuple is an atom and the second element can be
-  any value. 
+  any value.
 
   A keyword may have duplicated keys, so it is not strictly
   a dictionary. However most of the functions in this module
@@ -36,10 +36,7 @@ defmodule Keyword do
   """
   @spec keyword?(term) :: boolean
   def keyword?([{ key, _value } | rest]) when is_atom(key) do
-    case atom_to_list(key) do
-      'Elixir-' ++ _ -> false
-      _ -> keyword?(rest)
-    end
+    keyword?(rest)
   end
 
   def keyword?([]),     do: true
@@ -59,7 +56,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.new [{:b,1},{:a,2}]
+      iex> Keyword.new([{:b,1},{:a,2}])
       [a: 2, b: 1]
 
   """
@@ -77,7 +74,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Enum.sort Keyword.new [:a, :b], fn x -> {x,x} end
+      iex> Keyword.new([:a, :b], fn (x) -> {x,x} end) |> Enum.sort
       [a: :a, b: :b]
 
   """
@@ -100,11 +97,11 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.get [a: 1], :a
+      iex> Keyword.get([a: 1], :a)
       1
-      iex> Keyword.get [a: 1], :b
+      iex> Keyword.get([a: 1], :b)
       nil
-      iex> Keyword.get [a: 1], :b, 3
+      iex> Keyword.get([a: 1], :b, 3)
       3
 
   """
@@ -117,32 +114,62 @@ defmodule Keyword do
     end
   end
 
-  @doc """
-  Gets the value for specific key. If key does not exist,
-  an error is raised.
-
-  ## Examples
-
-      iex> Keyword.get! [a: 1], :a
-      1
-      iex> Keyword.get! [a: 1], :b
-      ** (KeyError) key not found: :b
-
-  """
-  @spec get!(t, key) :: value | no_return
+  @doc false
   def get!(keywords, key) when is_atom(key) do
+    IO.write "[WARNING] Keyword.get! is deprecated, please use Keyword.fetch! instead\n#{Exception.format_stacktrace}"
     case :lists.keyfind(key, 1, keywords) do
       { ^key, value } -> value
       false -> raise(KeyError, key: key)
     end
-  end  
+  end
+
+  @doc """
+  Fetchs the value for specific key and return it in a tuple.
+  If the key does not exist, returns `:error`.
+
+  ## Examples
+
+      iex> Keyword.fetch([a: 1], :a)
+      { :ok, 1 }
+
+      iex> Keyword.fetch([a: 1], :b)
+      :error
+
+  """
+  @spec fetch(t, key) :: value
+  def fetch(keywords, key) when is_atom(key) do
+    case :lists.keyfind(key, 1, keywords) do
+      { ^key, value } -> { :ok, value }
+      false -> :error
+    end
+  end
+
+  @doc """
+  Fetches the value for specific key. If key does not exist,
+  an error is raised.
+
+  ## Examples
+
+      iex> Keyword.fetch!([a: 1], :a)
+      1
+      iex> Keyword.fetch!([a: 1], :b)
+      ** (KeyError) key not found: :b
+
+  """
+  @spec fetch!(t, key) :: value | no_return
+  def fetch!(keywords, key) when is_atom(key) do
+    case :lists.keyfind(key, 1, keywords) do
+      { ^key, value } -> value
+      false -> raise(KeyError, key: key)
+    end
+  end
 
   @doc """
   Gets all values for a specific key.
 
   ## Examples
 
-      iex> Keyword.get_values [a: 1, a: 2], :a
+      iex> Keyword.get_values([a: 1, a: 2], :a)
       [1,2]
 
   """
@@ -157,7 +184,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.keys [a: 1, b: 2]
+      iex> Keyword.keys([a: 1, b: 2])
       [:a,:b]
 
   """
@@ -171,7 +198,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.values [a: 1, b: 2]
+      iex> Keyword.values([a: 1, b: 2])
       [1,2]
 
   """
@@ -188,15 +215,32 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.delete [a: 1, b: 2], :a
+      iex> Keyword.delete([a: 1, b: 2], :a)
       [b: 2]
-      iex> Keyword.delete [b: 2], :a
+      iex> Keyword.delete([b: 2], :a)
       [b: 2]
 
   """
   @spec delete(t, key) :: t
   def delete(keywords, key) when is_atom(key) do
     lc { k, _ } = tuple inlist keywords, key != k, do: tuple
+  end
+
+  @doc """
+  Deletes the first entry in the keyword list for a specific key.
+  If the key does not exist, returns the keyword list unchanged.
+
+  ## Examples
+
+      iex> Keyword.delete_first([a: 1, b: 2, a: 3], :a)
+      [b: 2, a: 3]
+      iex> Keyword.delete_first([b: 2], :a)
+      [b: 2]
+
+  """
+  @spec delete_first(t, key) :: t
+  def delete_first(keywords, key) when is_atom(key) do
+    :lists.keydelete(key, 1, keywords)
   end
 
   @doc """
@@ -207,7 +251,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.put [a: 1, b: 2], :a, 3
+      iex> Keyword.put([a: 1, b: 2], :a, 3)
       [a: 3, b: 2]
 
   """
@@ -222,7 +266,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.put_new [a: 1, b: 2], :a, 3
+      iex> Keyword.put_new([a: 1, b: 2], :a, 3)
       [a: 1, b: 2]
 
   """
@@ -240,7 +284,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.equal? [a: 1, b: 2], [b: 2, a: 1]
+      iex> Keyword.equal?([a: 1, b: 2], [b: 2, a: 1])
       true
 
   """
@@ -255,7 +299,7 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Enum.sort Keyword.merge [a: 1, b: 2], [a: 3, d: 4]
+      iex> Keyword.merge([a: 1, b: 2], [a: 3, d: 4]) |> Enum.sort
       [a: 3, b: 2, d: 4]
 
   """
@@ -270,9 +314,9 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.merge [a: 1, b: 2], [a: 3, d: 4], fn _k, v1, v2 ->
+      iex> Keyword.merge([a: 1, b: 2], [a: 3, d: 4], fn (_k, v1, v2) ->
       ...>  v1 + v2
-      iex> end
+      iex> end)
       [a: 4, b: 2, d: 4]
 
   """
@@ -342,7 +386,7 @@ defmodule Keyword do
       [a: 1, b: 11]
 
   """
-  @spec update(t, key, value, (value -> value)) :: t  
+  @spec update(t, key, value, (value -> value)) :: t
   def update([{key, value}|keywords], key, _initial, fun) do
     [{key, fun.(value)}|delete(keywords, key)]
   end

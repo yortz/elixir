@@ -1,7 +1,11 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule ListTest do
   use ExUnit.Case, async: true
+
+  test :cons_cell_precedence do
+    assert [1|:lists.flatten([2,3])] == [1,2,3]
+  end
 
   test :optional_comma do
     assert [1] == [ 1, ]
@@ -47,12 +51,6 @@ defmodule ListTest do
     assert List.foldr([1,2,3], 0, fn x,y -> x + y end) == 6
     assert List.foldr([1,2,3], 10, fn x,y -> x + y end) == 16
     assert List.foldr([1,2,3,4], 0, fn x,y -> x - y end) == -2
-  end
-
-  test :member? do
-    assert List.member? [1,2,3], 1
-    refute List.member? [1,2,3], 0
-    refute List.member? [], 0
   end
 
   test :concat_1 do
@@ -118,5 +116,14 @@ defmodule ListTest do
     assert List.keydelete([a: 1, b: 2], :a, 0) == [{ :b, 2 }]
     assert List.keydelete([a: 1, b: 2], 2, 1) == [{ :a, 1 }]
     assert List.keydelete([a: 1, b: 2], :c, 0) == [{ :a, 1 }, { :b, 2 }]
+  end
+
+  test :insert_at do
+    assert List.insert_at([1, 2, 3], 0, 0) == [0, 1, 2, 3]
+    assert List.insert_at([1, 2, 3], 3, 0) == [1, 2, 3, 0]
+    assert List.insert_at([1, 2, 3], 2, 0) == [1, 2, 0, 3]
+    assert List.insert_at([1, 2, 3], 10, 0) == [1, 2, 3, 0]
+    assert List.insert_at([1, 2, 3], -1, 0) == [1, 2, 0, 3]
+    assert List.insert_at([1, 2, 3], -10, 0) == [0, 1, 2, 3]
   end
 end

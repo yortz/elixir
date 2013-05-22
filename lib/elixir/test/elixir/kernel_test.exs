@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule KernelTest do
   use ExUnit.Case, async: true
@@ -18,6 +18,15 @@ defmodule KernelTest do
     assert x(1)
     refute x(4)
     refute x([])
+
+    assert 2 in [1,2,3]
+    assert 2 in 1..3
+    refute 4 in [1,2,3]
+    refute 4 in 1..3
+
+    list = [1,2,3]
+    assert 2 in list
+    refute 4 in list
   end
 
   test :paren do
@@ -28,11 +37,11 @@ defmodule KernelTest do
   end
 
   test :__info__ do
-    assert { :in, 2 } inlist Kernel.__info__(:macros)
+    assert { :in, 2 } in Kernel.__info__(:macros)
   end
 
   test :__info__not_included do
-    assert not ({ :__info__, 1 } inlist Kernel.__info__(:functions))
+    assert not ({ :__info__, 1 } in Kernel.__info__(:functions))
   end
 
   test :macro_exported? do
@@ -45,7 +54,7 @@ defmodule KernelTest do
   end
 
   test :debug_info do
-    assert :debug_info inlist Kernel.__info__(:compile)[:options]
+    assert :debug_info in Kernel.__info__(:compile)[:options]
   end
 
   test :apply do

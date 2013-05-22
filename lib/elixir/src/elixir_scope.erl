@@ -77,24 +77,27 @@ build_ex_var(Line, Key, Name, S) when is_integer(Line) ->
 
 % Handle Macro.Env conversion
 
-to_erl_env({ 'Elixir.Macro.Env', Module, File, _Line, Function, Aliases, Context, Requires, Functions, Macros }) ->
+to_erl_env({ 'Elixir.Macro.Env', Module, File, _Line, Function, Aliases, Context, Requires, Functions, Macros, FileModules }) ->
   #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
-    requires=Requires,macros=Macros,functions=Functions}.
+    requires=Requires,macros=Macros,functions=Functions,
+    context_modules=FileModules}.
 
 to_ex_env({ Line, #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
-    requires=Requires,macros=Macros,functions=Functions} }) when is_integer(Line) ->
-  { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases, Context, Requires, Functions, Macros }.
+    requires=Requires,macros=Macros,functions=Functions,
+    context_modules=FileModules} }) when is_integer(Line) ->
+  { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases,
+    Context, Requires, Functions, Macros, FileModules }.
 
 % Provides a tuple with only the scope information we want to serialize.
 
 serialize(S) ->
-  elixir_tree_helpers:abstract_syntax(
-    { S#elixir_scope.file, S#elixir_scope.functions, S#elixir_scope.check_clauses,
+  elixir_tree_helpers:elixir_to_erl(
+    { S#elixir_scope.file, S#elixir_scope.functions,
       S#elixir_scope.requires, S#elixir_scope.macros, S#elixir_scope.aliases,
       S#elixir_scope.macro_functions, S#elixir_scope.macro_macros, S#elixir_scope.macro_aliases,
-      S#elixir_scope.scheduled }
+      S#elixir_scope.context_modules }
   ).
 
 serialize_with_vars(Line, S) when is_integer(Line) ->
@@ -112,19 +115,18 @@ serialize_with_vars(Line, S) when is_integer(Line) ->
 
 deserialize(Tuple) -> deserialize_with_vars(Tuple, []).
 
-deserialize_with_vars({ File, Functions, CheckClauses, Requires, Macros,
-                        Aliases, MacroFunctions, MacroMacros, MacroAliases, Scheduled }, Vars) ->
+deserialize_with_vars({ File, Functions, Requires, Macros,
+                        Aliases, MacroFunctions, MacroMacros, MacroAliases, FileModules }, Vars) ->
   #elixir_scope{
     file=File,
     functions=Functions,
-    check_clauses=CheckClauses,
     requires=Requires,
     macros=Macros,
     aliases=Aliases,
     macro_functions=MacroFunctions,
     macro_macros=MacroMacros,
     macro_aliases=MacroAliases,
-    scheduled=Scheduled,
+    context_modules=FileModules,
     vars=orddict:from_list(Vars),
     counter=[{'',length(Vars)}]
   }.
@@ -138,26 +140,30 @@ umergev(S1, S2) ->
   C1 = S1#elixir_scope.clause_vars,
   C2 = S2#elixir_scope.clause_vars,
   S2#elixir_scope{
-    vars=orddict:merge(fun var_merger/3, V1, V2),
+    vars=merge_vars(V1, V2),
     clause_vars=merge_clause_vars(C1, C2)
   }.
 
-% Receives two scopes and return a new scope based on the first
-% with the counter values from the second one.
+% Receives two scopes and return the later scope
+% keeping the variables from the first (counters,
+% imports and everything else are passed forward).
 
 umergec(S1, S2) ->
-  S1#elixir_scope{
-    counter=S2#elixir_scope.counter,
-    extra_guards=S2#elixir_scope.extra_guards,
-    super=S1#elixir_scope.super orelse S2#elixir_scope.super,
-    caller=S1#elixir_scope.caller orelse S2#elixir_scope.caller,
-    name_args=S1#elixir_scope.name_args orelse S2#elixir_scope.name_args
+  S2#elixir_scope{
+    vars=S1#elixir_scope.vars,
+    temp_vars=S1#elixir_scope.temp_vars,
+    clause_vars=S1#elixir_scope.clause_vars
   }.
 
 % Merge variables trying to find the most recently created.
 
+merge_vars(V, V) -> V;
+merge_vars(V1, V2) ->
+  orddict:merge(fun var_merger/3, V1, V2).
+
 merge_clause_vars(nil, _C2) -> nil;
 merge_clause_vars(_C1, nil) -> nil;
+merge_clause_vars(C, C)     -> C;
 merge_clause_vars(C1, C2)   ->
   orddict:merge(fun var_merger/3, C1, C2).
 

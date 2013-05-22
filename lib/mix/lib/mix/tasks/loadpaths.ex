@@ -3,12 +3,10 @@ defmodule Mix.Tasks.Loadpaths do
 
   @hidden true
   @shortdoc "Load the application and its dependencies paths"
+  @recursive true
 
   @moduledoc """
   Load the application and its dependencies paths.
-
-  This task is not shown in `mix help` but it is part
-  of mix public API and can be depended on.
 
   ## Configuration
 
@@ -23,10 +21,6 @@ defmodule Mix.Tasks.Loadpaths do
       Mix.Task.run "deps.loadpaths", args
     end
 
-    paths = Mix.project[:load_paths] || []
-    Enum.each paths, Code.prepend_path(&1)
-
-    ebin  = Mix.project[:compile_path] || "ebin"
-    Code.prepend_path(ebin)
+    Enum.each Mix.Project.load_paths, Code.prepend_path(&1)
   end
 end

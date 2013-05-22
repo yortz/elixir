@@ -35,13 +35,15 @@ import_function(Meta, Name, Arity, S) ->
   Tuple = { Name, Arity },
   case find_dispatch(Meta, Tuple, S) of
     { function, Receiver } ->
-      elixir_import:record(import, Tuple, Receiver, S#elixir_scope.module),
+      elixir_import:record(Tuple, Receiver, S#elixir_scope.module),
       remote_function(Meta, Receiver, Name, Arity, S);
     { macro, _Receiver } ->
       false;
     { import, Receiver } ->
       require_function(Meta, Receiver, Name, Arity, S);
     nomatch ->
+      Module = S#elixir_scope.module,
+      elixir_import:record({ Name, Arity }, Module, Module),
       { { 'fun', ?line(Meta), { function, Name, Arity } }, S }
   end.
 
@@ -62,7 +64,7 @@ dispatch_import(Meta, Name, Args, S, Callback) ->
 
   case find_dispatch(Meta, Tuple, S) of
     { function, Receiver } ->
-      elixir_import:record(import, Tuple, Receiver, Module),
+      elixir_import:record(Tuple, Receiver, Module),
       Endpoint = case (Receiver == ?BUILTIN) andalso is_element(Tuple, in_erlang_functions()) of
         true  -> erlang;
         false -> Receiver
@@ -75,7 +77,7 @@ dispatch_import(Meta, Name, Args, S, Callback) ->
         { error, noexpansion } ->
           Callback();
         { error, internal } ->
-          elixir_import:record(import, Tuple, ?BUILTIN, Module),
+          elixir_import:record(Tuple, ?BUILTIN, Module),
           elixir_macros:translate({ Name, Meta, Args }, S);
         { ok, _Receiver, Tree } ->
           translate_expansion(Meta, Tree, S)
@@ -114,11 +116,11 @@ do_expand_import(Meta, { Name, Arity } = Tuple, Args, Module, S, Result) ->
       case is_element(Tuple, in_erlang_macros()) of
         true  -> { error, internal };
         false ->
-          elixir_import:record(import, Tuple, ?BUILTIN, Module),
+          elixir_import:record(Tuple, ?BUILTIN, Module),
           { ok, ?BUILTIN, expand_macro_named(Meta, ?BUILTIN, Name, Arity, Args, Module, S) }
       end;
     { macro, Receiver } ->
-      elixir_import:record(import, Tuple, Receiver, Module),
+      elixir_import:record(Tuple, Receiver, Module),
       { ok, Receiver, expand_macro_named(Meta, Receiver, Name, Arity, Args, Module, S) };
     { import, Receiver } ->
       expand_require(Meta, Receiver, Tuple, Args, Module, S);
@@ -128,7 +130,6 @@ do_expand_import(Meta, { Name, Arity } = Tuple, Args, Module, S, Result) ->
       case Fun of
         false -> { error, noexpansion };
         _ ->
-          elixir_import:record(import, Tuple, Module, Module),
           { ok, Module, expand_macro_fun(Meta, Fun, Module, Name, Args, Module, S) }
       end
   end.
@@ -154,7 +155,6 @@ expand_require(Meta, Receiver, { Name, Arity } = Tuple, Args, Module, S) ->
         false -> { error, noexpansion }
       end;
     _ ->
-      elixir_import:record(import, Tuple, Receiver, Module),
       { ok, Receiver, expand_macro_fun(Meta, Fun, Receiver, Name, Args, Module, S) }
   end.
 
@@ -187,27 +187,10 @@ expand_macro_named(Meta, Receiver, Name, Arity, Args, Module, S) ->
   expand_macro_fun(Meta, Fun, Receiver, Name, Args, Module, S).
 
 translate_expansion(Meta, Tree, S) ->
-  { TR, TS } = elixir_translator:translate_each(
+  elixir_translator:translate_each(
     elixir_quote:linify(?line(Meta), Tree),
-    S#elixir_scope{
-      check_clauses=false,
-      macro_functions=[],
-      macro_macros=[],
-      macro_aliases=[]
-    }
-  ),
-  { TR, TS#elixir_scope{
-    check_clauses=S#elixir_scope.check_clauses,
-    macro_functions=merge_imports(S#elixir_scope.macro_functions, TS#elixir_scope.macro_functions),
-    macro_macros=merge_imports(S#elixir_scope.macro_macros, TS#elixir_scope.macro_macros),
-    macro_aliases=merge_aliases(S#elixir_scope.macro_aliases, TS#elixir_scope.macro_aliases)
-  } }.
-
-merge_aliases(A1, A2) ->
-  orddict:merge(fun(_K,_V1,V2) -> V2 end, A1, A2).
-
-merge_imports(A1, A2) ->
-  A2 ++ lists:foldl(fun({ Key, _ }, Acc) -> lists:keydelete(Key, 1, Acc) end, A1, A2).
+    S
+  ).
 
 %% Helpers
 
@@ -246,15 +229,25 @@ find_dispatch(Tuple, List) ->
 is_import(Meta, Tuple, S) ->
   case lists:keyfind(import, 1, Meta) of
     { import, _ } = Import ->
-      not_an_import(Tuple, S#elixir_scope.macro_functions)
-        andalso not_an_import(Tuple, S#elixir_scope.macro_macros)
-        andalso Import;
+      case lists:keyfind(context, 1, Meta) of
+        { context, Context } ->
+          not_an_import(Tuple, Context, S#elixir_scope.macro_functions)
+            andalso not_an_import(Tuple, Context, S#elixir_scope.macro_macros)
+            andalso Import;
+        false ->
+          false
+      end;
     false ->
       false
   end.
 
-not_an_import(Tuple, Pairs) ->
-  not lists:any(fun({ _, List }) -> lists:member(Tuple, List) end, Pairs).
+not_an_import(Tuple, Context, Dict) ->
+  case orddict:find(Context, Dict) of
+    { ok, Pairs } ->
+      not lists:any(fun({ _, List }) -> lists:member(Tuple, List) end, Pairs);
+    error ->
+      true
+  end.
 
 munge_stacktrace(Info, [{ _, _, [S|_], _ }|_], S) ->
   [Info];
@@ -271,7 +264,7 @@ munge_stacktrace(_, [], _) ->
 %% ERROR HANDLING
 
 format_error({ unrequired_module, { Receiver, Name, Arity, Required }}) ->
-  String = string:join([elixir_errors:inspect(R) || R <- Required], ", "),
+  String = 'Elixir.Enum':join([elixir_errors:inspect(R) || R <- Required], ", "),
   io_lib:format("tried to invoke macro ~ts.~ts/~B but module was not required. Required: ~ts",
     [elixir_errors:inspect(Receiver), Name, Arity, String]);
 
@@ -443,7 +436,6 @@ in_erlang_macros() ->
     {defp,2},
     {defp,4},
     {function,1},
-    {function,2},
     {function,3},
     {in,2},
     {'not',1},

@@ -1,10 +1,11 @@
 defmodule Mix.Tasks.Deps.Loadpaths do
   use Mix.Task
 
-  import Mix.Deps, only: [all: 0, ok?: 1]
+  import Mix.Deps, only: [all: 0, load_paths: 1, ok?: 1]
 
   @hidden true
   @shortdoc "Load all dependencies paths"
+  @recursive true
 
   @moduledoc """
   Loads all dependencies. This is invoked directly
@@ -18,7 +19,7 @@ defmodule Mix.Tasks.Deps.Loadpaths do
     end
 
     lc dep inlist all, ok?(dep) do
-      Code.prepend_path Path.join(dep.opts[:dest], "ebin")
+      Enum.each load_paths(dep), Code.prepend_path(&1)
     end
   end
 end

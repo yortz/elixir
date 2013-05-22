@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule List.Chars.AtomTest do
   use ExUnit.Case, async: true
@@ -23,8 +23,10 @@ defmodule List.Chars.NumberTest do
     assert to_char_list(1) == '1'
   end
 
-  test :float do
-    assert to_char_list(1.0) == '1.00000000000000000000e+00'
+  unless :erlang.system_info(:otp_release) < 'R16' do
+    test :float do
+      assert to_char_list(1.0) == '1.0'
+    end
   end
 end
 

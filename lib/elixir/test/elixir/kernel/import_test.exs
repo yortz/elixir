@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Kernel.ImportAvailable do
   defmacro flatten do
@@ -29,6 +29,15 @@ defmodule Kernel.ImportOnlyTest do
     import :lists, except: [each: 2]
     assert flatten([1,[2],3]) == [1,2,3]
   end
+
+  defmacrop dynamic_opts do
+    [except: [each: 2]]
+  end
+
+  test :import_with_dynamic_opts do
+    import :lists, dynamic_opts
+    assert flatten([1,[2],3]) == [1,2,3]
+  end
 end
 
 defmodule Kernel.DoubleImportTest do
@@ -37,6 +46,7 @@ defmodule Kernel.DoubleImportTest do
   test :import_double_except do
     import :lists, except: [flatten: 1]
     import :lists, except: [each: 2]
+    assert append([1], [2,3]) == [1,2,3]
     assert flatten([1,[2],3]) == [1,[2],3]
   end
 
@@ -111,7 +121,7 @@ defmodule Kernel.ImportMacrosTest do
   end
 end
 
-defmodule Kernel.AmbiguousImportTest do
+defmodule Kernel.MultipleImportTest do
   use ExUnit.Case, async: true
 
   test :import_ambiguous do
@@ -120,5 +130,11 @@ defmodule Kernel.AmbiguousImportTest do
     # import itself causing any errors.
     import List
     import String
+  end
+
+  test :import_many do
+    [import(List), import(String)]
+    assert capitalize("foo")  == "Foo"
+    assert flatten([1,[2],3]) == [1,2,3]
   end
 end

@@ -1,4 +1,4 @@
-Code.require_file "../../test_helper.exs", __FILE__
+Code.require_file "../test_helper.exs", __DIR__
 
 defmodule Binary.Inspect.AtomTest do
   use ExUnit.Case, async: true
@@ -86,11 +86,12 @@ defmodule Binary.Inspect.NumberTest do
     assert inspect(100) == "100"
   end
 
-  test :float do
-    assert inspect(1.0) == "1.0"
-    assert inspect(1.0e10) == "1.0e10"
-    assert inspect(1.0e+10) == "1.0e10"
-    assert inspect(1.0e-10) == "1.0e-10"
+  unless :erlang.system_info(:otp_release) < 'R16' do
+    test :float do
+      assert inspect(1.0) == "1.0"
+      assert inspect(1.0e10) == "10000000000.0"
+      assert inspect(1.0e-10) == "0.0000000001"
+    end
   end
 end
 
@@ -129,6 +130,12 @@ defmodule Binary.Inspect.TupleTest do
 
   test :exception do
     assert inspect(RuntimeError.new) == "RuntimeError[message: \"runtime error\"]"
+  end
+
+  defrecord :something, [:a, :b]
+
+  test :non_module_record do
+    assert inspect(:something.new) == ":something[a: nil, b: nil]"
   end
 
   test :empty do

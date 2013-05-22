@@ -1,4 +1,4 @@
-Code.require_file "../test_helper.exs", __FILE__
+Code.require_file "test_helper.exs", __DIR__
 
 defmodule URITest do
   use ExUnit.Case, async: true
@@ -122,5 +122,11 @@ defmodule URITest do
     assert URI.parse("")
     assert URI.parse(":https")
     assert URI.parse("https")
+  end
+
+  test :downcase_properly do
+    assert URI.parse("hTtP://google.com").scheme == "http"
+    assert URI.parse("http://GoOgLe.CoM").host == "google.com"
+    assert URI.parse("http://LOL:wut@GoOgLe.CoM").authority == "LOL:wut@google.com"
   end
 end
