@@ -28,10 +28,10 @@ defmodule Module do
   end
 
   @doc """
-  Evalutes the quotes contents in the given module context.
+  Evaluates the quoted contents in the given module's context.
 
   A list of environment options can also be given as argument.
-  Check `Code.eval_string` for more information.
+  See `Code.eval_string` for more information.
 
   Raises an error if the module was already compiled.
 
@@ -528,7 +528,7 @@ defmodule Module do
 
   """
   def split(module) do
-    tl(String.split(Binary.Chars.to_binary(module), "-"))
+    tl(String.split(Binary.Chars.to_binary(module), "."))
   end
 
   @doc """
@@ -537,12 +537,9 @@ defmodule Module do
   def to_binary(Elixir), do: "Elixir"
 
   def to_binary(module) do
-    "Elixir-" <> rest = Binary.Chars.to_binary(module)
-    bc <<r>> inbits rest, do: <<to_dot(r)>>
+    "Elixir." <> rest = Binary.Chars.to_binary(module)
+    rest
   end
-
-  defp to_dot(?-), do: ?.
-  defp to_dot(l),  do: l
 
   @doc false
   # Used internally to compile documentation. This function

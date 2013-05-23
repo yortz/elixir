@@ -2000,10 +2000,6 @@ defmodule Kernel do
   Elixir conventions (i.e. it expects the tuple as first argument,
   zero-index based).
 
-  Please note that in versions of Erlang prior to R16B there is no BIF
-  for this operation and it is emulated by converting the tuple to a list
-  and back and is, therefore, inefficient.
-
   ## Example
 
       iex> tuple = { :bar, :baz }
@@ -2011,30 +2007,11 @@ defmodule Kernel do
       { :foo, :bar, :baz }
   """
   defmacro insert_elem(tuple, index, value) when is_integer(index) do
-    case :proplists.get_value(:insert_element,
-                              :proplists.get_value(:exports, :erlang.module_info,[])) do
-      3 ->
-        quote do: :erlang.insert_element(unquote(index + 1), unquote(tuple), unquote(value))
-      :undefined ->
-        do_insert_elem(tuple, index, value)
-    end
-  end
-  defmacro insert_elem(tuple, index, value) do
-    case :proplists.get_value(:insert_element,
-                              :proplists.get_value(:exports, :erlang.module_info,[])) do
-      3 ->
-        quote do: :erlang.insert_element(unquote(index) + 1, unquote(tuple), unquote(value))
-      :undefined ->
-        do_insert_elem(tuple, index, value)
-    end
+    quote do: :erlang.insert_element(unquote(index + 1), unquote(tuple), unquote(value))
   end
 
-  defp do_insert_elem(tuple, index, value) do
-    quote do
-      {h, t} = :lists.split(unquote(index),
-                            tuple_to_list(unquote(tuple)))
-      list_to_tuple(h ++ [unquote(value)|t])
-    end
+  defmacro insert_elem(tuple, index, value) do
+    quote do: :erlang.insert_element(unquote(index) + 1, unquote(tuple), unquote(value))
   end
 
   @doc """
@@ -2053,30 +2030,11 @@ defmodule Kernel do
       { :bar, :baz }
   """
   defmacro delete_elem(tuple, index) when is_integer(index) do
-    case :proplists.get_value(:delete_element,
-                              :proplists.get_value(:exports, :erlang.module_info,[])) do
-      2 ->
-        quote do: :erlang.delete_element(unquote(index + 1), unquote(tuple))
-      :undefined ->
-        do_delete_elem(tuple, index)
-    end
-  end
-  defmacro delete_elem(tuple, index) do
-    case :proplists.get_value(:delete_element,
-                              :proplists.get_value(:exports, :erlang.module_info,[])) do
-      2 ->
-        quote do: :erlang.delete_element(unquote(index) + 1, unquote(tuple))
-      :undefined ->
-        do_delete_elem(tuple, index)
-    end
+    quote do: :erlang.delete_element(unquote(index + 1), unquote(tuple))
   end
 
-  defp do_delete_elem(tuple, index) do
-    quote do
-      {h, [_|t]} = :lists.split(unquote(index),
-                                tuple_to_list(unquote(tuple)))
-      list_to_tuple(h ++ t)
-    end
+  defmacro delete_elem(tuple, index) do
+    quote do: :erlang.delete_element(unquote(index) + 1, unquote(tuple))
   end
 
   @doc """
@@ -2654,14 +2612,8 @@ defmodule Kernel do
       123
 
   """
-  defmacro binary_to_integer(some_binary) do
-    case :proplists.get_value(:binary_to_integer,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.binary_to_integer(unquote(some_binary))
-      :undefined ->
-        quote do: list_to_integer(binary_to_list(unquote(some_binary)))
-    end
+  def binary_to_integer(some_binary) do
+    :erlang.binary_to_integer(some_binary)
   end
 
   @doc """
@@ -2674,14 +2626,8 @@ defmodule Kernel do
       1023
 
   """
-  defmacro binary_to_integer(some_binary, base) do
-    case :proplists.get_value(:binary_to_integer,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.binary_to_integer(unquote(some_binary), unquote(base))
-      :undefined ->
-        quote do: list_to_integer(binary_to_list(unquote(some_binary)), unquote(base))
-    end
+  def binary_to_integer(some_binary, base) do
+    :erlang.binary_to_integer(some_binary, base)
   end
 
   @doc """
@@ -2693,14 +2639,8 @@ defmodule Kernel do
       2.2017764
 
   """
-  defmacro binary_to_float(some_binary) do
-    case :proplists.get_value(:binary_to_float,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      1 ->
-        quote do: :erlang.binary_to_float(unquote(some_binary))
-      :undefined ->
-        quote do: list_to_float(binary_to_list(unquote(some_binary)))
-    end
+  def binary_to_float(some_binary) do
+    :erlang.binary_to_float(some_binary)
   end
 
   @doc """
@@ -2713,14 +2653,8 @@ defmodule Kernel do
       "123"
 
   """
-  defmacro integer_to_binary(some_integer) do
-    case :proplists.get_value(:integer_to_binary,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.integer_to_binary(unquote(some_integer))
-      :undefined ->
-        quote do: list_to_binary(integer_to_list(unquote(some_integer)))
-    end
+  def integer_to_binary(some_integer) do
+    :erlang.integer_to_binary(some_integer)
   end
 
   @doc """
@@ -2729,18 +2663,12 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> integer_to_binary(77)
-      "77"
+      iex> integer_to_binary(100, 16)
+      "64"
 
   """
-  defmacro integer_to_binary(some_integer, base) do
-    case :proplists.get_value(:integer_to_binary,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.integer_to_binary(unquote(some_integer), unquote(base))
-      :undefined ->
-        quote do: list_to_binary(integer_to_list(unquote(some_integer), unquote(base)))
-    end
+  def integer_to_binary(some_integer, base) do
+    :erlang.integer_to_binary(some_integer, base)
   end
 
   @doc """
@@ -2753,14 +2681,8 @@ defmodule Kernel do
       "7.00000000000000000000e+00"
 
   """
-  defmacro float_to_binary(some_float) do
-    case :proplists.get_value(:float_to_binary,
-                              :proplists.get_value(:exports, :erlang.module_info, [])) do
-      2 ->
-        quote do: :erlang.float_to_binary(unquote(some_float))
-      :undefined ->
-        quote do: list_to_binary(float_to_list(unquote(some_float)))
-    end
+  def float_to_binary(some_float) do
+    :erlang.float_to_binary(some_float)
   end
 
   @doc """
@@ -3038,7 +2960,7 @@ defmodule Kernel do
 
       String.graphemes("Hello" |> Enum.reverse)
 
-  Which will result in an error as Enum.Iterator protocol
+  Which will result in an error as Enumerable protocol
   is not defined for binaries. Adding explicit parenthesis
   is recommended:
 

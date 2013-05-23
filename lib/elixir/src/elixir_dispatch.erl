@@ -8,7 +8,6 @@
   expand_import/6, expand_require/6, find_import/4,
   format_error/1, in_erlang_functions/0, in_erlang_macros/0]).
 -include("elixir.hrl").
--compile({parse_transform, elixir_transform}).
 
 -import(ordsets, [is_element/2]).
 -define(BUILTIN, 'Elixir.Kernel').
@@ -43,7 +42,10 @@ import_function(Meta, Name, Arity, S) ->
       require_function(Meta, Receiver, Name, Arity, S);
     nomatch ->
       Module = S#elixir_scope.module,
-      elixir_import:record({ Name, Arity }, Module, Module),
+      case S#elixir_scope.function of
+        Tuple -> ok;
+        _ -> elixir_import:record(Tuple, Module, Module)
+      end,
       { { 'fun', ?line(Meta), { function, Name, Arity } }, S }
   end.
 
@@ -330,6 +332,10 @@ in_erlang_functions() ->
     { binary_part, 3 },
     { binary_to_atom, 2 },
     { binary_to_existing_atom, 2 },
+    { binary_to_float, 1 },
+    { binary_to_float, 2 },
+    { binary_to_integer, 1 },
+    { binary_to_integer, 2 },
     { binary_to_list, 1 },
     { binary_to_list, 3 },
     { binary_to_term, 1 },
@@ -340,8 +346,11 @@ in_erlang_functions() ->
     % { date, 0 },
     { exit, 1 },
     { float, 1 },
+    { float_to_binary, 1 },
     { float_to_list, 1 },
     { hd, 1 },
+    { integer_to_binary, 1 },
+    { integer_to_binary, 2 },
     { integer_to_list, 1 },
     { integer_to_list, 2 },
     { iolist_size, 1 },
