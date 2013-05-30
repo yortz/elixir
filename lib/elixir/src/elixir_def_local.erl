@@ -1,21 +1,14 @@
 %% Module responsible for local invocation of macros and functions.
 -module(elixir_def_local).
--export([
-  macro_for/3,
-  function_for/3,
-  format_error/1,
-  check_unused_local/3
-]).
+-export([macro_for/3, function_for/3]).
 -include("elixir.hrl").
 
-%% Used by elixir_dispatch, returns false if no macro is found
-macro_for(_Tuple, _All, nil) -> false;
+macro_for(_Tuple, _All, #elixir_scope{module=nil}) -> false;
 
-macro_for(Tuple, All, Module) ->
+macro_for(Tuple, All, #elixir_scope{module=Module,function=Function}) ->
   try elixir_def:lookup_definition(Module, Tuple) of
     { { Tuple, Kind, Line, _, _, _, _ }, Clauses } when Kind == defmacro; All, Kind == defmacrop ->
-      %% This function is only called if S#elixir_scope.function /= Tuple
-      elixir_import:record(Tuple, Module, Module),
+      elixir_tracker:record_local(Tuple, Module, Function),
       get_function(Line, Module, Clauses);
     _ ->
       false
@@ -23,7 +16,6 @@ macro_for(Tuple, All, Module) ->
     error:badarg -> false
   end.
 
-%% Used on runtime by rewritten clauses, raises an error if function is not found
 function_for(Module, Name, Arity) ->
   Tuple = { Name, Arity },
   case elixir_def:lookup_definition(Module, Tuple) of
@@ -36,8 +28,6 @@ function_for(Module, Name, Arity) ->
       [_|T] = erlang:get_stacktrace(),
       erlang:raise(error, undef, [{Module,Name,Arity,[]}|T])
   end.
-
-%% Helpers
 
 get_function(Line, Module, Clauses) ->
   RewrittenClauses = [rewrite_clause(Clause, Module) || Clause <- Clauses],
@@ -70,52 +60,3 @@ rewrite_clause(List, Module) when is_list(List) ->
   [rewrite_clause(Item, Module) || Item <- List];
 
 rewrite_clause(Else, _) -> Else.
-
-%% Error handling
-
-check_unused_local(File, Recorded, Private) ->
-  [check_unused_local(Fun, Kind, Line, File, Defaults, Recorded) ||
-    { Fun, Kind, Line, true, Defaults } <- Private].
-
-check_unused_local(Fun, Kind, Line, File, 0, Recorded) ->
-  not(lists:member(Fun, Recorded)) andalso
-    elixir_errors:handle_file_warning(File, { Line, ?MODULE, { unused_def, Kind, Fun } });
-
-check_unused_local({ _, Arity } = Fun, Kind, Line, File, Defaults, Recorded) when Defaults > 0 ->
-  Min = Arity - Defaults,
-  Max = Arity,
-
-  Invoked = [A || { _, A } <- Recorded, A >= Min, A =< Max],
-
-  case Invoked of
-    [] ->
-      elixir_errors:handle_file_warning(File, { Line, ?MODULE, { unused_def, Kind, Fun } });
-    _ ->
-      UnusedArgs = lists:min(Invoked) - Min,
-      if
-        UnusedArgs == 0 ->
-          ok;
-        UnusedArgs == Defaults ->
-          elixir_errors:handle_file_warning(File, { Line, ?MODULE, { unused_args, Fun } });
-        true ->
-          elixir_errors:handle_file_warning(File, { Line, ?MODULE, { unused_args, Fun, UnusedArgs } })
-      end
-  end;
-
-check_unused_local(_Fun, _Kind, _Line, _File, _Defaults, _Recorded) ->
-  ok.
-
-format_error({unused_def,defp,{Name, Arity}}) ->
-  io_lib:format("function ~ts/~B is unused", [Name, Arity]);
-
-format_error({unused_args,{Name, Arity}}) ->
-  io_lib:format("default arguments in ~ts/~B are never used", [Name, Arity]);
-
-format_error({unused_args,{Name, Arity},1}) ->
-  io_lib:format("the first default argument in ~ts/~B is never used", [Name, Arity]);
-
-format_error({unused_args,{Name, Arity},Count}) ->
-  io_lib:format("the first ~B default arguments in ~ts/~B are never used", [Count, Name, Arity]);
-
-format_error({unused_def,defmacrop,{Name, Arity}}) ->
-  io_lib:format("macro ~ts/~B is unused", [Name, Arity]).

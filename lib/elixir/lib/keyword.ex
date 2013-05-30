@@ -114,15 +114,6 @@ defmodule Keyword do
     end
   end
 
-  @doc false
-  def get!(keywords, key) when is_atom(key) do
-    IO.write "[WARNING] Keyword.get! is deprecated, please use Keyword.fetch! instead\n#{Exception.format_stacktrace}"
-    case :lists.keyfind(key, 1, keywords) do
-      { ^key, value } -> value
-      false -> raise(KeyError, key: key)
-    end
-  end
-
   @doc """
   Fetchs the value for specific key and return it in a tuple.
   If the key does not exist, returns `:error`.
@@ -152,6 +143,7 @@ defmodule Keyword do
 
       iex> Keyword.fetch!([a: 1], :a)
       1
+
       iex> Keyword.fetch!([a: 1], :b)
       ** (KeyError) key not found: :b
 
@@ -357,6 +349,7 @@ defmodule Keyword do
 
       iex> Keyword.update([a: 1], :a, &1 * 2)
       [a: 2]
+
       iex> Keyword.update([a: 1], :b, &1 * 2)
       ** (KeyError) key not found: :b
 

@@ -1,7 +1,11 @@
 -module(elixir_module).
--export([translate/4, compile/5, data_table/1, eval_quoted/4,
-         format_error/1, eval_callbacks/5]).
+-export([translate/4, compile/5, data_table/1, docs_table/1,
+         eval_quoted/4, format_error/1, eval_callbacks/5]).
 -include("elixir.hrl").
+
+-define(docs_attr, '__docs_table').
+-define(acc_attr, '__acc_attributes').
+-define(persisted_attr, '__persisted_attributes').
 
 eval_quoted(Module, Quoted, RawBinding, Opts) ->
   Binding = binding_for_eval(Module, RawBinding),
@@ -31,7 +35,7 @@ data_table(Module) ->
   Module.
 
 docs_table(Module) ->
-  ?atom_concat([o, Module]).
+  ets:lookup_element(Module, ?docs_attr, 2).
 
 %% TRANSFORMATION FUNCTIONS
 
@@ -70,9 +74,17 @@ compile(Line, Module, Block, Vars, #elixir_scope{context_modules=FileModules} = 
     Forms1          = specs_form(Line, Module, Private, Defmacro, Forms0, C),
     Forms2          = attributes_form(Line, File, Module, Forms1),
 
-    elixir_import:ensure_all_imports_used(Line, File, Module),
+    case ets:lookup(data_table(Module), 'on_load') of
+      [] -> ok;
+      [{on_load,OnLoad}] ->
+        [elixir_tracker:record_local(Tuple, Module) || Tuple <- OnLoad]
+    end,
+
+    elixir_tracker:warn_unused_local(File, Module, Private),
+    elixir_tracker:ensure_no_import_conflict(Line, File, Module, All),
+    elixir_tracker:ensure_all_imports_used(Line, File, Module),
+
     elixir_import:ensure_no_local_conflict(Line, File, Module, All),
-    elixir_import:ensure_no_import_conflict(Line, File, Module, All),
 
     Final = [
       { attribute, Line, file, { FileList, Line } },
@@ -82,10 +94,10 @@ compile(Line, Module, Block, Vars, #elixir_scope{context_modules=FileModules} = 
     Binary = load_form(Line, Final, S),
     { module, Module, Binary, Result }
   after
-    ets:delete(data_table(Module)),
+    elixir_tracker:cleanup(Module),
+    elixir_def:cleanup(Module),
     ets:delete(docs_table(Module)),
-    elixir_def:delete_table(Module),
-    elixir_import:delete_table(Module)
+    ets:delete(data_table(Module))
   end;
 
 compile(Line, Other, _Block, _Vars, #elixir_scope{file=File}) ->
@@ -118,20 +130,13 @@ build(Line, File, Module) ->
   end,
 
   Attributes = [behavior, behaviour, on_load, spec, type, export_type, opaque, callback, compile],
-  ets:insert(DataTable, { '__acc_attributes', [before_compile,after_compile,on_definition|Attributes] }),
-  ets:insert(DataTable, { '__persisted_attributes', [vsn|Attributes] }),
+  ets:insert(DataTable, { ?acc_attr, [before_compile,after_compile,on_definition|Attributes] }),
+  ets:insert(DataTable, { ?persisted_attr, [vsn|Attributes] }),
+  ets:insert(DataTable, { ?docs_attr, ets:new(DataTable, [ordered_set, public]) }),
 
-  %% Keep docs in another table since we don't want to pull out
-  %% all the binaries every time a new documentation is stored.
-  DocsTable = docs_table(Module),
-  ets:new(DocsTable, [ordered_set, named_table, public]),
-
-  %% We keep a separated table for function definitions
-  %% and another one for imports. We keep them in different
-  %% tables for organization and speed purpose (since the
-  %% imports table is frequently written to).
-  elixir_def:build_table(Module),
-  elixir_import:build_table(Module).
+  %% Setup other modules
+  elixir_def:setup(Module),
+  elixir_tracker:setup(Module).
 
 %% Receives the module representation and evaluates it.
 
@@ -155,13 +160,6 @@ functions_form(Line, File, Module, Export, Private, Def, Defmacro, RawFunctions,
   { FinalExport, FinalFunctions } =
     add_info_function(Line, File, Module, Export, Functions, Def, Defmacro, C),
 
-  Recorded =
-    case ets:lookup(data_table(Module), 'on_load') of
-      [] -> elixir_import:recorded_locals(Module);
-      [{on_load,OnLoad}] -> elixir_import:recorded_locals(Module) ++ OnLoad
-    end,
-
-  elixir_def_local:check_unused_local(File, Recorded, Private),
   PrivateTuple = [Tuple || { Tuple, _, _, _, _ } <- Private],
   { FinalExport ++ PrivateTuple, [
     {attribute, Line, export, lists:sort(FinalExport)} | FinalFunctions

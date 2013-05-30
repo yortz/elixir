@@ -216,17 +216,15 @@ defmodule Module do
       [] ->
         ETS.insert(table, { tuple, line, kind, signature, doc })
         :ok
-      [{ tuple, line, _old_kind, old_sign, old_doc }] when old_doc == nil or doc == nil or old_doc == doc ->
+      [{ tuple, line, _old_kind, old_sign, old_doc }] ->
         ETS.insert(table, {
           tuple,
           line,
           kind,
           merge_signatures(old_sign, signature, 1),
-          doc || old_doc
+          if(nil?(doc), do: old_doc, else: doc)
         })
         :ok
-      _ ->
-        { :error, :existing_doc }
     end
   end
 
@@ -376,10 +374,12 @@ defmodule Module do
           raise "Cannot make function #{name}/#{arity} overridable because it was not defined"
         clause ->
           :elixir_def.delete_definition(module, tuple)
+          neighbours = Module.DispatchTracker.yank(module, tuple)
 
           old    = get_attribute(module, :__overridable)
-          new    = [ { tuple, { 1, clause, false } } ]
-          merged = :orddict.merge(fn(_k, { count, _, _ }, _v2) -> { count + 1, clause, false } end, old, new)
+          merged = :orddict.update(tuple, fn({ count, _, _, _ }) ->
+            { count + 1, clause, neighbours, false }
+          end, { 1, clause, neighbours, false }, old)
 
           put_attribute(module, :__overridable, merged)
       end
@@ -556,8 +556,6 @@ defmodule Module do
         :ok
       { :error, :private_doc } ->
         IO.puts "#{env.file}:#{line} function #{name}/#{arity} is private, @doc's are always discarded for private functions"
-      { :error, :existing_doc } ->
-        IO.puts "#{env.file}:#{line} @doc's for function #{name}/#{arity} have been given more than once, the first version is being kept"
     end
 
     delete_attribute(module, :doc)
@@ -613,11 +611,11 @@ defmodule Module do
   end
 
   defp function_table_for(module) do
-    list_to_atom :lists.concat([:f, module])
+    :elixir_def.table(module)
   end
 
   defp docs_table_for(module) do
-    list_to_atom :lists.concat([:o, module])
+    :elixir_module.docs_table(module)
   end
 
   defp assert_not_compiled!(fun, module) do

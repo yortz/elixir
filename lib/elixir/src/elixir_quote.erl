@@ -1,3 +1,4 @@
+%% Implements Elixir quote.
 -module(elixir_quote).
 -export([escape/2, erl_escape/3, erl_quote/3, linify/2, unquote/5]).
 -include("elixir.hrl").
@@ -61,10 +62,6 @@ erl_escape(Expr, Unquote, S) ->
 
 quote(Expr, Q, S) ->
   do_quote(Expr, Q, S).
-
-erl_quote({ 'unquote_splicing', Meta, [_] } = Expr, #elixir_quote{unquote=true} = Q, S) ->
-  elixir_errors:deprecation(Meta, S#elixir_scope.file, "unquote_splicing in the quote body is deprecated, please use (unquote_splicing()) instead", []),
-  erl_quote({ '__block__', Meta, [Expr] }, Q, S);
 
 erl_quote(Expr, Q, S) ->
   { QExpr, TQ } = quote(Expr, Q, S),

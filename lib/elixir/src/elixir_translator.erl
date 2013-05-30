@@ -230,21 +230,15 @@ translate_each({ quote, Meta, [KV, Do] }, S) when is_list(Do) ->
       []
   end,
 
-  Context = case lists:keyfind(var_context, 1, TKV) of
-    { var_context, VarContext } ->
-      elixir_errors:deprecation(Meta, S#elixir_scope.file, "var_context in quote is deprecated, please use context instead"),
-      VarContext;
+  Context = case lists:keyfind(context, 1, TKV) of
+    { context, Atom } when is_atom(Atom) ->
+      Atom;
+    { context, _ } ->
+      syntax_error(Meta, S#elixir_scope.file, "invalid :context for quote, expected an atom or an alias");
     false ->
-      case lists:keyfind(context, 1, TKV) of
-        { context, Atom } when is_atom(Atom) ->
-          Atom;
-        { context, _ } ->
-          syntax_error(Meta, S#elixir_scope.file, "invalid :context for quote, expected an atom or an alias");
-        false ->
-          case S#elixir_scope.module of
-            nil -> 'Elixir';
-            Mod -> Mod
-          end
+      case S#elixir_scope.module of
+        nil -> 'Elixir';
+        Mod -> Mod
       end
   end,
 
@@ -578,10 +572,7 @@ translate_fn(Meta, Clauses, S) ->
 %% Locals
 
 translate_local(Meta, Name, Args, #elixir_scope{local=nil,module=Module,function=Function} = S) ->
-  case { Name, length(Args) } of
-    Function -> ok;
-    Tuple    -> elixir_import:record(Tuple, Module, Module)
-  end,
+  elixir_tracker:record_local({ Name, length(Args) }, Module, Function),
   Line = ?line(Meta),
   { TArgs, NS } = translate_args(Args, S),
   { { call, Line, { atom, Line, Name }, TArgs }, NS };

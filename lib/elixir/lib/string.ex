@@ -752,7 +752,7 @@ defmodule String do
 
   """
   @spec to_integer(t) :: {integer, t} | :error
-  
+
   def to_integer(string) do
     {result, remainder} = :string.to_integer(binary_to_list(string))
     case result do
@@ -785,7 +785,7 @@ defmodule String do
     charlist = binary_to_list(string)
     {result, remainder} = :string.to_float(charlist)
     case result do
-      :error -> 
+      :error ->
         {int_result, int_remainder} = :string.to_integer(charlist)
         case int_result do
           :error -> :error
@@ -794,5 +794,55 @@ defmodule String do
       _ -> {result, list_to_binary(remainder)}
     end
   end
+
+  @doc """
+  Returns true if `string` starts with any of the prefixes given, otherwise
+  false. `prefixes` can be either a single prefix or a list of prefixes.
+
+  ## Examples
+
+      iex> String.starts_with? "elixir", "eli"
+      true
+      iex> String.starts_with? "elixir", ["erlang", "elixir"]
+      true
+      iex> String.starts_with? "elixir", ["erlang", "ruby"]
+      false
+
+  """
+  @spec starts_with?(t, t | [t]) :: boolean
+
+  def starts_with?(string, prefixes) do
+    case :binary.match(string, prefixes) do
+      :nomatch -> false
+      {0, _}   -> true
+      _        -> false
+    end
+  end
+
+  @doc """
+  Returns true if `string` ends with any of the suffixes given, otherwise
+  false. `suffixes` can be either a single suffix or a list of suffixes.
+
+  ## Examples
+
+      iex> String.ends_with? "language", "age"
+      true
+      iex> String.ends_with? "language", ["youth", "age"]
+      true
+      iex> String.ends_with? "language", ["youth", "elixir"]
+      false
+
+  """
+  @spec ends_with?(t, t | [t]) :: boolean
+
+  def ends_with?(string, suffixes) when is_list(suffixes) do
+    string_size = size(string)
+    Enum.any? suffixes, fn suffix ->
+      suffix_size = size(suffix)
+      (suffix_size <= string_size) and suffix == :binary.part(string, {string_size, -suffix_size})
+    end
+  end
+
+  def ends_with?(string, suffix), do: ends_with?(string, [ suffix ])
 
 end

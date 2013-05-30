@@ -50,7 +50,6 @@ defmodule Dict do
   defcallback equal?(t, t) :: boolean
   defcallback get(t, key) :: value
   defcallback get(t, key, value) :: value
-  defcallback get!(t, key) :: value | no_return
   defcallback has_key?(t, key) :: boolean
   defcallback keys(t) :: list(key)
   defcallback merge(t, t) :: t
@@ -131,11 +130,9 @@ defmodule Dict do
   ## Examples
 
       iex> d = HashDict.new([a: 1])
-      ...> Dict.has_key?(d, :a)
+      iex> Dict.has_key?(d, :a)
       true
-
-      iex> d = HashDict.new([a: 1])
-      ...> Dict.has_key?(d, :b)
+      iex> Dict.has_key?(d, :b)
       false
 
   """
@@ -151,15 +148,11 @@ defmodule Dict do
   ## Examples
 
       iex> d = HashDict.new([a: 1])
-      ...> Dict.get(d, :a)
+      iex> Dict.get(d, :a)
       1
-
-      iex> d = HashDict.new([a: 1])
-      ...> Dict.get(d, :b)
+      iex> Dict.get(d, :b)
       nil
-
-      iex> d = HashDict.new([a: 1])
-      ...> Dict.get(d, :b, 3)
+      iex> Dict.get(d, :b, 3)
       3
   """
   @spec get(t, key, value) :: value
@@ -179,11 +172,9 @@ defmodule Dict do
   ## Examples
 
       iex> d = HashDict.new([a: 1])
-      ...> Dict.fetch(d, :a)
+      iex> Dict.fetch(d, :a)
       { :ok, 1 }
-
-      iex> d = HashDict.new([a: 1])
-      ...> Dict.fetch(d, :b)
+      iex> Dict.fetch(d, :b)
       :error
 
   """
@@ -199,10 +190,9 @@ defmodule Dict do
   ## Examples
 
       iex> d = HashDict.new([a: 1])
-      ...> Dict.fetch!(d, :a)
+      iex> Dict.fetch!(d, :a)
       1
-      iex> d = HashDict.new([a: 1])
-      ...> Dict.fetch!(d, :b)
+      iex> Dict.fetch!(d, :b)
       ** (KeyError) key not found: :b
 
   """
@@ -425,11 +415,11 @@ defmodule Dict do
   ## Examples
 
       iex> d = HashDict.new([a: 1, b: 2])
+      ...>
       ...> d = Dict.take(d, [:a, :c, :d])
       ...> Dict.to_list(d)
       [a: 1]
-
-      iex> d = HashDict.new([a: 1, b: 2])
+      ...>
       ...> d = Dict.take(d, [:c, :d])
       ...> Dict.to_list(d)
       []

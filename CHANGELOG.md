@@ -1,3 +1,19 @@
+# v0.9.1 (2013-05-30)
+
+* enhancements
+  * [IEx] Limit the number of entries kept in history and allow it to be configured
+  * [Kernel] Add `String.start_with?` and `String.end_with?`
+  * [Typespec] Allow keywords, e.g. `[foo: integer, bar: boolean | module]`, in typespecs
+
+* bug fix
+  * [Dict] `Enum.to_list` and `Dict.to_list` now return the same results for dicts
+  * [IEx] Enable shell customization via the `IEx.Options` module
+  * [Kernel] Fix a bug where `unquote_splicing` did not work on the left side of a stab op
+  * [Kernel] Unused functions with cyclic dependencies are now also warned as unused
+  * [Mix] Fix a bug where `mix deps.get` was not retrieving nested dependencies
+  * [Record] Fix a bug where nested records cannot be defined
+  * [Record] Fix a bug where a record named Record cannot be defined
+
 # v0.9.0 (2013-05-23)
 
 * enhancements

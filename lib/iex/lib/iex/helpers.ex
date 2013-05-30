@@ -77,19 +77,6 @@ defmodule IEx.Helpers do
   end
 
   @doc """
-  Prints the history of expressions evaluated during the session along with
-  their results.
-  """
-  def v do
-    history = Enum.reverse(Process.get(:iex_history))
-    Enum.each(history, print_history(&1))
-  end
-
-  defp print_history(config) do
-    IO.puts IO.ANSI.escape("%{yellow}#{config.counter}: #{config.cache}#=> #{inspect config.result}\n")
-  end
-
-  @doc """
   Prints the documentation for `IEx.Helpers`.
   """
   def h() do
@@ -218,19 +205,27 @@ defmodule IEx.Helpers do
   end
 
   @doc """
+  Prints the history of expressions evaluated during the session along with
+  their results.
+  """
+  def v do
+    inspect_opts = IEx.Options.get(:inspect)
+    IEx.History.each(print_history_entry(&1, inspect_opts))
+  end
+
+  defp print_history_entry(config, inspect_opts) do
+    IO.write IEx.color(:info, "#{config.counter}: #{config.cache}#=> ")
+    IO.puts  IEx.color(:eval_result, "#{inspect config.result, inspect_opts}\n")
+  end
+
+  @doc """
   Retrieves nth expression's value from the history.
 
   Use negative values to lookup expression values relative to the current one.
   For instance, v(-1) returns the result of the last evaluated expression.
   """
-  def v(n) when n < 0 do
-    history = Process.get(:iex_history)
-    Enum.fetch!(history, abs(n) - 1).result
-  end
-
-  def v(n) when n > 0 do
-    history = Process.get(:iex_history) |> Enum.reverse
-    Enum.fetch!(history, n - 1).result
+  def v(n) do
+    IEx.History.nth(n).result
   end
 
   @doc """
@@ -268,10 +263,15 @@ defmodule IEx.Helpers do
   Flushes all messages sent to the shell and prints them out.
   """
   def flush do
+    inspect_opts = IEx.Options.get(:inspect)
+    do_flush(inspect_opts)
+  end
+
+  defp do_flush(inspect_opts) do
     receive do
       msg ->
-        IO.inspect(msg)
-        flush
+        IO.inspect(msg, inspect_opts)
+        do_flush(inspect_opts)
     after
       0 -> :ok
     end
@@ -294,7 +294,7 @@ defmodule IEx.Helpers do
   Prints the current working directory.
   """
   def pwd do
-    IO.puts IO.ANSI.escape("%{yellow}#{System.cwd!}")
+    IO.puts IEx.color(:info, System.cwd!)
   end
 
   @doc """
@@ -304,7 +304,7 @@ defmodule IEx.Helpers do
     case File.cd(expand_home(directory)) do
       :ok -> pwd
       { :error, :enoent } ->
-        IO.puts IO.ANSI.escape("%{red}No directory #{directory}")
+        IO.puts IEx.color(:error, "No directory #{directory}")
     end
   end
 
@@ -320,10 +320,10 @@ defmodule IEx.Helpers do
         ls_print(path, sorted_items)
 
       { :error, :enoent } ->
-        IO.puts IO.ANSI.escape("%{red}No such file or directory #{path}")
+        IO.puts IEx.color(:error, "No such file or directory #{path}")
 
       { :error, :enotdir } ->
-        IO.puts IO.ANSI.escape("%{yellow}#{Path.absname(path)}")
+        IO.puts IEx.color(:info, Path.absname(path))
     end
   end
 
@@ -365,9 +365,9 @@ defmodule IEx.Helpers do
   defp format_item(path, representation) do
     case File.stat(path) do
       { :ok, File.Stat[type: :device] } ->
-        IO.ANSI.escape("%{green}#{representation}")
+        IEx.color(:device, representation)
       { :ok, File.Stat[type: :directory] } ->
-        IO.ANSI.escape("%{blue}#{representation}")
+        IEx.color(:directory, representation)
       _ ->
         representation
     end

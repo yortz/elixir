@@ -1,5 +1,4 @@
-%% Convenience functions used to manipulate scope
-%% and its variables.
+%% Convenience functions used to manipulate scope and its variables.
 -module(elixir_scope).
 -export([translate_var/5,
   build_erl_var/2, build_ex_var/2,
@@ -76,18 +75,19 @@ build_ex_var(Line, Key, Name, S) when is_integer(Line) ->
 
 % Handle Macro.Env conversion
 
-to_erl_env({ 'Elixir.Macro.Env', Module, File, _Line, Function, Aliases, Context, Requires, Functions, Macros, FileModules }) ->
+to_erl_env({ 'Elixir.Macro.Env', Module, File, _Line, Function, Aliases, Context,
+    Requires, Functions, Macros, ContextModules, MacroAliases }) ->
   #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
     requires=Requires,macros=Macros,functions=Functions,
-    context_modules=FileModules}.
+    context_modules=ContextModules,macro_aliases=MacroAliases}.
 
 to_ex_env({ Line, #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
     requires=Requires,macros=Macros,functions=Functions,
-    context_modules=FileModules} }) when is_integer(Line) ->
+    context_modules=ContextModules,macro_aliases=MacroAliases} }) when is_integer(Line) ->
   { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases,
-    Context, Requires, Functions, Macros, FileModules }.
+    Context, Requires, Functions, Macros, ContextModules, MacroAliases }.
 
 % Provides a tuple with only the scope information we want to serialize.
 

@@ -372,8 +372,10 @@ defmodule Enum do
 
       iex> Enum.fetch!([2,4,6], 0)
       2
+
       iex> Enum.fetch!([2,4,6], 2)
       6
+
       iex> Enum.fetch!([2,4,6], 4)
       ** (Enum.OutOfBoundsError) out of bounds error
 
@@ -384,12 +386,6 @@ defmodule Enum do
       { :ok, h } -> h
       :error     -> raise Enum.OutOfBoundsError
     end
-  end
-
-  @doc false
-  def at!(collection, n) when n >= 0 do
-    IO.write "[WARNING] Enum.at! is deprecated, please use Enum.fetch! instead\n#{Exception.format_stacktrace}"
-    fetch!(collection, n)
   end
 
   @doc """

@@ -4,13 +4,14 @@ defmodule IEx.Server do
   @doc """
   Eval loop for an IEx session. Its responsibilities include:
 
+    * loading of .iex files
     * reading input
     * trapping exceptions in the code being evaluated
-    * keeping input history
+    * keeping expression history
 
   """
   def start(config) do
-    Process.put :iex_history, []
+    IEx.History.init
 
     { _, _, scope } = :elixir.eval('require IEx.Helpers', [], 0, config.scope)
     config = config.scope(scope)
@@ -81,9 +82,9 @@ defmodule IEx.Server do
 
         io_put result
 
-        config = config.result(result)
-        update_history(config.cache(code).scope(nil))
-        config.update_counter(&1+1).cache('').binding(new_binding).scope(scope)
+        config = config.cache(code).scope(nil).result(result)
+        update_history(config)
+        config.update_counter(&1+1).cache('').binding(new_binding).scope(scope).result(nil)
 
       { :error, { line_no, error, token } } ->
         if token == [] do
@@ -135,8 +136,7 @@ defmodule IEx.Server do
   end
 
   defp update_history(config) do
-    current = Process.get :iex_history
-    Process.put :iex_history, [config|current]
+    IEx.History.append(config, config.counter)
   end
 
   defp io_get(config) do
@@ -157,11 +157,11 @@ defmodule IEx.Server do
   end
 
   defp io_put(result) do
-    IO.puts :stdio, IO.ANSI.escape("%{yellow}#{inspect(result, IEx.inspect_opts)}")
+    IO.puts :stdio, IEx.color(:eval_result, inspect(result, IEx.Options.get(:inspect)))
   end
 
   defp io_error(result) do
-    IO.puts :stdio, result
+    IO.puts :stdio, IEx.color(:error, result)
   end
 
   defp remote_prefix do

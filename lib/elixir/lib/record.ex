@@ -26,18 +26,22 @@ defmodule Record do
     block = Keyword.get(opts, :do, nil)
 
     quote do
-      values = unquote(values)
+      unquoted_values = unquote(values)
 
       defmodule unquote(name) do
         @moduledoc false
-        import Record.DSL
+        import Elixir.Record.DSL
 
         @record_fields []
         @record_types  []
 
-        Record.deffunctions(values, __ENV__)
+        # Reassign values to inner scope to
+        # avoid conflicts in nested records
+        values = unquoted_values
+
+        Elixir.Record.deffunctions(values, __ENV__)
         value = unquote(block)
-        Record.deftypes(values, @record_types, __ENV__)
+        Elixir.Record.deftypes(values, @record_types, __ENV__)
         value
       end
     end

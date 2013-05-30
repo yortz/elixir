@@ -1892,16 +1892,25 @@ defmodule Kernel do
 
   The following options are supported:
 
-  * :raw - tuples are not formatted as the inspect protocol, they are
-    always shown as tuples, defaults to false;
+  * raw   -- when true, record tuples are not formatted by the inspect protocol,
+             but are printed as just tuples; default: false
 
-  * :limit - the limit of items that are shown in tuples, bitstrings and
-    lists. Does not apply to strings;
+  * limit -- limits the number of items that are printed for tuples, bitstrings,
+             and lists; does not apply to strings
 
   ## Examples
 
       iex> inspect(:foo)
       ":foo"
+
+      iex> inspect [1,2,3,4,5], limit: 3
+      "[1,2,3,...]"
+
+      inspect(ArgumentError[])
+      #=> "ArgumentError[message: \"argument error\"]"
+
+      inspect(ArgumentError[], raw: true)
+      #=> "{ArgumentError,:__exception__,\"argument error\"}"
 
   Note that the inspect protocol does not necessarily return a valid
   representation of an Elixir term. In such cases, the inspected result must
@@ -1986,12 +1995,6 @@ defmodule Kernel do
   end
 
   defmacro set_elem(tuple, index, value) do
-    quote do: :erlang.setelement(unquote(index) + 1, unquote(tuple), unquote(value))
-  end
-
-  @doc false
-  defmacro setelem(tuple, index, value) do
-    IO.puts "setelem is deprecated, please use set_elem instead\n#{Exception.format_stacktrace(__CALLER__.stacktrace)}"
     quote do: :erlang.setelement(unquote(index) + 1, unquote(tuple), unquote(value))
   end
 
