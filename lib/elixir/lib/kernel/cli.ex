@@ -102,9 +102,9 @@ defmodule Kernel.CLI do
 
   # Process shared options
 
-  defp process_shared(["-v"|t], config) do
+  defp process_shared([opt|_t], _config) when opt in ["-v", "--version"] do
     IO.puts "Elixir #{System.version}"
-    process_shared t, config
+    System.halt 0
   end
 
   defp process_shared(["-pa",h|t], config) do
@@ -137,11 +137,7 @@ defmodule Kernel.CLI do
     process_shared t, config.update_commands [{:parallel_require,h}|&1]
   end
 
-  defp process_shared(["--cookie",h|t], config) do
-    process_shared t, config.update_commands [{:cookie,h}|&1]
-  end
-
-  defp process_shared([erl,_|t], config) when erl in ["--erl", "--sname", "--name"] do
+  defp process_shared([erl,_|t], config) when erl in ["--erl", "--sname", "--name", "--cookie"] do
     process_shared t, config
   end
 
@@ -275,7 +271,7 @@ defmodule Kernel.CLI do
   end
 
   defp process_command({:script, file}, _config) when is_binary(file) do
-    if exec = System.find_executable(file) do
+    if exec = find_elixir_executable(file) do
       Code.require_file(exec)
       :ok
     else
@@ -332,6 +328,21 @@ defmodule Kernel.CLI do
       :ok
     else
       { :error, "--compile : No files matched patterns #{Enum.join(patterns, ",")}" }
+    end
+  end
+
+  defp find_elixir_executable(file) do
+    if exec = System.find_executable(file) do
+      # If we are on Windows, the executable is going to be
+      # a .bat file that must be in the same directory as
+      # the actual Elixir executable.
+      case :os.type() do
+        { :win32, _ } ->
+          exec = Path.rootname(exec)
+          if File.regular?(exec), do: exec
+        _ ->
+          exec
+      end
     end
   end
 end

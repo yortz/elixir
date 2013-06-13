@@ -385,10 +385,7 @@ defmodule Path do
     join(left, atom_to_binary(right))
 
   defp major_os_type do
-    case :os.type do
-      { maj, _ } -> maj
-      maj -> maj
-    end
+    :os.type |> elem(0)
   end
 
   defp do_join(<<uc_letter, ?:, rest :: binary>>, relativename, [], :win32) when uc_letter in ?A..?Z, do:
@@ -426,13 +423,16 @@ defmodule Path do
   ## Examples
 
        iex> Path.split("")
-       ["/"]
+       []
        iex> Path.split("foo")
        ["foo"]
        iex> Path.split("/foo/bar")
        ["/", "foo", "bar"]
 
   """
+  # Work around a bug in Erlang on UNIX
+  def split(""), do: []
+
   def split(path) do
     FN.split(path)
   end

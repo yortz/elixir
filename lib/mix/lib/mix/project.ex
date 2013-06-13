@@ -31,6 +31,8 @@ defmodule Mix.Project do
   defined.
   """
 
+  alias Mix.Server.Project
+
   @doc false
   defmacro __using__(_) do
     quote do
@@ -85,7 +87,7 @@ defmodule Mix.Project do
   """
   def get do
     case Mix.Server.call(:projects) do
-      [{ h, _ }|_] -> h
+      [Project[name: project]|_] -> project
       _ -> nil
     end
   end
@@ -103,7 +105,7 @@ defmodule Mix.Project do
   """
   def config do
     case Mix.Server.call(:projects) do
-      [{ h, config }|_] when h != nil -> config
+      [Project[name: name, config: config]|_] when name != nil -> config
       _ -> default_config
     end
   end
@@ -149,7 +151,7 @@ defmodule Mix.Project do
   use this function to transparently go through the project, regardless
   if it is an umbrella project or not.
   """
-  def recur(fun) do
+  def recur(post_config // [], fun) do
     if apps_path = config[:apps_path] do
       paths = Path.wildcard(Path.join(apps_path, "*"))
       paths = Enum.filter(paths, File.dir?(&1))
@@ -163,11 +165,12 @@ defmodule Mix.Project do
       projects = topsort_projects(projects, Path.expand(apps_path))
 
       results = Enum.map projects, fn { app, app_path } ->
-        in_project(app, app_path, fun)
+        in_project(app, app_path, post_config, fun)
       end
 
       results
     else
+      # Note that post_config isnt used for this case
       [fun.(get)]
     end
   end

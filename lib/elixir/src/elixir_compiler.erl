@@ -1,5 +1,5 @@
 -module(elixir_compiler).
--export([get_opts/0, get_opt/1, get_opt/2, string/2, file/1, file_to_path/2]).
+-export([get_opts/0, get_opt/1, get_opt/2, string/2, quoted/2, file/1, file_to_path/2]).
 -export([core/0, module/3, eval_forms/4, format_error/1]).
 -include("elixir.hrl").
 
@@ -222,6 +222,7 @@ core_main() ->
     "lib/elixir/lib/binary/chars.ex",
     "lib/elixir/lib/io.ex",
     "lib/elixir/lib/path.ex",
+    "lib/elixir/lib/system.ex",
     "lib/elixir/lib/kernel/cli.ex",
     "lib/elixir/lib/kernel/error_handler.ex",
     "lib/elixir/lib/kernel/parallel_compiler.ex",

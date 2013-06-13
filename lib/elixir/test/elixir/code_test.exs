@@ -19,6 +19,11 @@ defmodule CodeTest do
     assert { 3, _ } = Code.eval_string("a + b", [a: 1, b: 2], __ENV__.location)
   end
 
+  test :eval_with_unnamed_scopes do
+    assert { RuntimeError[], [a: RuntimeError[]] } =
+           Code.eval_string("a = (try do (raise \"hello\") rescue e -> e end)")
+  end
+
   test :eval_with_scope do
     assert Code.eval_string("one", [], delegate_locals_to: __MODULE__) == { 1, [] }
   end
@@ -89,6 +94,20 @@ defmodule CodeTest do
   test :compile_info_returned_with_source_accessible_through_keyword_module do
     compile = __MODULE__.__info__(:compile)
     assert Keyword.get(compile, :source) != nil
+  end
+
+  test :compile_string do
+    assert [{ CompileStringSample, _ }] = Code.compile_string("defmodule CompileStringSample, do: :ok")
+  after
+    :code.purge CompileSimpleSample
+    :code.delete CompileSimpleSample
+  end
+
+  test :compile_quoted do
+    assert [{ CompileQuotedSample, _ }] = Code.compile_string("defmodule CompileQuotedSample, do: :ok")
+  after
+    :code.purge CompileQuotedSample
+    :code.delete CompileQuotedSample
   end
 
   test :ensure_loaded? do

@@ -1362,148 +1362,16 @@ defmodule Kernel do
   @doc %B"""
   Defines a record.
 
-  A record is a tagged tuple which contains one or more elements
-  and the first element is a module. This macro defines a module
-  that generates accessors to manipulate the record at both
-  compilation and runtime.
+  This macro defines a module that generates accessors to manipulate the record
+  at both compilation and runtime.
+
+  See the `Record` module's documentation for a detailed description of records
+  in Elixir.
 
   ## Examples
 
       defrecord FileInfo, atime: nil, accesses: 0
 
-  The line above will define a module named `FileInfo` which
-  contains a function named `new` that returns a new record
-  and other functions to read and set the values in the
-  record:
-
-      file_info = FileInfo.new(atime: now())
-      file_info.atime         #=> Returns the value of atime
-      file_info.atime(now())  #=> Updates the value of atime
-
-  A record is simply a tuple where the first element is the record
-  module name. We can get the record raw representation as follow:
-
-      inspect FileInfo.new, raw: true
-      #=> { FileInfo, nil, nil }
-
-  Besides defining readers and writers for each attribute, Elixir also
-  defines an `update_#{attribute}` function to update the value. Such
-  functions expect a function as argument that receives the current
-  value and must return the new one. For example, every time the file
-  is accessed, the accesses counter can be incremented with:
-
-      file_info.update_accesses(fn(old) -> old + 1 end)
-
-  Which can be also written as:
-
-      file_info.update_accesses(&1 + 1)
-
-  ## Access syntax
-
-  Records in Elixir can be expanded at compilation time to provide
-  pattern matching and faster operations. For example, the clause
-  below will only match if a `FileInfo` is given and the number of
-  accesses is zero:
-
-      def enforce_no_access(FileInfo[accesses: 0]), do: :ok
-
-  The clause above will expand to:
-
-      def enforce_no_access({ FileInfo, _, 0 }), do: :ok
-
-  The downside of using such syntax is that, every time the record
-  changes, your code now needs to be recompiled (which is usually
-  not a concern since Elixir build tools by default recompiles the
-  whole project whenever there is a change).
-
-  Finally, keep in mind that Elixir triggers some optimizations whenever
-  the access syntax is used. For example:
-
-      def no_access?(FileInfo[] = file_info) do
-        file_info.accesses == 0
-      end
-
-  Is translated to:
-
-      def no_access?({ FileInfo, _, _ } = file_info) do
-        elem(file_info, 1) == 0
-      end
-
-  Which provides faster get and set times for record operations.
-
-  ## Runtime introspection
-
-  At runtime, developers can use `__record__` to get information
-  about the given record:
-
-      FileInfo.__record__(:name)
-      #=> FileInfo
-
-      FileInfo.__record__(:fields)
-      #=> [atime: nil, accesses: 0]
-
-  In order to quickly access the index of a field, one can use
-  the `__index__` function:
-
-      FileInfo.__index__(:atime)
-      #=> 0
-
-      FileInfo.__index__(:unknown)
-      #=> nil
-
-  ## Compile-time introspection
-
-  At the compile time, one can access following information about the record
-  from within the record module:
-
-  * `@record_fields` — a keyword list of record fields with defaults
-  * `@record_types` — a keyword list of record fields with types
-
-       defrecord Foo, bar: nil do
-         record_type bar: nil | integer
-         IO.inspect @record_fields
-         IO.inspect @record_types
-       end
-
-  prints out
-
-       [bar: nil]
-       [bar: {:|,[line: ...],[nil,{:integer,[line: ...],nil}]}]
-
-  where the last line is a quoted representation of
-
-       [bar: nil | integer]
-
-  ## Documentation
-
-  By default records are not documented and have `@moduledoc` set to false.
-
-  ## Types
-
-  Every record defines a type named `t` that can be accessed in typespecs.
-  For example, assuming the `Config` record defined above, it could be used
-  in typespecs as follow:
-
-      @spec handle_config(Config.t) :: boolean()
-
-  Inside the record definition, a developer can define his own types too:
-
-      defrecord Config, counter: 0, failures: [] do
-        @type kind :: term
-        record_type counter: integer, failures: [kind]
-      end
-
-  When defining a type, all the fields not mentioned in the type are
-  assumed to have type `term`.
-
-  ## Importing records
-
-  It is also possible to import a public record (a record, defined using
-  `defrecord`) as a set of private macros (as if it was defined using `defrecordp`):
-
-      Record.import Config, as: :config
-
-  See `Record.import/2` and `defrecordp/2` documentation for more information
   """
 
   defmacro defrecord(name, fields, do_block // [])
@@ -1515,18 +1383,18 @@ defmodule Kernel do
     end
   end
 
-  @doc """
+  @doc %B"""
   Defines a record with a set of private macros to manipulate it.
 
-  A record is a tagged tuple which contains one or more elements
-  and the first element is a module. This macro defines a set of
-  macros private to the current module to manipulate the record
-  exclusively at compilation time.
+  This macro defines a set of macros private to the current module to
+  manipulate the record exclusively at compilation time.
 
-  `defrecordp` must be used instead of `defrecord` when there is
-  no interest in exposing the record as a whole. In many ways,
-  it is similar to Erlang records, since it is only available at
-  compilation time.
+  `defrecordp` must be used instead of `defrecord` when there is no interest in
+  exposing the record outside of the module it's defined in. In many ways, it
+  is similar to an Erlang record, since it is only available at compilation time.
+
+  See the `Record` module's documentation for a detailed description of records
+  in Elixir.
 
   ## Examples
 
@@ -1571,8 +1439,8 @@ defmodule Kernel do
 
   1) Differently from records, exceptions are documented by default;
 
-  2) Exceptions **must** implement `message/1` as API that return a
-     binary as result;
+  2) Exceptions **must** implement `message/1` -- a function that returns a
+     string;
 
   """
   defmacro defexception(name, fields, opts // [], do_block // []) do
@@ -1828,9 +1696,33 @@ defmodule Kernel do
   end
 
   @doc """
-  Makes the given functions in the current module overridable.
-  An overridable function is lazily defined, allowing a
-  developer to customize it.
+  Makes the given functions in the current module overridable. An overridable
+  function is lazily defined, allowing a developer to customize it.
+
+  ## Example
+
+      defmodule DefaultMod do
+        defmacro __using__(_opts) do
+          quote do
+            def test(x, y) do
+              x + y
+            end
+
+            defoverridable [test: 2]
+          end
+        end
+      end
+
+      defmodule InheritMod do
+        use DefaultMod
+
+        def test(x, y) do
+          x * y + super(x, y)
+        end
+      end
+
+  As seen as in the example `super` can be used to call the default
+  implementation.
   """
   defmacro defoverridable(tuples) do
     quote do
@@ -2921,29 +2813,59 @@ defmodule Kernel do
   defmacro left in right
 
   @doc """
-  Matches the term on the left against the regular expression
-  on the right. It returns nil if not match happened or the
-  first match otherwise.
+  Matches the term on the left against the regular expression or string on the
+  right. Returns true if `left` matches `right` (if it's a regular expression)
+  or contains `right` (if it's a string).
 
   ## Examples
 
       iex> "abcd" =~ %r/c(d)/
-      2
+      true
+
       iex> "abcd" =~ %r/e/
-      nil
+      false
+
+      iex> "abcd" =~ "bc"
+      true
+
+      iex> "abcd" =~ "ad"
+      false
 
   """
+  # fast path for literal binaries
+  defmacro left =~ right when is_binary(right) do
+    quote do
+      String.contains?(unquote(left), unquote(right))
+    end
+  end
+
+  # fast path for literal binaries
+  defmacro left =~ ({:<<>>, _, [_bin]} = right) do
+    quote do
+      String.contains?(unquote(left), unquote(right))
+    end
+  end
+
+  # slow path for everything else
   defmacro left =~ right do
     quote do
-      Regex.index(unquote(right), unquote(left))
+      str = unquote(left)
+      case unquote(right) do
+        bin when is_binary(bin) ->
+          String.contains?(str, bin)
+        re when is_regex(re) ->
+          Regex.match?(re, str)
+        other ->
+          raise ArgumentError, message: "bad argument on the right side of =~: #{inspect other}"
+      end
     end
   end
 
   @doc """
   `|>` is called the pipeline operator as it is useful
   to write pipeline style expressions. This operator
-  tntroduces the expression on the left as the first
-  argument to the expression on the right.
+  introduces the expression on the left as the first
+  argument to the function call on the right.
 
   ## Examples
 
@@ -2954,8 +2876,8 @@ defmodule Kernel do
 
       Enum.map(List.flatten([1,[2],3]), &1 * 2)
 
-  Please be aware of operator precendence, when using
-  this operator. For example, the following expression:
+  Be aware of operator precendence when using this operator.
+  For example, the following expression:
 
       String.graphemes "Hello" |> Enum.reverse
 
@@ -2965,7 +2887,7 @@ defmodule Kernel do
 
   Which will result in an error as Enumerable protocol
   is not defined for binaries. Adding explicit parenthesis
-  is recommended:
+  resolves the ambiguity:
 
       String.graphemes("Hello") |> Enum.reverse
 
@@ -2982,7 +2904,11 @@ defmodule Kernel do
     { call, line, [left] }
   end
 
-  defp pipeline_op(left, { call, line, args }) when is_list(args) do
+  defp pipeline_op(left, { call, line, args }=right) when is_list(args) do
+    case validate_pipeline_args(args) do
+      :error -> pipeline_error(right)
+      _ -> nil
+    end
     { call, line, [left|args] }
   end
 
@@ -2991,7 +2917,17 @@ defmodule Kernel do
   end
 
   defp pipeline_op(_, other) do
-    raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{inspect other}"
+    pipeline_error(other)
+  end
+
+  defp validate_pipeline_args([]), do: nil
+  defp validate_pipeline_args([ {:&,_,_ } | _ ]), do: :error
+  defp validate_pipeline_args([_|t]) do
+    validate_pipeline_args(t)
+  end
+
+  defp pipeline_error(arg) do
+    raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{Macro.to_binary arg}"
   end
 
   @doc """

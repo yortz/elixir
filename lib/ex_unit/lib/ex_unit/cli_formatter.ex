@@ -49,8 +49,8 @@ defmodule ExUnit.CLIFormatter do
     { :stop, :normal, length(config.test_failures), config }
   end
 
-  def handle_call(_, _, _) do
-    super
+  def handle_call(reqest, from, config) do
+    super(reqest, from, config)
   end
 
   def handle_cast({ :test_finished, test = ExUnit.Test[invalid: true] }, config) do
@@ -78,8 +78,8 @@ defmodule ExUnit.CLIFormatter do
     end
   end
 
-  def handle_cast(_, _) do
-    super
+  def handle_cast(request, config) do
+    super(request, config)
   end
 
   defp print_suite(counter, [], [], run_us, load_us) do
@@ -213,24 +213,28 @@ defmodule ExUnit.CLIFormatter do
 
   # Print styles
 
+  defp colorize(escape, string) do
+    IO.ANSI.escape_fragment("%{#{escape}}") <> string <> IO.ANSI.escape_fragment("%{reset}")
+  end
+
   defp success(msg) do
-    IO.ANSI.escape("%{green}" <>  msg)
+    colorize("green", msg)
   end
 
   defp invalid(msg) do
-    IO.ANSI.escape("%{yellow}" <>  msg)
+    colorize("yellow", msg)
   end
 
   defp failure(msg) do
-    IO.ANSI.escape("%{red}" <>  msg)
+    colorize("red", msg)
   end
 
   defp error_info(msg) do
-    IO.ANSI.escape("%{red}     " <> msg)
+    colorize("red", "     " <> msg)
   end
 
   defp location_info(msg) do
-    IO.ANSI.escape("%{cyan}     " <> msg)
+    colorize("cyan", "     " <> msg)
   end
 
   defp stacktrace_info(msg) do

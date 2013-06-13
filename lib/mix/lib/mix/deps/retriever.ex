@@ -5,63 +5,32 @@ defmodule Mix.Deps.Retriever do
   @moduledoc false
 
   @doc """
-  Returns all dependencies for the current Mix.Project
-  as a `Mix.Dep` record.
-
-  ## Exceptions
-
-  This function raises an exception in case the developer
-  provides a dependency in the wrong format.
-  """
-  def all(post_config // []) do
-    { deps, _ } = all(nil, post_config, fn(dep, acc) -> { dep, acc } end)
-    deps
-  end
-
-  @doc """
-  Like `all/0` but takes a callback that is invoked for
-  each dependency and must return an updated depedency
-  in case some processing is done.
-  """
-  def all(rest, post_config // [], callback) do
-    Enum.map_reduce children, rest, fn (dep, rest) ->
-      { dep, rest } = callback.(dep, rest)
-
-      if Mix.Deps.available?(dep) and mixfile?(dep) do
-        { dep, rest } = Mix.Deps.in_dependency dep, post_config, fn project ->
-          { deps, rest } = all(rest, callback)
-
-          # We need to call with_mix_project once again
-          # here in case the dependency was not available
-          # the first time and the callback hook just
-          # happened to fetch it.
-          { with_mix_project(dep, project).deps(deps), rest }
-        end
-      end
-
-      { dep, rest }
-    end
-  end
-
-  @doc """
   Gets all direct children for the current Mix.Project
-  as a `Mix.Dep` record. Unlike with `all` the `deps`
-  field is not populated.
+  as a `Mix.Dep` record.
   """
   def children() do
-    deps = Mix.project[:deps] || []
+    # Don't run recursively for the top-level project
     scms = Mix.SCM.available
+    (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, nil))
+  end
 
-    Enum.map deps, fn dep ->
-      dep = with_scm_and_status(dep, scms)
+  @doc """
+  Gets all children for a given dependency.
+  """
+  def children(dep, config) do
+    cond do
+      Mix.Deps.available?(dep) and mixfile?(dep) ->
+        Mix.Deps.in_dependency(dep, config, fn _ ->
+          mix_children(config)
+        end)
 
-      if Mix.Deps.available?(dep) and mixfile?(dep) do
-        Mix.Deps.in_dependency dep, fn project ->
-          with_mix_project(dep, project)
-        end
-      else
-        dep
-      end
+      Mix.Deps.available?(dep) and rebarconfig?(dep) ->
+        Mix.Deps.in_dependency(dep, config, fn _ ->
+          rebar_children(".")
+        end)
+
+      true ->
+        []
     end
   end
 
@@ -69,20 +38,71 @@ defmodule Mix.Deps.Retriever do
   Receives a dependency and update its status.
   """
   def update(Mix.Dep[scm: scm, app: app, requirement: req, opts: opts]) do
-    with_scm_and_status({ app, req, opts }, [scm])
+    update({ app, req, opts }, [scm], nil)
   end
 
   ## Helpers
 
-  defp with_mix_project(Mix.Dep[project: nil] = dep, project) do
+  defp mix_children(config) do
+    scms = Mix.SCM.available
+    Mix.Project.recur(config, fn _ ->
+      (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, nil))
+    end) |> List.concat
+  end
+
+  defp rebar_children(dir) do
+    scms = Mix.SCM.available
+    Mix.Rebar.recur(dir, fn config ->
+      Mix.Rebar.deps(config) |> Enum.map(update(&1, scms, :rebar))
+    end) |> List.concat
+  end
+
+  defp update(tuple, scms, manager) do
+    dep = with_scm_and_status(tuple, scms)
+
+    if Mix.Deps.available?(dep) do
+      cond do
+        mixfile?(dep) ->
+          Mix.Deps.in_dependency(dep, fn project ->
+            mix_dep(dep, project)
+          end)
+
+        rebarconfig?(dep) ->
+          rebar_dep(dep)
+
+        makefile?(dep) ->
+          make_dep(dep)
+
+        true ->
+          dep.manager(manager)
+      end
+    else
+      dep
+    end
+  end
+
+  defp mix_dep(Mix.Dep[manager: nil] = dep, project) do
     if match?({ :noappfile, _ }, dep.status) and Mix.Project.umbrella? do
       dep = dep.update_opts(Keyword.put(&1, :app, false))
                .status({ :ok, nil })
     end
-    dep.project(project)
+    dep.manager(:mix).source(project)
   end
 
-  defp with_mix_project(dep, _project), do: dep
+  defp mix_dep(dep, _project), do: dep
+
+  defp rebar_dep(Mix.Dep[manager: nil, opts: opts] = dep) do
+    config = Mix.Rebar.load_config(opts[:dest])
+    dep.manager(:rebar).source(config)
+  end
+
+  defp rebar_dep(dep), do: dep
+
+  defp make_dep(Mix.Dep[manager: nil] = dep) do
+    dep.manager(:make)
+  end
+
+  defp make_dep(dep), do: dep
 
   defp with_scm_and_status({ app, opts }, scms) when is_atom(app) and is_list(opts) do
     with_scm_and_status({ app, nil, opts }, scms)
@@ -156,6 +176,16 @@ defmodule Mix.Deps.Retriever do
   defp vsn_match?(expected, actual) when is_regex(expected),  do: actual =~ expected
 
   defp mixfile?(dep) do
-    File.regular?(Path.join dep.opts[:dest], "mix.exs")
+    File.regular?(Path.join(dep.opts[:dest], "mix.exs"))
+  end
+
+  defp rebarconfig?(dep) do
+    Enum.any?(["rebar.config", "rebar.config.script"], fn file ->
+      File.regular?(Path.join(dep.opts[:dest], file))
+    end)
+  end
+
+  defp makefile?(dep) do
+    File.regular? Path.join(dep.opts[:dest], "Makefile")
   end
 end

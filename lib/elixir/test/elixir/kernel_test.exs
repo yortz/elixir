@@ -4,8 +4,24 @@ defmodule KernelTest do
   use ExUnit.Case, async: true
 
   test :match do
-    assert "abcd" =~ %r/c(d)/
-    refute "abcd" =~ %r/e/
+    assert ("abcd" =~ %r/c(d)/) == true
+    assert ("abcd" =~ %r/e/) == false
+
+    string = "^ab+cd*$"
+    assert (string =~ "ab+") == true
+    assert (string =~ "bb") == false
+
+    assert_raise ArgumentError, "bad argument on the right side of =~: [\"^a\",\"*$\"]", fn ->
+      string =~ ["^a", "*$"]
+    end
+
+    assert_raise ArgumentError, "argument error", fn ->
+      1234 =~ "hello"
+    end
+
+    assert_raise ArgumentError, "argument error", fn ->
+      1234 =~ %r"hello"
+    end
   end
 
   test :nil? do
@@ -225,6 +241,18 @@ defmodule KernelTest do
 
     test :atom do
       assert __MODULE__ |> :constant == 13
+    end
+
+    test "non-call" do
+      assert  1  |> (&1*2).() == 2
+      assert [1] |> hd(&1).() == 1
+
+      import CompileAssertion
+
+      # FIXME: this mustn't work, but it doesn't call pipeline_op at all
+      #assert_compile_fail ArgumentError, "Unsupported expression in pipeline |> operator: &1", "1 |> &1"
+      assert_compile_fail ArgumentError, "Unsupported expression in pipeline |> operator: &1 * 2", "1 |> &1*2"
+      assert_compile_fail ArgumentError, "Unsupported expression in pipeline |> operator: hd(&1)", "[1] |> hd(&1)"
     end
 
     def constant, do: 13
