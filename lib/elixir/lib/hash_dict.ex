@@ -72,7 +72,7 @@ defmodule HashDict do
 
   ## Examples
 
-      HashDict.new [{:b,1},{:a,2}]
+      HashDict.new [{:b, 1}, {:a, 2}]
       #=> #HashDict<[a: 2, b: 1]>
 
   """
@@ -209,11 +209,14 @@ defmodule HashDict do
     ordered()
   end
 
+  @doc """
+  Checks if two dicts are equal
+  """
   def equal?(dict1, dict2) do
     size = elem(dict1, 1)
     case elem(dict2, 1) do
       ^size ->
-        dict_equal?(dict1, dict1)
+        dict_equal?(dict1, dict2)
       _ ->
         false
     end
@@ -267,12 +270,6 @@ defmodule HashDict do
     end
   end
 
-  @doc """
-  Splits a dict into two dicts,
-  one containing entries with key in the keys list,
-  and another containing entries with key not in keys.
-  Returns a 2-tuple of the new dicts.
-  """
   def split(dict, keys) do
     split(keys, new, dict)
   end
@@ -288,10 +285,6 @@ defmodule HashDict do
     end
   end
 
-  @doc """
-  Returns a new dict with only the entries
-  which key is in keys.
-  """
   def take(dict, keys) do
     take(dict, keys, new)
   end
@@ -304,10 +297,6 @@ defmodule HashDict do
     end
   end
 
-  @doc """
-  Returns a new dict with only the entries
-  which key is not in keys
-  """
   def drop(dict, []), do: dict
 
   def drop(dict, [key|keys]) do
@@ -379,7 +368,7 @@ defmodule HashDict do
         { dict, value, 0 }
       { root, value, -1 } ->
         { if depth > 0 and trie(dict, :contract_on) == size do
-          root = node_contract(root, depth, depth - 1)
+          root = node_contract(root, depth)
           trie(dict,
             root: root,
             size: size - 1,
@@ -410,11 +399,11 @@ defmodule HashDict do
   ## Bucket helpers
 
   # Get value from the bucket
-  defp bucket_get([{k,_}|_bucket], key) when k > key do
+  defp bucket_get([{k, _}|_bucket], key) when k > key do
     false
   end
 
-  defp bucket_get([{key,_}=e|_bucket], key) do
+  defp bucket_get([{key, _}=e|_bucket], key) do
     e
   end
 
@@ -427,19 +416,19 @@ defmodule HashDict do
   end
 
   # Puts a value in the bucket
-  defp bucket_put([{k,_}|_]=bucket, key, { :put, value }) when k > key do
+  defp bucket_put([{k, _}|_]=bucket, key, { :put, value }) when k > key do
     { [{key, value}|bucket], 1 }
   end
 
-  defp bucket_put([{k,_}|_]=bucket, key, { :update, initial, _fun }) when k > key do
+  defp bucket_put([{k, _}|_]=bucket, key, { :update, initial, _fun }) when k > key do
     { [{key, initial}|bucket], 1 }
   end
 
-  defp bucket_put([{key,_}|bucket], key, { :put, value }) do
-    { [{key,value}|bucket], 0 }
+  defp bucket_put([{key, _}|bucket], key, { :put, value }) do
+    { [{key, value}|bucket], 0 }
   end
 
-  defp bucket_put([{key,value}|bucket], key, { :update, _initial, fun }) do
+  defp bucket_put([{key, value}|bucket], key, { :update, _initial, fun }) do
     { [{key, fun.(value)}|bucket], 0 }
   end
 
@@ -449,26 +438,26 @@ defmodule HashDict do
   end
 
   defp bucket_put([], key, { :put, value }) do
-    { [{key,value}], 1 }
+    { [{key, value}], 1 }
   end
 
   defp bucket_put([], key, { :update, initial, _fun }) do
-    { [{key,initial}], 1 }
+    { [{key, initial}], 1 }
   end
 
   # Puts a value in the bucket without returning
   # the operation value
-  defp bucket_put!([{k,_}|_]=bucket, key, value) when k > key, do: [{key,value}|bucket]
-  defp bucket_put!([{key,_}|bucket], key, value), do: [{key,value}|bucket]
-  defp bucket_put!([{_,_}=e|bucket], key, value), do: [e|bucket_put!(bucket, key, value)]
-  defp bucket_put!([], key, value), do: [{key,value}]
+  defp bucket_put!([{k, _}|_]=bucket, key, value) when k > key, do: [{key, value}|bucket]
+  defp bucket_put!([{key, _}|bucket], key, value), do: [{key, value}|bucket]
+  defp bucket_put!([{_, _}=e|bucket], key, value), do: [e|bucket_put!(bucket, key, value)]
+  defp bucket_put!([], key, value), do: [{key, value}]
 
   # Deletes a key from the bucket
-  defp bucket_delete([{k,_}|_]=bucket, key) when k > key do
+  defp bucket_delete([{k, _}|_]=bucket, key) when k > key do
     { bucket, nil, 0 }
   end
 
-  defp bucket_delete([{key,value}|bucket], key) do
+  defp bucket_delete([{key, value}|bucket], key) do
     { bucket, value, -1 }
   end
 
@@ -572,24 +561,23 @@ defmodule HashDict do
       node_expand(b7, depth, n), node_expand(b8, depth, n) }
   end
 
-  defp node_contract({ b1, b2, b3, b4, b5, b6, b7, b8 }, depth, n) when depth > 1 do
+  defp node_contract({ b1, b2, b3, b4, b5, b6, b7, b8 }, depth) when depth > 0 do
     depth = depth - 1
-    { node_contract(b1, depth, n), node_contract(b2, depth, n), node_contract(b3, depth, n),
-      node_contract(b4, depth, n), node_contract(b5, depth, n), node_contract(b6, depth, n),
-      node_contract(b7, depth, n), node_contract(b8, depth, n) }
+    { node_contract(b1, depth), node_contract(b2, depth), node_contract(b3, depth),
+      node_contract(b4, depth), node_contract(b5, depth), node_contract(b6, depth),
+      node_contract(b7, depth), node_contract(b8, depth) }
   end
 
-  defp node_contract({ b1, b2, b3, b4, b5, b6, b7, b8 }, 1, n) do
-    @node_template |> each_contract(b1, n) |> each_contract(b2, n) |> each_contract(b3, n)
-                   |> each_contract(b4, n) |> each_contract(b5, n) |> each_contract(b6, n)
-                   |> each_contract(b7, n) |> each_contract(b8, n)
+  defp node_contract({ b1, b2, b3, b4, b5, b6, b7, b8 }, 0) do
+    b1 |> each_contract(b2) |> each_contract(b3) |> each_contract(b4)
+       |> each_contract(b5) |> each_contract(b6) |> each_contract(b7)
+       |> each_contract(b8)
   end
 
-  defp each_contract(acc, { b1, b2, b3, b4, b5, b6, b7, b8 }, n) do
-    acc |> node_relocate(b1, n) |> node_relocate(b2, n) |> node_relocate(b3, n)
-        |> node_relocate(b4, n) |> node_relocate(b5, n) |> node_relocate(b6, n)
-        |> node_relocate(b7, n) |> node_relocate(b8, n)
-  end
+  defp each_contract([{k, _v}=e|acc], [{key, _value}|_]=bucket) when k < key, do: [e|each_contract(acc, bucket)]
+  defp each_contract(acc, [e|bucket]), do: [e|each_contract(acc, bucket)]
+  defp each_contract([], bucket), do: bucket
+  defp each_contract(acc, []), do: acc
 
   defp node_relocate(node // @node_template, bucket, n) do
     :lists.foldl fn { key, value }, acc ->

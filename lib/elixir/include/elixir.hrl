@@ -13,11 +13,11 @@
   noname=false,            %% when true, don't add new names (used by try)
   super=false,             %% when true, it means super was invoked
   caller=false,            %% when true, it means caller was invoked
-  name_args=false,         %% when true, it means arguments should be named
   module=nil,              %% the current module
   function=nil,            %% the current function
   vars=[],                 %% a dict of defined variables and their alias
-  temp_vars=[],            %% a dict of all variables defined in a particular assign
+  backup_vars=nil,         %% a copy of vars to be used on ^var
+  temp_vars=nil,           %% a set of all variables defined in a particular assign
   clause_vars=nil,         %% a dict of all variables defined in a particular clause
   extra_guards=nil,        %% extra guards from args expansion
   counter=[],              %% a counter for the variables defined

@@ -28,7 +28,9 @@ defmodule Kernel do
       3
 
   """
-  defmacro left + right
+  def left + right do
+    :erlang.+(left, right)
+  end
 
   @doc """
   Arithmetic minus. Allowed in guard clauses.
@@ -39,7 +41,35 @@ defmodule Kernel do
       -1
 
   """
-  defmacro left - right
+  def left - right do
+    :erlang.-(left, right)
+  end
+
+  @doc """
+  Arithmetic unary plus. Allowed in guard clauses.
+
+  ## Examples
+
+      iex> +1
+      1
+
+  """
+  def (+value) do
+    :erlang.+(value)
+  end
+
+  @doc """
+  Arithmetic unary minus. Allowed in guard clauses.
+
+  ## Examples
+
+      iex> -2
+      -2
+
+  """
+  def (-value) do
+    :erlang.-(value)
+  end
 
   @doc """
   Arithmetic multiplication. Allowed in guard clauses.
@@ -50,7 +80,9 @@ defmodule Kernel do
       2
 
   """
-  defmacro left * right
+  def left * right do
+    :erlang.*(left, right)
+  end
 
   @doc """
   Arithmetic division. Differently from other languages,
@@ -65,7 +97,9 @@ defmodule Kernel do
       2.0
 
   """
-  defmacro left / right
+  def left / right do
+    :erlang./(left, right)
+  end
 
   @doc """
   Sends a message to the process identified on the left.
@@ -78,21 +112,25 @@ defmodule Kernel do
       process <- { :ok, "Sending myself a message" }
 
   """
-  defmacro pid <- msg
+  def pid <- msg do
+    :erlang.!(pid, msg)
+  end
 
   @doc """
   Concatenates two lists. Allowed in guard clauses.
 
   ## Examples
 
-      iex> [1] ++ [2,3]
+      iex> [1] ++ [2, 3]
       [1,2,3]
 
       iex> 'foo' ++ 'bar'
       'foobar'
 
   """
-  defmacro left ++ right
+  def left ++ right do
+    :erlang.++(left, right)
+  end
 
   @doc """
   Removes the first occorrence of an item on the left
@@ -100,14 +138,16 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> [1,2,3] -- [1,2]
+      iex> [1, 2, 3] -- [1, 2]
       [3]
 
-      iex> [1,2,3,2,1] -- [1,2,2]
+      iex> [1, 2, 3, 2, 1] -- [1, 2, 2]
       [3,1]
 
   """
-  defmacro left -- right
+  def left -- right do
+    :erlang.--(left, right)
+  end
 
   @doc """
   Boolean or. Arguments must be booleans.
@@ -158,7 +198,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro not arg
+  def not(arg) do
+    :erlang.not(arg)
+  end
 
   @doc """
   Receives any argument and returns true if it is false
@@ -169,7 +211,7 @@ defmodule Kernel do
 
       iex> !1
       false
-      iex> ![1,2,3]
+      iex> ![1, 2, 3]
       false
       iex> !false
       true
@@ -177,7 +219,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro !arg
+  def !(arg) do
+    arg == nil or arg == false
+  end
 
   @doc """
   Returns true if left is less than right.
@@ -189,7 +233,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro left < right
+  def left < right do
+    :erlang.<(left, right)
+  end
 
   @doc """
   Returns true if left is more than right.
@@ -201,7 +247,9 @@ defmodule Kernel do
       false
 
   """
-  defmacro left > right
+  def left > right do
+    :erlang.>(left, right)
+  end
 
   @doc """
   Returns true if left is less than or equal to right.
@@ -213,7 +261,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro left <= right
+  def left <= right do
+    :erlang."=<"(left, right)
+  end
 
   @doc """
   Returns true if left is more than or equal to right.
@@ -225,7 +275,9 @@ defmodule Kernel do
       false
 
   """
-  defmacro left >= right
+  def left >= right do
+    :erlang.>=(left, right)
+  end
 
   @doc """
   Returns true if the two items are equal.
@@ -244,7 +296,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro left == right
+  def left == right do
+    :erlang.==(left, right)
+  end
 
   @doc """
   Returns true if the two items are not equal.
@@ -262,7 +316,9 @@ defmodule Kernel do
       false
 
   """
-  defmacro left != right
+  def left != right do
+    :erlang."/="(left, right)
+  end
 
   @doc """
   Returns true if the two items are strictly equal.
@@ -277,7 +333,9 @@ defmodule Kernel do
       false
 
   """
-  defmacro left === right
+  def left === right do
+    :erlang."=:="(left, right)
+  end
 
   @doc """
   Returns true if the two items are strictly not equal.
@@ -292,7 +350,9 @@ defmodule Kernel do
       true
 
   """
-  defmacro left !== right
+  def left !== right do
+    :erlang."=/="(left, right)
+  end
 
   @doc """
   Invokes the given `fun` with the array of arguments `args`.
@@ -303,18 +363,22 @@ defmodule Kernel do
       4
 
   """
-  defmacro apply(fun, args)
+  def apply(fun, args) do
+    :erlang.apply(fun, args)
+  end
 
   @doc """
   Invokes the given `fun` from `module` with the array of arguments `args`.
 
   ## Examples
 
-      iex> apply(Enum, :reverse, [[1,2,3]])
+      iex> apply(Enum, :reverse, [[1, 2, 3]])
       [3,2,1]
 
   """
-  defmacro apply(module, fun, args)
+  def apply(module, fun, args) do
+    :erlang.apply(module, fun, args)
+  end
 
   @doc """
   Returns an integer or float which is the arithmetical absolute value of `number`.
@@ -424,7 +488,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Like binary_to_list/1, but returns a list of integers corresponding to the bytes
+  Like `binary_to_list/1`, but returns a list of integers corresponding to the bytes
   from position `start` to position `stop` in `binary`. Positions in the binary
   are numbered starting from 1.
   """
@@ -481,9 +545,9 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> bit_size(<<433::16,3::3>>)
+      iex> bit_size(<<433::16, 3::3>>)
       19
-      iex> bit_size(<<1,2,3>>)
+      iex> bit_size(<<1, 2, 3>>)
       24
 
   """
@@ -511,9 +575,9 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> byte_size(<<433::16,3::3>>)
+      iex> byte_size(<<433::16, 3::3>>)
       3
-      iex> byte_size(<<1,2,3>>)
+      iex> byte_size(<<1, 2, 3>>)
       3
 
   """
@@ -602,7 +666,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> iolist_size([1,2|<<3,4>>])
+      iex> iolist_size([1, 2|<<3, 4>>])
       4
 
   """
@@ -616,10 +680,10 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> bin1 = <<1,2,3>>
-      ...> bin2 = <<4,5>>
+      iex> bin1 = <<1, 2, 3>>
+      ...> bin2 = <<4, 5>>
       ...> bin3 = <<6>>
-      ...> iolist_to_binary([bin1,1,[2,3,bin2],4|bin3])
+      ...> iolist_to_binary([bin1, 1, [2, 3, bin2], 4|bin3])
       <<1,2,3,1,2,3,4,5,4,6>>
 
   """
@@ -789,7 +853,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> length([1,2,3,4,5,6,7,8,9])
+      iex> length([1, 2, 3, 4, 5, 6, 7, 8, 9])
       9
   """
   @spec length(list) :: non_neg_integer
@@ -829,10 +893,10 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> bin1 = <<1,2,3>>
-      ...> bin2 = <<4,5>>
-      ...> bin3 = <<6,7::4>>
-      ...> list_to_bitstring([bin1,1,[2,3,bin2],4|bin3])
+      iex> bin1 = <<1, 2, 3>>
+      ...> bin2 = <<4, 5>>
+      ...> bin3 = <<6, 7::4>>
+      ...> list_to_bitstring([bin1, 1, [2, 3, bin2], 4|bin3])
       <<1,2,3,1,2,3,4,5,4,6,7::size(4)>>
 
   """
@@ -1072,7 +1136,7 @@ defmodule Kernel do
 
   ## Examples
 
-      spawn(SomeModule, :function, [1,2,3])
+      spawn(SomeModule, :function, [1, 2, 3])
 
   """
   @spec spawn(module, atom, list) :: pid
@@ -1110,7 +1174,7 @@ defmodule Kernel do
 
   ## Examples
 
-      spawn_link(SomeModule, :function, [1,2,3])
+      spawn_link(SomeModule, :function, [1, 2, 3])
 
   """
   @spec spawn_link(module, atom, list) :: pid
@@ -1425,6 +1489,20 @@ defmodule Kernel do
       user(name: name) = record
       name #=> "José"
 
+  ## Types
+
+  `defrecordp` allows a developer to generate a type
+  automatically by simply providing a type to its fields.
+  The following definition:
+
+      defrecordp :user,
+        name: "José" :: binary,
+        age: 25 :: integer
+
+  Will generate the following type:
+
+      @typep user_t :: { :user, binary, integer }
+
   """
   defmacro defrecordp(name, fields) when is_atom(name) do
     Record.defrecordp(name, fields)
@@ -1561,6 +1639,34 @@ defmodule Kernel do
     quote do
       is_record(unquote(thing), Range)
     end
+  end
+
+  @doc """
+  Matches the term on the left against the regular expression or string on the
+  right. Returns true if `left` matches `right` (if it's a regular expression)
+  or contains `right` (if it's a string).
+
+  ## Examples
+
+      iex> "abcd" =~ %r/c(d)/
+      true
+
+      iex> "abcd" =~ %r/e/
+      false
+
+      iex> "abcd" =~ "bc"
+      true
+
+      iex> "abcd" =~ "ad"
+      false
+
+  """
+  def left =~ right when is_binary(left) and is_binary(right) do
+    :binary.match(left, right) != :nomatch
+  end
+
+  def left =~ right when is_binary(left) and is_tuple(right) and :erlang.element(1, right) == Regex do
+    Regex.match?(right, left)
   end
 
   @doc """
@@ -1754,7 +1860,7 @@ defmodule Kernel do
 
       defmodule AssertionTest do
         require ExUnit.Case
-        ExUnit.Case.__using__([sync: true])
+        ExUnit.Case.__using__([async: true])
 
         def test_always_pass do
           true = true
@@ -1795,7 +1901,7 @@ defmodule Kernel do
       iex> inspect(:foo)
       ":foo"
 
-      iex> inspect [1,2,3,4,5], limit: 3
+      iex> inspect [1, 2, 3, 4, 5], limit: 3
       "[1,2,3,...]"
 
       inspect(ArgumentError[])
@@ -1812,14 +1918,10 @@ defmodule Kernel do
       #=> #Function<...>
 
   """
-  defmacro inspect(arg, opts // []) do
-    quote do
-      arg = unquote(arg)
-      opts = unquote(opts)
-      case is_tuple(arg) && Keyword.get(opts, :raw, false) do
-        true  -> Binary.Inspect.Tuple.inspect(arg, opts)
-        false -> Binary.Inspect.inspect(arg, opts)
-      end
+  def inspect(arg, opts // []) do
+    case is_tuple(arg) and Keyword.get(opts, :raw, false) do
+      true  -> Binary.Inspect.Tuple.inspect(arg, opts)
+      false -> Binary.Inspect.inspect(arg, opts)
     end
   end
 
@@ -1988,17 +2090,17 @@ defmodule Kernel do
       true
       iex> match?(1, 2)
       false
-      iex> match?({1,_}, {1,2})
+      iex> match?({1, _}, {1, 2})
       true
 
   Match can also be used to filter or find a value in an enumerable:
 
-      list = [{:a,1},{:b,2},{:a,3}]
+      list = [{:a, 1}, {:b, 2}, {:a, 3}]
       Enum.filter list, match?({:a, _}, _)
 
   Guard clauses can also be given to the match:
 
-      list = [{:a,1},{:b,2},{:a,3}]
+      list = [{:a, 1}, {:b, 2}, {:a, 3}]
       Enum.filter list, match?({:a, x } when x < 2, &1)
 
   """
@@ -2068,7 +2170,7 @@ defmodule Kernel do
   In order to reduce verbosity, functions in Elixir can be written
   using a shortcut syntax via `fn`:
 
-      Enum.map [1,2,3], fn x ->
+      Enum.map [1, 2, 3], fn x ->
         x * 2
       end
 
@@ -2076,25 +2178,25 @@ defmodule Kernel do
   `do/end` always matches the furthest call, if we used the `function`
   macro as below:
 
-      Enum.map [1,2,3], function do
+      Enum.map [1, 2, 3], function do
         x -> x * 2
       end
 
   It would be parsed as:
 
-      Enum.map([1,2,3], function) do
+      Enum.map([1, 2, 3], function) do
         x -> x * 2
       end
 
   The stab shortcut syntax has the proper precedence:
 
-      Enum.map [1,2,3], fn
+      Enum.map [1, 2, 3], fn
         x -> x * 2
       end
 
   Which is handled as:
 
-      Enum.map([1,2,3], fn
+      Enum.map([1, 2, 3], fn
         x -> x * 2
       end)
 
@@ -2348,6 +2450,58 @@ defmodule Kernel do
   defmacro @(expr)
 
   @doc """
+  Returns the binding as a keyword list where the variable name
+  is the key and the variable value is the value.
+
+  ## Examples
+
+      iex> x = 1
+      iex> binding()
+      [x: 1]
+      iex> x = 2
+      iex> binding()
+      [x: 2]
+
+  """
+  defmacro binding
+
+  @doc """
+  Receives a list of atoms at compilation time and returns the
+  binding of the given variables as a keyword list where the
+  variable name is the key and the variable value is the value.
+  In case a variable in the list does not exist in the binding,
+  it is not included in the returned result.
+
+  ## Examples
+
+      iex> x = 1
+      iex> binding([:x, :y])
+      [x: 1]
+
+  """
+  defmacro binding(list)
+
+  @doc """
+  Receives a list of tuples at compilation time containing the
+  variable name and its scope and returns the binding of the given
+  variables as a keyword list with the variable name and scope pair
+  as key and the variable value as value.
+
+  In case a variable in the list does not exist in the binding,
+  it is not included in the returned result.
+
+  ## Examples
+
+      iex> var!(x, :foo) = 1
+      iex> binding([x: nil], true)
+      []
+      iex> binding([x: :foo], true)
+      [{ { :x, :foo }, 1 }]
+
+  """
+  defmacro binding(list, true)
+
+  @doc """
   Provides an `if` macro. This macro expects the first argument to
   be a condition and the rest are keyword arguments.
 
@@ -2412,7 +2566,7 @@ defmodule Kernel do
       end
   """
   defmacro cond([do: { :->, _, pairs }]) do
-    [{ [condition], clause }|t] = :lists.reverse pairs
+    [{ [condition], meta, clause }|t] = :lists.reverse pairs
 
     new_acc =
       case condition do
@@ -2422,14 +2576,14 @@ defmodule Kernel do
         x when is_atom(x) and not x in [false, nil] ->
           clause
         _ ->
-          quote do
+          quote line: get_line(meta) do
             case !unquote(condition) do
               false -> unquote(clause)
             end
           end
       end
 
-    build_cond_clauses(t, new_acc)
+    build_cond_clauses(t, new_acc, meta)
   end
 
   @doc """
@@ -2462,7 +2616,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> destructure([x,y,z], [1,2,3,4,5])
+      iex> destructure([x, y, z], [1, 2, 3, 4, 5])
       ...> {x, y, z}
       {1, 2, 3}
 
@@ -2471,7 +2625,7 @@ defmodule Kernel do
   fine. If the right size is smaller, the remaining items
   are simply assigned to nil:
 
-      iex> destructure([x,y,z], [1])
+      iex> destructure([x, y, z], [1])
       ...> {x, y, z}
       {1, nil, nil}
 
@@ -2479,7 +2633,7 @@ defmodule Kernel do
   on the left side of a match:
 
       x = 1
-      destructure([^x,y,z], [1,2,3])
+      destructure([^x, y, z], [1, 2, 3])
 
   The example above will only work if x matches
   the first value from the right side. Otherwise,
@@ -2734,8 +2888,8 @@ defmodule Kernel do
   defmacro left && right do
     quote do
       case unquote(left) do
-        andand in [false, nil] ->
-          andand
+        var!(andand, false) in [false, nil] ->
+          var!(andand, false)
         _ ->
           unquote(right)
       end
@@ -2765,10 +2919,10 @@ defmodule Kernel do
   defmacro left || right do
     quote do
       case unquote(left) do
-        oror in [false, nil] ->
+        var!(oror, false) in [false, nil] ->
           unquote(right)
-        oror ->
-          oror
+        var!(oror, false) ->
+          var!(oror, false)
       end
     end
   end
@@ -2780,7 +2934,7 @@ defmodule Kernel do
   ## Examples
 
       iex> x = 1
-      ...> x in [1,2,3]
+      ...> x in [1, 2, 3]
       true
 
   This macro simply translates the expression above to:
@@ -2796,14 +2950,14 @@ defmodule Kernel do
   optionally omit the variable declaration, for example:
 
       case 3 do
-        x when x in [1,2] -> x * 2
+        x when x in [1, 2] -> x * 2
         _ -> 0
       end
 
   Could be rewritten as:
 
       case 3 do
-        x in [1,2] -> x * 2
+        x in [1, 2] -> x * 2
         _ -> 0
       end
 
@@ -2813,55 +2967,6 @@ defmodule Kernel do
   defmacro left in right
 
   @doc """
-  Matches the term on the left against the regular expression or string on the
-  right. Returns true if `left` matches `right` (if it's a regular expression)
-  or contains `right` (if it's a string).
-
-  ## Examples
-
-      iex> "abcd" =~ %r/c(d)/
-      true
-
-      iex> "abcd" =~ %r/e/
-      false
-
-      iex> "abcd" =~ "bc"
-      true
-
-      iex> "abcd" =~ "ad"
-      false
-
-  """
-  # fast path for literal binaries
-  defmacro left =~ right when is_binary(right) do
-    quote do
-      String.contains?(unquote(left), unquote(right))
-    end
-  end
-
-  # fast path for literal binaries
-  defmacro left =~ ({:<<>>, _, [_bin]} = right) do
-    quote do
-      String.contains?(unquote(left), unquote(right))
-    end
-  end
-
-  # slow path for everything else
-  defmacro left =~ right do
-    quote do
-      str = unquote(left)
-      case unquote(right) do
-        bin when is_binary(bin) ->
-          String.contains?(str, bin)
-        re when is_regex(re) ->
-          Regex.match?(re, str)
-        other ->
-          raise ArgumentError, message: "bad argument on the right side of =~: #{inspect other}"
-      end
-    end
-  end
-
-  @doc """
   `|>` is called the pipeline operator as it is useful
   to write pipeline style expressions. This operator
   introduces the expression on the left as the first
@@ -2869,12 +2974,12 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> [1,[2],3] |> List.flatten |> Enum.map(&1 * 2)
+      iex> [1, [2], 3] |> List.flatten |> Enum.map(&1 * 2)
       [2,4,6]
 
   The expression above is simply translated to:
 
-      Enum.map(List.flatten([1,[2],3]), &1 * 2)
+      Enum.map(List.flatten([1, [2], 3]), &1 * 2)
 
   Be aware of operator precendence when using this operator.
   For example, the following expression:
@@ -2921,13 +3026,13 @@ defmodule Kernel do
   end
 
   defp validate_pipeline_args([]), do: nil
-  defp validate_pipeline_args([ {:&,_,_ } | _ ]), do: :error
+  defp validate_pipeline_args([ {:&, _, _ } | _ ]), do: :error
   defp validate_pipeline_args([_|t]) do
     validate_pipeline_args(t)
   end
 
   defp pipeline_error(arg) do
-    raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{Macro.to_binary arg}"
+    raise ArgumentError, message: "Unsupported expression in pipeline |> operator: #{Macro.to_string arg}"
   end
 
   @doc """
@@ -3121,14 +3226,14 @@ defmodule Kernel do
                 { :error, _ } ->
                   :elixir_aliases.ensure_loaded(caller.line, caller.file, atom, caller.context_modules)
                 _ ->
-                  raise "cannot use module #{inspect atom} in access protocol because it does not export __record__/1"
+                  raise ArgumentError, message: "cannot use module #{inspect atom} in access protocol because it does not export __record__/1"
               end
           end
 
         Record.access(atom, fields, args, caller)
       false ->
         case caller.in_match? do
-          true  -> raise << "the access protocol cannot be used inside match clauses ",
+          true  -> raise ArgumentError, message: << "the access protocol cannot be used inside match clauses ",
                      "(for example, on the left hand side of a match or in function signatures)" >>
           false -> quote do: Access.access(unquote(element), unquote(args))
         end
@@ -3158,9 +3263,8 @@ defmodule Kernel do
   * `:append_first` - If true, when delegated, first argument
     passed to the delegate will be relocated to the end of the
     arguments when dispatched to the target. The motivation behind
-    this is a disparity between conventions used in Elixir and :
-    Elixir's convention is to pass the "handle" as a first argument,
-    while in Erlang the convention is to pass it as the last argument
+    this is because Elixir normalizes the "handle" as a first
+    argument and some Erlang modules expect it as last argument.
 
   ## Examples
 
@@ -3170,16 +3274,16 @@ defmodule Kernel do
         defdelegate other_reverse(list), to: :lists, as: :reverse
       end
 
-      MyList.reverse([1,2,3])
+      MyList.reverse([1, 2, 3])
       #=> [3,2,1]
 
-      MyList.other_reverse([1,2,3])
+      MyList.other_reverse([1, 2, 3])
       #=> [3,2,1]
 
   """
   defmacro defdelegate(funs, opts) do
     quote do
-      funs = unquote(Macro.escape_quoted(funs))
+      funs = unquote(Macro.escape(funs, unquote: true))
       opts = unquote(opts)
 
       target = Keyword.get(opts, :to) ||
@@ -3190,7 +3294,7 @@ defmodule Kernel do
       lc fun inlist List.wrap(funs) do
         case Macro.extract_args(fun) do
           { name, args } -> :ok
-          :error -> raise ArgumentError, message: "invalid syntax in defdelegate #{Macro.to_binary(fun)}"
+          :error -> raise ArgumentError, message: "invalid syntax in defdelegate #{Macro.to_string(fun)}"
         end
 
         actual_args =
@@ -3219,7 +3323,7 @@ defmodule Kernel do
       "f\\\#{o}o"
 
   """
-  defmacro __B__(string, []) do
+  defmacro sigil_B(string, []) do
     string
   end
 
@@ -3235,7 +3339,7 @@ defmodule Kernel do
       "foo"
 
   """
-  defmacro __b__({ :<<>>, line, pieces }, []) do
+  defmacro sigil_b({ :<<>>, line, pieces }, []) do
     { :<<>>, line, Macro.unescape_tokens(pieces) }
   end
 
@@ -3251,7 +3355,7 @@ defmodule Kernel do
       'f\\\#{o}o'
 
   """
-  defmacro __C__({ :<<>>, _line, [string] }, []) when is_binary(string) do
+  defmacro sigil_C({ :<<>>, _line, [string] }, []) when is_binary(string) do
     binary_to_list(string)
   end
 
@@ -3270,11 +3374,11 @@ defmodule Kernel do
 
   # We can skip the runtime conversion if we are
   # creating a binary made solely of series of chars.
-  defmacro __c__({ :<<>>, _line, [string] }, []) when is_binary(string) do
+  defmacro sigil_c({ :<<>>, _line, [string] }, []) when is_binary(string) do
     :unicode.characters_to_list(Macro.unescape_binary(string))
   end
 
-  defmacro __c__({ :<<>>, line, pieces }, []) do
+  defmacro sigil_c({ :<<>>, line, pieces }, []) do
     binary = { :<<>>, line, Macro.unescape_tokens(pieces) }
     quote do: :unicode.characters_to_list(unquote(binary))
   end
@@ -3288,13 +3392,13 @@ defmodule Kernel do
       true
 
   """
-  defmacro __r__({ :<<>>, _line, [string] }, options) when is_binary(string) do
+  defmacro sigil_r({ :<<>>, _line, [string] }, options) when is_binary(string) do
     binary = Macro.unescape_binary(string, Regex.unescape_map(&1))
     regex  = Regex.compile!(binary, options)
     Macro.escape(regex)
   end
 
-  defmacro __r__({ :<<>>, line, pieces }, options) do
+  defmacro sigil_r({ :<<>>, line, pieces }, options) do
     binary = { :<<>>, line, Macro.unescape_tokens(pieces, Regex.unescape_map(&1)) }
     quote do: Regex.compile!(unquote(binary), unquote(options))
   end
@@ -3309,7 +3413,7 @@ defmodule Kernel do
       true
 
   """
-  defmacro __R__({ :<<>>, _line, [string] }, options) when is_binary(string) do
+  defmacro sigil_R({ :<<>>, _line, [string] }, options) when is_binary(string) do
     regex = Regex.compile!(string, options)
     Macro.escape(regex)
   end
@@ -3334,11 +3438,11 @@ defmodule Kernel do
 
   """
 
-  defmacro __w__({ :<<>>, _line, [string] }, modifiers) when is_binary(string) do
+  defmacro sigil_w({ :<<>>, _line, [string] }, modifiers) when is_binary(string) do
     split_words(Macro.unescape_binary(string), modifiers)
   end
 
-  defmacro __w__({ :<<>>, line, pieces }, modifiers) do
+  defmacro sigil_w({ :<<>>, line, pieces }, modifiers) do
     binary = { :<<>>, line, Macro.unescape_tokens(pieces) }
     split_words(binary, modifiers)
   end
@@ -3359,7 +3463,7 @@ defmodule Kernel do
       ["foo", "\\\#{bar}", "baz"]
 
   """
-  defmacro __W__({ :<<>>, _line, [string] }, modifiers) when is_binary(string) do
+  defmacro sigil_W({ :<<>>, _line, [string] }, modifiers) when is_binary(string) do
     split_words(string, modifiers)
   end
 
@@ -3396,23 +3500,35 @@ defmodule Kernel do
   #         end
   #     end
   #
-  defp build_cond_clauses([{ [condition], clause }|t], acc) do
-    new_acc = quote do
-      case unquote(condition) do
-        _ in [false, nil] -> unquote(acc)
-        _                 -> unquote(clause)
-      end
+  defp build_cond_clauses([{ [condition], new, clause }|t], acc, old) do
+    stab = { :->, [], [falsy_clause(old, acc), truthy_clause(new, clause)] }
+    acc  = quote do
+      case unquote(condition), do: unquote(stab)
     end
-
-    build_cond_clauses(t, new_acc)
+    build_cond_clauses(t, acc, new)
   end
 
-  defp build_cond_clauses([], acc), do: acc
+  defp build_cond_clauses([], acc, _), do: acc
 
   defp expand_compact([{ :compact, false }|t]), do: expand_compact(t)
   defp expand_compact([{ :compact, true }|t]),  do: [:compact|expand_compact(t)]
   defp expand_compact([h|t]),                   do: [h|expand_compact(t)]
   defp expand_compact([]),                      do: []
+
+  defp falsy_clause(meta, acc) do
+    { [quote(do: _ in [false, nil])], meta, acc }
+  end
+
+  defp truthy_clause(meta, clause) do
+    { [quote(do: _)], meta, clause }
+  end
+
+  defp get_line(meta) do
+    case :lists.keyfind(:line, 1, meta) do
+      { :line, line } -> line
+      false -> 0
+    end
+  end
 
   defp split_words(string, modifiers) do
     mod = case modifiers do

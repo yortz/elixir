@@ -3,66 +3,53 @@ defmodule Mix.Tasks.Local.Install do
 
   import Mix.Generator, only: [create_file: 2]
 
-  @shortdoc "Install a task locally"
+  @shortdoc "Install a task or an archive locally"
 
   @moduledoc """
-  Install a task locally.
+  Install an archive locally.
 
-  The task can be either a local beam file or a beam
-  file located at some URL.
+  If no argument is supplied but there is an archive in the root
+  (created with mix archive), then the archive will be installed
+  locally. For example:
+  
+      mix do archive, local.install
 
-      mix local.install http://example.com/some_task.beam
+  The task can also be an archive located at some URL:
 
-  After installed, the task can be invoked locally:
+      mix local.install http://example.com/foo.ez
+
+  After installed, the tasks in the archive are available locally:
 
       mix some_task
 
   ## Command line options
 
   * `--force` forces installation without a shell prompt. Primarily
-    intended for automation in build systems like Make.
+    intended for automation in build systems like make.
 
   """
 
   def run(argv) do
     { opts, argv } = OptionParser.parse(argv, switches: [force: :boolean])
-    case argv do
-      [] ->
+
+    unless path = Enum.first(argv) do
+      path = "#{Mix.project[:app]}.ez"
+      unless File.exists?(path) do
         raise Mix.Error, message: "expected PATH to be given, please use `mix local.install PATH`"
-      [path|_] ->
-        do_install path, opts
+      end
+    end
+
+    case Path.extname(path) do
+      ".ez" -> install_archive(path, opts)
+      _     -> raise Mix.Error, message: "mix local.install doesn't know how to install #{path}"
     end
   end
 
-  defp do_install(path, opts) do
-    beam = Mix.Utils.read_path(path)
-    { :module, module } = get_module(path, beam)
-
-    validate_module_name!(path, module)
-    task_name = Mix.Task.task_name(module)
-
-    if opts[:force] || Mix.shell.yes?("Are you sure you want to install task #{inspect task_name}?") do
-      tasks = Mix.Local.tasks_path
-      File.mkdir_p! tasks
-      create_file Path.join(tasks, "#{module}.beam"), beam
-    end
-  end
-
-  defp get_module(path, beam) do
-    case :beam_lib.info(beam) do
-      list when is_list(list) ->
-        List.keyfind list, :module, 0
-      _ ->
-        raise Mix.Error, message: "could not parse beam file at #{path}"
-    end
-  end
-
-  defp validate_module_name!(path, module) do
-    case atom_to_binary(module) do
-      "Elixir.Mix.Tasks." <> _ ->
-        :ok
-      other ->
-        raise Mix.Error, message: "expected a Mix.Tasks module at #{path}, got #{other}"
+  defp install_archive(src, opts) do
+    if opts[:force] || Mix.shell.yes?("Are you sure you want to install archive #{src}?") do
+      dest = Mix.Local.archives_path
+      File.mkdir_p! dest
+      create_file Path.join(dest, Path.basename(src)), Mix.Utils.read_path(src)
     end
   end
 end

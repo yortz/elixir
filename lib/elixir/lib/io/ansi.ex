@@ -2,18 +2,14 @@ defmodule IO.ANSI.Sequence do
   @moduledoc false
 
   defmacro defsequence(name, code) do
-    quote do
-      name = unquote(name)
-      code = unquote(code)
+    quote binding: [name: name, code: code] do
+      def unquote(name)() do
+        "\e[#{unquote(code)}m"
+      end
 
-      def name, [], [], do:
-        quote do: "\e[#{unquote(code)}m"
-
-      args =
-        quote do: [<< unquote(atom_to_binary(name)), rest :: binary >> ]
-
-      defp :escape_sequence, args, [], do:
-        quote do: { "\e[#{unquote(code)}m", rest }
+      defp escape_sequence(<< unquote(atom_to_binary(name)), rest :: binary >>) do
+        { "\e[#{unquote(code)}m", rest }
+      end
     end
   end
 end
@@ -76,7 +72,7 @@ defmodule IO.ANSI do
   @doc "Sets primary (default) font"
   defsequence :primary_font, 10
 
-  lc font_n inlist [1,2,3,4,5,6,7,8,9] do
+  lc font_n inlist [1, 2, 3, 4, 5, 6, 7, 8, 9] do
     @doc "Sets alternative font #{font_n}"
     defsequence :"font_#{font_n}", font_n + 10
   end
@@ -151,7 +147,7 @@ defmodule IO.ANSI do
 
   ## Example
 
-    iex> IO.ANSI.escape("Hello %{red,bright,green}yes")
+    iex> IO.ANSI.escape("Hello %{red,bright,green}yes", true)
     "Hello \e[31m\e[1m\e[32myes\e[0m"
   """
   @spec escape(String.t, emit :: boolean) :: String.t
@@ -177,9 +173,9 @@ defmodule IO.ANSI do
 
   ## Example
 
-    iex> IO.ANSI.escape_fragment("Hello %{red,bright,green}yes")
+    iex> IO.ANSI.escape_fragment("Hello %{red,bright,green}yes", true)
     "Hello \e[31m\e[1m\e[32myes"
-    iex> IO.ANSI.escape_fragment("%{reset}bye")
+    iex> IO.ANSI.escape_fragment("%{reset}bye", true)
     "\e[0mbye"
 
   """

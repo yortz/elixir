@@ -5,8 +5,12 @@ defmodule Kernel.WarningTest do
 
   import ExUnit.CaptureIO
 
+  defp capture_err(fun) do
+    capture_io(:stderr, fun)
+  end
+
   test :unused_variable do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         def hello(arg), do: nil
@@ -18,7 +22,7 @@ defmodule Kernel.WarningTest do
   end
 
   test :unused_function do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample1 do
         defp hello, do: nil
@@ -26,7 +30,7 @@ defmodule Kernel.WarningTest do
       """
     end) =~ "function hello/0 is unused"
 
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample2 do
         defp hello(0), do: hello(1)
@@ -35,7 +39,7 @@ defmodule Kernel.WarningTest do
       """
     end) =~ "function hello/1 is unused"
 
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample3 do
         def a, do: nil
@@ -45,13 +49,12 @@ defmodule Kernel.WarningTest do
       end
       """
     end) =~ "function c/2 is unused"
-
   after
     purge [Sample1, Sample2, Sample3]
   end
 
   test :unused_cyclic_functions do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         defp a, do: b
@@ -64,7 +67,7 @@ defmodule Kernel.WarningTest do
   end
 
   test :unused_macro do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         defmacrop hello, do: nil
@@ -76,25 +79,25 @@ defmodule Kernel.WarningTest do
   end
 
   test :unused_default_args do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample1 do
-        def a, do: b(1,2,3)
+        def a, do: b(1, 2, 3)
         defp b(arg1 // 1, arg2 // 2, arg3 // 3), do: [arg1, arg2, arg3]
       end
       """
     end) =~ "default arguments in b/3 are never used"
 
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample2 do
-        def a, do: b(1,2)
+        def a, do: b(1, 2)
         defp b(arg1 // 1, arg2 // 2, arg3 // 3), do: [arg1, arg2, arg3]
       end
       """
     end) =~ "the first 2 default arguments in b/3 are never used"
 
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample3 do
         def a, do: b(1)
@@ -103,7 +106,7 @@ defmodule Kernel.WarningTest do
       """
     end) =~ "the first default argument in b/3 is never used"
 
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample4 do
         def a, do: b(1)
@@ -116,7 +119,7 @@ defmodule Kernel.WarningTest do
   end
 
   test :unused_import do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample1 do
         def hello, do: nil
@@ -132,8 +135,75 @@ defmodule Kernel.WarningTest do
     purge [Sample1, Sample2]
   end
 
+  test :unused_guard do
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample1 do
+        def is_atom_case do
+          v = "bc"
+          case v do
+            _ when is_atom(v) -> :ok
+            _ -> :fail
+          end
+        end
+      end
+      """
+    end) =~ "nofile:5: the guard for this clause evaluates to 'false'"
+
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample2 do
+        def is_binary_cond do
+          v = "bc"
+          cond do
+            is_binary(v) -> :bin
+            true -> :ok
+          end
+        end
+      end
+      """
+    end) =~ "nofile:6: this clause cannot match because a previous clause at line 5 always matches"
+
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample3 do
+        def is_binary_cond_case do
+          v = "bc"
+          case(is_binary(v)) do
+            _ in [false, nil] -> :ok
+            _ -> :bin
+          end
+        end
+      end
+      """
+    end) =~ "nofile:5: this clause cannot match because a previous clause at line 6 always matches"
+  after
+    purge [Sample1, Sample2, Sample3]
+  end
+
+  test :used_import_via_alias do
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample1 do
+        import List, only: [flatten: 1]
+
+        defmacro generate do
+          List.duplicate(quote(do: flatten([1,2,3])), 100)
+        end
+      end
+
+      defmodule Sample2 do
+        import Sample1
+        generate
+      end
+      """
+    end) == nil
+  after
+    purge [Sample1, Sample2]
+  end
+
   test :clause_not_match do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         def hello, do: nil
@@ -146,7 +216,7 @@ defmodule Kernel.WarningTest do
   end
 
   test :clause_with_defaults_should_be_first do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         def hello(arg), do: nil
@@ -158,21 +228,8 @@ defmodule Kernel.WarningTest do
     purge Sample
   end
 
-  test :multiple_clauses_with_defaults do
-    assert capture_io(fn ->
-      Code.eval_string """
-      defmodule Sample do
-        def hello(arg // 0), do: nil
-        def hello(arg // 1), do: nil
-      end
-      """
-    end) =~ "def hello/1 has default values and multiple clauses, use a separate clause for declaring defaults"
-  after
-    purge Sample
-  end
-
   test :unused_with_local_with_overridable do
-    assert capture_io(fn ->
+    assert capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         def hello, do: world
@@ -187,7 +244,7 @@ defmodule Kernel.WarningTest do
   end
 
   test :used_with_local_with_reattached_overridable do
-    assert nil? capture_io(fn ->
+    assert nil? capture_err(fn ->
       Code.eval_string """
       defmodule Sample do
         def hello, do: world
@@ -196,6 +253,30 @@ defmodule Kernel.WarningTest do
       end
       """
     end)
+  after
+    purge Sample
+  end
+
+  test :undefined_module_attribute do
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample do
+        @foo
+      end
+      """
+    end) =~ "undefined module attribute @foo, please remove access to @foo or explicitly set it to nil before access"
+  after
+    purge Sample
+  end
+
+  test :in_guard_empty_list do
+    assert capture_err(fn ->
+      Code.eval_string """
+      defmodule Sample do
+        def a(x) when x in [], do: x
+      end
+      """
+    end) =~ "the guard for this clause evaluates to 'false'"
   after
     purge Sample
   end

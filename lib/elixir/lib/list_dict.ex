@@ -109,7 +109,7 @@ defmodule ListDict do
   def put_new(dict, key, val) do
     case :lists.keyfind(key, 1, dict) do
       { ^key, _ } -> dict
-      false -> [{key,val}|dict]
+      false -> [{key, val}|dict]
     end
   end
 
@@ -131,35 +131,21 @@ defmodule ListDict do
     end
   end
 
-  @doc """
-  Splits a dict into two dicts,
-  one containing entries with key in the keys list,
-  and another containing entries with key not in keys.
-  Returns a 2-tuple of the new dicts.
-  """
   def split(dict, keys) do
     acc = { new(), new() }
     Enum.reduce dict, acc, fn({ k, v }, { take, drop }) ->
       if :lists.member(k, keys) do
-        { [{k,v}|take], drop }
+        { [{k, v}|take], drop }
       else
-        { take, [{k,v}|drop] }
+        { take, [{k, v}|drop] }
       end
     end
   end
 
-  @doc """
-  Returns a new dict with only the entries
-  which key is in keys
-  """
   def take(dict, keys) do
     lc { k, _ } = tuple inlist dict, :lists.member(k, keys), do: tuple
   end
 
-  @doc """
-  Returns a new dict with only the entries
-  which key is not in keys
-  """
   def drop(dict, keys) do
     lc { k, _ } = tuple inlist dict, not :lists.member(k, keys), do: tuple
   end

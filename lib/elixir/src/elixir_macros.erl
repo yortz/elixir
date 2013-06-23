@@ -119,7 +119,7 @@ translate({'@', Meta, [{ Name, _, Args }]}, S) ->
               translate_each({
                 { '.', Meta, ['Elixir.Module', get_attribute] },
                 Meta,
-                [ { '__MODULE__', Meta, false }, Name ]
+                [ { '__MODULE__', Meta, false }, Name, true ]
               }, S);
             _ ->
               Contents = 'Elixir.Module':get_attribute(S#elixir_scope.module, Name),
@@ -129,6 +129,55 @@ translate({'@', Meta, [{ Name, _, Args }]}, S) ->
           syntax_error(Meta, S#elixir_scope.file, "expected 0 or 1 argument for @~ts, got: ~p", [Name, length(Args)])
       end
   end;
+
+%% Binding
+
+translate({ 'binding', Meta, [] }, S) ->
+  translate({ 'binding', Meta, [false] }, S);
+
+translate({ 'binding', Meta, [false] }, S) ->
+  Line = ?line(Meta),
+  { elixir_tree_helpers:list_to_cons(Line,
+    [ to_var_value_tuple(Line, Name, Var) || { { Name, nil }, Var } <- S#elixir_scope.vars]), S };
+
+translate({ 'binding', Meta, [true] }, S) ->
+  Line = ?line(Meta),
+  { elixir_tree_helpers:list_to_cons(Line,
+    [ to_var_value_tuple(Line, Name, Kind, Var) || { { Name, Kind }, Var } <- S#elixir_scope.vars]), S };
+
+translate({ 'binding', Meta, [List] }, #elixir_scope{vars=Vars} = S) when is_list(List) ->
+  Line = ?line(Meta),
+  Dict = lists:foldl(fun
+    (Name, Acc) when is_atom(Name) ->
+      case orddict:find({ Name, nil }, Vars) of
+        { ok, Var } ->
+          orddict:store(Name, Var, Acc);
+        error ->
+          Acc
+      end;
+    (Name, _Acc) ->
+      elixir_errors:syntax_error(Line, S#elixir_scope.file, "binding/1 expects a list of atoms "
+        "at compilation time, got: ~ts", ['Elixir.Macro':to_string(Name)])
+  end, [], List),
+  { elixir_tree_helpers:list_to_cons(Line,
+    [ to_var_value_tuple(Line, Name, Var) || { Name, Var } <- Dict]), S };
+
+translate({ 'binding', Meta, [List, true] }, #elixir_scope{vars=Vars} = S) when is_list(List) ->
+  Line = ?line(Meta),
+  Dict = lists:foldl(fun
+    (Tuple, Acc) when is_tuple(Tuple) ->
+      case orddict:find(Tuple, Vars) of
+        { ok, Var } ->
+          orddict:store(Tuple, Var, Acc);
+        error ->
+          Acc
+      end;
+    (Tuple, _Acc) ->
+      elixir_errors:syntax_error(Line, S#elixir_scope.file, "binding/2 expects a list of tuples "
+        "at compilation time, got: ~ts", ['Elixir.Macro':to_string(Tuple)])
+  end, [], List),
+  { elixir_tree_helpers:list_to_cons(Line,
+    [ to_var_value_tuple(Line, Name, Kind, Var) || { { Name, Kind }, Var } <- Dict]), S };
 
 %% Case
 
@@ -267,6 +316,9 @@ translate_in(Meta, Left, Right, S) ->
   end,
 
   { InGuard, TExpr } = case TRight of
+    { nil, _ } ->
+      Expr = { atom, Line, false },
+      { Cache, Expr };
     { cons, _, _, _ } ->
       [H|T] = elixir_tree_helpers:cons_to_list(TRight),
       Expr = lists:foldr(fun(X, Acc) ->
@@ -318,15 +370,15 @@ decreasing_compare(Line, Var, Start, End) ->
     { op, Line, '=<', Var, Start },
     { op, Line, '>=', Var, End } }.
 
-rewrite_case_clauses([{do,[{in,_,[{'_',_,_},[false,nil]]}],False},{do,[{'_',_,_}],True}]) ->
-  [{do,[false],False},{do,[true],True}];
+rewrite_case_clauses([{do,Meta1,[{in,_,[{'_',_,_},[false,nil]]}],False},{do,Meta2,[{'_',_,_}],True}]) ->
+  [{do,Meta1,[false],False},{do,Meta2,[true],True}];
 
 rewrite_case_clauses(Clauses) ->
   Clauses.
 
 %% defmodule :foo
-expand_module(Raw, Module, #elixir_scope{module=Nesting}) when is_atom(Raw); Nesting == nil ->
-  Module;
+expand_module(Raw, _Module, _S) when is_atom(Raw) ->
+  Raw;
 
 %% defmodule Hello
 expand_module({ '__aliases__', _, [H] }, _Module, S) ->
@@ -348,6 +400,19 @@ expand_module(_Raw, Module, S) ->
 is_reserved_data(moduledoc) -> true;
 is_reserved_data(doc)       -> true;
 is_reserved_data(_)         -> false.
+
+to_var_value_tuple(Line, Name, Var) ->
+  { tuple, Line,
+    [ { atom, Line, Name },
+      { var, Line, Var } ] }.
+
+to_var_value_tuple(Line, Name, Kind, Var) ->
+  { tuple, Line,
+    [ { tuple, Line, [
+        { atom, Line, Name },
+        { atom, Line, Kind }
+      ] },
+      { var, Line, Var } ] }.
 
 spec_to_macro(type)     -> deftype;
 spec_to_macro(typep)    -> deftypep;

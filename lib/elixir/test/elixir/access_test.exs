@@ -15,13 +15,14 @@ defmodule AccessTest do
 
   # Test nil at compilation time does not fail
   # and that @config[:foo] has proper precedence.
+  @config nil
   nil = @config[:foo]
 
   @config [foo: :bar]
   :bar = @config[:foo]
 
   @mod :lists
-  [1,2,3] = @mod.flatten([1,[2],3])
+  [1, 2, 3] = @mod.flatten([1, [2], 3])
 
   test :atom do
     exception = assert_raise RuntimeError, fn ->

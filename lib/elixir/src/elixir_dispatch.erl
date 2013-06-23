@@ -13,9 +13,9 @@
 -define(builtin, 'Elixir.Kernel').
 
 default_functions() ->
-  [ { ?builtin, ordsets:union(in_elixir_functions(), in_erlang_functions()) } ].
+  [ { ?builtin, elixir_imported_functions() } ].
 default_macros() ->
-  [ { ?builtin, ordsets:union(in_elixir_macros(), in_erlang_macros()) } ].
+  [ { ?builtin, elixir_imported_macros() } ].
 default_requires() ->
   [ ?builtin, 'Elixir.Kernel.Typespec', 'Elixir.Record' ].
 
@@ -23,9 +23,14 @@ find_import(Meta, Name, Arity, S) ->
   Tuple = { Name, Arity },
 
   case find_dispatch(Meta, Tuple, S) of
-    { function, Receiver } -> Receiver;
-    { macro, Receiver } -> Receiver;
-    _ -> false
+    { function, Receiver } ->
+      elixir_tracker:record_import(Tuple, Receiver, S#elixir_scope.module, S#elixir_scope.function),
+      Receiver;
+    { macro, Receiver } ->
+      elixir_tracker:record_import(Tuple, Receiver, S#elixir_scope.module, S#elixir_scope.function),
+      Receiver;
+    _ ->
+      false
   end.
 
 %% Function retrieval
@@ -312,13 +317,18 @@ get_optional_macros(Receiver) ->
     { error, _ } -> []
   end.
 
-%% Functions imported from Kernel module. Sorted on compilation.
-
-in_elixir_functions() ->
+elixir_imported_functions() ->
   try
     ?builtin:'__info__'(functions)
   catch
-    error:undef -> []
+    error:undef -> in_erlang_functions()
+  end.
+
+elixir_imported_macros() ->
+  try
+    ?builtin:'__info__'(macros)
+  catch
+    error:undef -> in_erlang_macros()
   end.
 
 %% Macros imported from Kernel module. Sorted on compilation.
@@ -437,6 +447,9 @@ in_erlang_macros() ->
     {'and',2},
     {apply,2},
     {apply,3},
+    {binding,0},
+    {binding,1},
+    {binding,2},
     {'case',2},
     {def,1},
     {def,2},

@@ -34,6 +34,8 @@ defmodule Protocol do
 
         # Set up a clear slate to store defined functions
         @functions []
+        @only nil
+        @except nil
 
         # Invoke the user given block
         unquote(block)
@@ -81,14 +83,14 @@ defmodule Protocol do
   def assert_protocol(module) do
     case Code.ensure_compiled(module) do
       { :module, ^module } -> nil
-      _ -> raise ArgumentError, message: "#{module} is not loaded"
+      _ -> raise ArgumentError, message: "#{inspect module} is not loaded"
     end
 
     try do
       module.__protocol__(:name)
     rescue
       UndefinedFunctionError ->
-        raise ArgumentError, message: "#{module} is not a protocol"
+        raise ArgumentError, message: "#{inspect module} is not a protocol"
     end
   end
 
@@ -236,13 +238,13 @@ defmodule Protocol do
 
   # Returns a quoted expression that allows to check
   # if the first item in the tuple is a built-in or not.
-  defp is_builtin?([{h,_,_}]) do
+  defp is_builtin?([{h, _, _}]) do
     quote do
       first == unquote(h)
     end
   end
 
-  defp is_builtin?([{h,_,_}|t]) do
+  defp is_builtin?([{h, _, _}|t]) do
     quote do
       first == unquote(h) or unquote(is_builtin?(t))
     end
@@ -349,36 +351,38 @@ defmodule Protocol.DSL do
   end
 
   defp default_clause(name, args) do
-    quote do: { [other], apply(other, unquote(name), [unquote_splicing(args)]) }
+    { [quote do: other],
+      [],
+      quote(do: apply(other, unquote(name), [unquote_splicing(args)])) }
   end
 
   defp nil_clause() do
-    quote do
-      { [nil], raise(Protocol.UndefinedError, protocol: __MODULE__, structure: xA) }
-    end
+    { [nil],
+      [],
+      quote(do: raise(Protocol.UndefinedError, protocol: __MODULE__, structure: xA)) }
   end
 
   defp record_clause(name, args, nil) do
-    quote do
-      { [__MODULE__.Record],
-        Module.concat(__MODULE__, :erlang.element(1, xA)).unquote(name)(unquote_splicing(args)) }
-    end
+    { [quote(do: __MODULE__.Record)],
+      [],
+      quote(do: Module.concat(__MODULE__, :erlang.element(1, xA)).unquote(name)(unquote_splicing(args))) }
   end
 
   defp record_clause(name, args, fallback) do
     arity = length(args)
 
-    quote do
-      { [__MODULE__.Record],
-        (target = Module.concat(__MODULE__, :erlang.element(1, xA))
+    { [quote(do: __MODULE__.Record)],
+      [],
+      quote do
+        target = Module.concat(__MODULE__, :erlang.element(1, xA))
         try do
           target.unquote(name)(unquote_splicing(args))
         catch
           :error, :undef, [[{ ^target, name, args, _ }|_]|_] when
               name == unquote(name) and length(args) == unquote(arity) ->
             apply unquote(fallback), name, [unquote_splicing(args)]
-        end) }
-    end
+        end
+      end }
   end
 
   defmacro def(expression) do

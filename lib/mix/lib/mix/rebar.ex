@@ -26,10 +26,10 @@ defmodule Mix.Rebar do
   end
 
   @doc """
-  Returns the path to the rebar copy in the current working directory, if one exists.
+  Returns the path to the available rebar command.
   """
-  def cwd_rebar_cmd do
-    wrap_cmd(if File.regular?("./rebar"), do: Path.join(File.cwd!, "rebar"))
+  def rebar_cmd do
+    global_rebar_cmd || local_rebar_cmd
   end
 
   @doc """
@@ -128,14 +128,17 @@ defmodule Mix.Rebar do
     end
   end
 
-  defp eval_script(path, config) do
-    script = Path.basename(path) |> binary_to_list
-    case :file.script(path, eval_binds(CONFIG: config, SCRIPT: script)) do
+  defp eval_script(script_path, config) do
+    script = Path.basename(script_path) |> binary_to_list
+    result = File.cd!(Path.dirname(script_path), fn ->
+      :file.script(script, eval_binds(CONFIG: config, SCRIPT: script))
+    end)
+    case result do
       { :ok, config } ->
         config
       { :error, error } ->
         reason = :file.format_error(error)
-        raise Mix.Error, message: "Error evaluating rebar config script #{path}: #{reason}"
+        raise Mix.Error, message: "Error evaluating rebar config script #{script_path}: #{reason}"
     end
   end
 
@@ -147,9 +150,10 @@ defmodule Mix.Rebar do
 
   defp wrap_cmd(nil), do: nil
   defp wrap_cmd(rebar) do
-    case :os.type do
-      { :win32, _ } -> "escript.exe #{rebar}"
-      _ -> rebar
+    if match?({ :win32, _ }, :os.type) and not String.ends_with?(rebar,".cmd") do
+      "escript.exe #{rebar}"
+    else
+      rebar
     end
   end
 end

@@ -62,9 +62,6 @@ translate_each({ '__block__', Meta, Args }, S) when is_list(Args) ->
   { TArgs, NS } = translate(Args, S),
   { { block, ?line(Meta), TArgs }, NS };
 
-translate_each({ '__scope__', _Meta, [[{erl,true}],[{do,Expr}]] }, S) ->
-  { Expr, S };
-
 translate_each({ '__scope__', _Meta, [[{file,File}],[{do,Expr}]] }, S) ->
   Old = S#elixir_scope.file,
   { TExpr, TS } = translate_each(Expr, S#elixir_scope{file=File}),
@@ -220,7 +217,7 @@ translate_each({ quote, Meta, [KV, Do] }, S) when is_list(Do) ->
       false -> syntax_error(Meta, S#elixir_scope.file, "invalid args for quote")
     end,
 
-  ValidOpts   = [hygiene, context, var_context, location, line, file, unquote],
+  ValidOpts   = [hygiene, context, var_context, location, line, file, unquote, binding],
   { TKV, ST } = translate_opts(Meta, quote, ValidOpts, KV, S),
 
   Hygiene = case lists:keyfind(hygiene, 1, TKV) of
@@ -261,29 +258,34 @@ translate_each({ quote, Meta, [KV, Do] }, S) when is_list(Do) ->
     false -> DefaultFile
   end,
 
-  TFile = case File of
+  Scope = case File of
     keep -> S#elixir_scope.file;
     _    -> File
   end,
 
-  WExprs = if
-    is_binary(TFile) ->
-      { '__scope__', Meta, [[{file,TFile}],[{do,Exprs}]] };
+  QExprs = if
+    is_binary(Scope) ->
+      { '__scope__', Meta, [[{file,Scope}],[{do,Exprs}]] };
     File == nil ->
       Exprs;
     true ->
       syntax_error(Meta, S#elixir_scope.file, "invalid args for quote, expected :file to be a binary")
   end,
 
+  { Binding, DefaultUnquote } = case lists:keyfind(binding, 1, TKV) of
+    { binding, B } when is_list(B) -> { B, false };
+    false -> { nil, true }
+  end,
+
   Unquote = case lists:keyfind(unquote, 1, TKV) of
-    { unquote, false } -> false;
-    _ -> true
+    { unquote, Bool } when is_boolean(Bool) -> Bool;
+    false -> DefaultUnquote
   end,
 
   Q = #elixir_quote{vars_hygiene=Vars, line=Line, unquote=Unquote,
         aliases_hygiene=Aliases, imports_hygiene=Imports, context=Context},
 
-  { TExprs, _TQ, TS } = elixir_quote:erl_quote(WExprs, Q, ST),
+  { TExprs, _TQ, TS } = elixir_quote:erl_quote(QExprs, Binding, Q, ST),
   { TExprs, TS };
 
 translate_each({ quote, Meta, [_, _] }, S) ->
@@ -320,7 +322,7 @@ translate_each({ Kind, Meta, Args }, S) when is_list(Args), (Kind == lc) orelse 
 
 %% Super (exceptionally supports partial application)
 
-translate_each({ super, Meta, Args } = Original, S) ->
+translate_each({ super, Meta, Args } = Original, S) when is_list(Args) ->
   case elixir_partials:handle(Original, S) of
     error ->
       assert_no_match_or_guard_scope(Meta, super, S),
@@ -331,12 +333,7 @@ translate_each({ super, Meta, Args } = Original, S) ->
       { _, Arity } = Function,
 
       { TArgs, TS } = if
-        is_atom(Args) andalso Arity == 0 ->
-          elixir_def_overridable:retrieve_args(Meta, Arity, S);
-        is_atom(Args) ->
-          elixir_errors:deprecation(Meta, S#elixir_scope.file, "omitting arguments of super is deprecated, please call super with arguments instead"),
-          elixir_def_overridable:retrieve_args(Meta, Arity, S);
-        not is_atom(Args) andalso length(Args) == Arity ->
+        length(Args) == Arity ->
           translate_args(Args, S);
         true ->
           syntax_error(Meta, S#elixir_scope.file, "super must be called with the same number of arguments as the current function")
@@ -356,7 +353,7 @@ translate_each({ 'super?', Meta, [] }, S) ->
 %% Variables
 
 translate_each({ '^', Meta, [ { Name, _, Kind } ] }, #elixir_scope{context=match} = S) when is_atom(Name), is_atom(Kind) ->
-  case orddict:find({ Name, Kind }, S#elixir_scope.vars) of
+  case orddict:find({ Name, Kind }, S#elixir_scope.backup_vars) of
     { ok, Value } ->
       { { var, Meta, Value }, S };
     error ->
@@ -369,7 +366,7 @@ translate_each({ '^', Meta, [ { Name, _, Kind } ] }, S) when is_atom(Name), is_a
 
 translate_each({ '^', Meta, [ Expr ] }, S) ->
   syntax_error(Meta, S#elixir_scope.file,
-    "the unary operator ^ can only be used with variables, invalid expression ^~ts", ['Elixir.Macro':to_binary(Expr)]);
+    "the unary operator ^ can only be used with variables, invalid expression ^~ts", ['Elixir.Macro':to_string(Expr)]);
 
 translate_each({ Name, Meta, Kind }, S) when is_atom(Name), is_atom(Kind) ->
   elixir_scope:translate_var(Meta, Name, Kind, S, fun() ->
@@ -466,7 +463,7 @@ translate_each({ { '.', _, [Expr] }, Meta, Args } = Original, S) ->
 
 translate_each({ Invalid, Meta, _Args }, S) ->
   syntax_error(Meta, S#elixir_scope.file, "unexpected parenthesis after ~ts",
-    ['Elixir.Macro':to_binary(Invalid)]);
+    ['Elixir.Macro':to_string(Invalid)]);
 
 %% Literals
 
@@ -478,10 +475,21 @@ translate_each(Literal, S) ->
 %% Opts
 
 translate_opts(Meta, Kind, Allowed, Opts, S) ->
-  { TOpts, TS } = translate_each(Opts, S),
-  FOpts = elixir_tree_helpers:erl_to_elixir(TOpts),
-  validate_opts(Meta, Kind, Allowed, FOpts, TS),
-  { FOpts, TS }.
+  { Expanded, TS } = case literal_opts(Opts) orelse skip_expansion(S#elixir_scope.module) of
+    true  -> { Opts, S };
+    false -> 'Elixir.Macro':expand_all(Opts, elixir_scope:to_ex_env({ ?line(Meta), S }), S)
+  end,
+  validate_opts(Meta, Kind, Allowed, Expanded, TS),
+  { Expanded, TS }.
+
+skip_expansion('Elixir.Kernel') -> true;
+skip_expansion('Elixir.Kernel.Typespec') -> true;
+skip_expansion(_) -> false.
+
+literal_opts({ X, Y }) -> literal_opts(X) andalso literal_opts(Y);
+literal_opts(Opts) when is_list(Opts) -> lists:all(fun literal_opts/1, Opts);
+literal_opts(Opts) when is_atom(Opts); is_number(Opts); is_bitstring(Opts) -> true;
+literal_opts(_) -> false.
 
 validate_opts(Meta, Kind, Allowed, Opts, S) when is_list(Opts) ->
   [begin
@@ -555,11 +563,9 @@ no_alias_expansion(Other) ->
 %% Function
 
 translate_fn(Meta, Clauses, S) ->
-  Line = ?line(Meta),
-
-  Transformer = fun({ ArgsWithGuards, Expr }, Acc) ->
-    { Args, Guards } = elixir_clauses:extract_last_guards(ArgsWithGuards),
-    elixir_clauses:assigns_block(Line, fun elixir_translator:translate/2, Args, [Expr], Guards, umergec(S, Acc))
+  Transformer = fun({ ArgsWithGuards, CMeta, Expr }, Acc) ->
+    { Args, Guards } = elixir_clauses:extract_splat_guards(ArgsWithGuards),
+    elixir_clauses:assigns_block(?line(CMeta), fun elixir_translator:translate/2, Args, [Expr], Guards, umergec(S, Acc))
   end,
 
   { TClauses, NS } = lists:mapfoldl(Transformer, S, Clauses),
@@ -567,7 +573,7 @@ translate_fn(Meta, Clauses, S) ->
 
   case length(lists:usort(Arities)) of
     1 ->
-      { { 'fun', Line, { clauses, TClauses } }, umergec(S, NS) };
+      { { 'fun', ?line(Meta), { clauses, TClauses } }, umergec(S, NS) };
     _ ->
       syntax_error(Meta, S#elixir_scope.file, "cannot mix clauses with different arities in function definition")
   end.

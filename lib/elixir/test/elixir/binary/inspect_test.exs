@@ -136,6 +136,12 @@ defmodule Binary.Inspect.TupleTest do
     assert inspect(:something.new) == ":something[a: nil, b: nil]"
   end
 
+  defrecord Rec, value: 1
+
+  test :two_items_record do
+    assert inspect({ Rec[value: 1], 1 }) == "{Binary.Inspect.TupleTest.Rec[value: 1],1}"
+  end
+
   test :empty do
     assert inspect({}) == "{}"
   end
@@ -172,7 +178,7 @@ defmodule Binary.Inspect.ListTest do
   end
 
   test :non_printable do
-    assert inspect([{:b, 1},{:a,1}]) == "[b: 1, a: 1]"
+    assert inspect([{:b, 1}, {:a, 1}]) == "[b: 1, a: 1]"
   end
 
   test :unproper do

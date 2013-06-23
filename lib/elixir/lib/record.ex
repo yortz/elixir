@@ -127,20 +127,27 @@ defmodule Record do
   ## Types
 
   Every record defines a type named `t` that can be accessed in typespecs.
-  For example, assuming the `Config` record defined above, it could be used
-  in typespecs as follow:
+  Those types can be passed at the moment the record is defined:
 
-      @spec handle_config(Config.t) :: boolean()
+      defrecord User,
+        name: "" :: string,
+        age: 0 :: integer
 
-  Inside the record definition, a developer can define his own types too:
+  All the fields without a specified type are assumed to have type `term`.
+
+  Assuming the `User` record defined above, it could be used in typespecs
+  as follow:
+
+      @spec handle_user(User.t) :: boolean()
+
+  If the developer wants to define their own types to be used with the
+  record, Elixir allows a more lengthy definition with the help of the
+  `record_type` macro:
 
       defrecord Config, counter: 0, failures: [] do
         @type kind :: term
         record_type counter: integer, failures: [kind]
       end
-
-  When defining a type, all the fields not mentioned in the type are
-  assumed to have type `term`.
 
   ## Importing records
 
@@ -173,35 +180,55 @@ defmodule Record do
   """
   def defrecord(name, values, opts) do
     block = Keyword.get(opts, :do, nil)
+    { fields, types } = record_split(values)
 
     quote do
-      unquoted_values = unquote(values)
+      unquoted_fields = unquote(fields)
 
       defmodule unquote(name) do
         @moduledoc false
         import Elixir.Record.DSL
 
         @record_fields []
-        @record_types  []
+        @record_types  unquote(types)
 
-        # Reassign values to inner scope to
+        # Reassign fields to inner scope to
         # avoid conflicts in nested records
-        values = unquoted_values
+        fields = unquoted_fields
 
-        Elixir.Record.deffunctions(values, __ENV__)
+        Elixir.Record.deffunctions(fields, __ENV__)
         value = unquote(block)
-        Elixir.Record.deftypes(values, @record_types, __ENV__)
+        Elixir.Record.deftypes(fields, @record_types, __ENV__)
         value
       end
     end
   end
 
+  defp record_split(fields) when is_list(fields) do
+    record_split(fields, [], [])
+  end
+
+  defp record_split(other) do
+    { other, [] }
+  end
+
+  defp record_split([{ field, { :::, _, [default, type] }}|t], defaults, types) do
+    record_split t, [{ field, default }|defaults], [{ field, Macro.escape(type) }|types]
+  end
+
+  defp record_split([other|t], defaults, types) do
+    record_split t, [other|defaults], types
+  end
+
+  defp record_split([], defaults, types) do
+    { :lists.reverse(defaults), types }
+  end
+
   @doc """
-  Import public record definition as a set of private macros (as defined by defrecordp/2)
-
-  ## Usage
-
-     Record.import Record.Module, as: macro_name
+  Import public record definition as a set of private macros,
+  as defined by `Kernel.defrecordp/2`. This is useful when one
+  desires to manipulate a record via a set of macros instead
+  of the regular access syntax.
 
   ## Example
 
@@ -214,7 +241,8 @@ defmodule Record do
   """
   defmacro import(module, as: name) do
     quote do
-      Record.defmacros(unquote(name), unquote(module).__record__(:fields), __ENV__, unquote(module))
+      Record.defmacros(unquote(name),
+        unquote(module).__record__(:fields), __ENV__, unquote(module))
     end
   end
 
@@ -224,10 +252,29 @@ defmodule Record do
   in `values`. This is invoked directly by `Kernel.defrecordp`,
   so check it for more information and documentation.
   """
-  def defrecordp(name, fields) do
+  def defrecordp(name, fields) when is_atom(name) and is_list(fields) do
+    { fields, types, def_type } = recordp_split(fields, [], [], false)
+    type = :"#{name}_t"
+
     quote do
       Record.defmacros(unquote(name), unquote(fields), __ENV__)
+
+      if unquote(def_type) do
+        @typep unquote(type)() :: { unquote(name), unquote_splicing(types) }
+      end
     end
+  end
+
+  defp recordp_split([{ field, { :::, _, [default, type] }}|t], defaults, types, _) do
+    recordp_split t, [{ field, default }|defaults], [type|types], true
+  end
+
+  defp recordp_split([other|t], defaults, types, def_type) do
+    recordp_split t, [other|defaults], [quote(do: term)|types], def_type
+  end
+
+  defp recordp_split([], defaults, types, def_type) do
+    { :lists.reverse(defaults), :lists.reverse(types), def_type }
   end
 
   @doc """
@@ -368,7 +415,7 @@ defmodule Record do
   @doc false
   def access(atom, fields, keyword, caller) do
     unless is_keyword(keyword) do
-      raise "expected contents inside brackets to be a Keyword"
+      raise ArgumentError, message: "expected contents inside brackets to be a Keyword"
     end
 
     in_match = caller.in_match?
@@ -398,7 +445,7 @@ defmodule Record do
         quote do: { unquote_splicing([atom|match]) }
       _  ->
         keys = lc { key, _ } inlist remaining, do: key
-        raise "record #{inspect atom} does not have the keys: #{inspect keys}"
+        raise ArgumentError, message: "record #{inspect atom} does not have the keys: #{inspect keys}"
     end
   end
 
@@ -418,11 +465,11 @@ defmodule Record do
   @doc false
   defp update(atom, fields, var, keyword, caller) do
     unless is_keyword(keyword) do
-      raise "expected contents inside brackets to be a Keyword"
+      raise ArgumentError, message: "expected contents inside brackets to be a Keyword"
     end
 
     if caller.in_match? do
-      raise "cannot invoke update style macro inside match context"
+      raise ArgumentError, message: "cannot invoke update style macro inside match context"
     end
 
     Enum.reduce keyword, var, fn({ key, value }, acc) ->
@@ -432,7 +479,7 @@ defmodule Record do
           :erlang.setelement(unquote(index + 2), unquote(acc), unquote(value))
         end
       else
-        raise "record #{inspect atom} does not have the key: #{inspect key}"
+        raise ArgumentError, message: "record #{inspect atom} does not have the key: #{inspect key}"
       end
     end
   end
@@ -448,7 +495,7 @@ defmodule Record do
         :erlang.element(unquote(index + 2), unquote(var))
       end
     else
-      raise "record #{inspect atom} does not have the key: #{inspect key}"
+      raise ArgumentError, message: "record #{inspect atom} does not have the key: #{inspect key}"
     end
   end
 
@@ -477,7 +524,7 @@ defmodule Record do
         if index do
           quote do: :erlang.element(unquote(index + 2), unquote(record))
         else
-          raise "record #{inspect atom} does not have the key: #{inspect key}"
+          raise ArgumentError, message: "record #{inspect atom} does not have the key: #{inspect key}"
         end
       end
   end
@@ -726,7 +773,7 @@ defmodule Record do
       @spec to_keywords(t) :: options
       @spec update(options, t) :: t
       @spec __record__(:name) :: atom
-      @spec __record__(:fields) :: [{atom,any}]
+      @spec __record__(:fields) :: [{atom, any}]
       @spec __index__(atom) :: non_neg_integer | nil
     end
   end

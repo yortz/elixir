@@ -92,6 +92,9 @@ clean:
 	rm -rf lib/elixir/src/*_parser.erl
 	rm -rf lib/elixir/test/ebin
 
+clean_exbeam:
+	@ rm -f lib/*/ebin/Elixir.*.beam
+
 #==> Release tasks
 
 SOURCE_REF = $(shell head="$$(git rev-parse HEAD)" tag="$$(git tag --points-at $$head | tail -1)" ; echo "$${tag:-$$head}\c")

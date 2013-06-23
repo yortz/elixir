@@ -79,18 +79,6 @@ defmodule Regex do
     end
   end
 
-  @doc false
-  def index(regex(re_pattern: compiled), string) do
-    IO.puts "Regex.index(re, string) is deprecated. Please use " <>
-      "Regex.run(re, string, return: :index) instead."
-    Exception.print_stacktrace
-
-    case :re.run(string, compiled, [{ :capture, :first, :index }]) do
-      :nomatch -> nil
-      { :match, [{index,_}] } -> index
-    end
-  end
-
   @doc """
   Returns a boolean if there was a match or not.
 
@@ -326,7 +314,7 @@ defmodule Regex do
   defp translate_options(<<?x, t :: binary>>), do: [:extended|translate_options(t)]
   defp translate_options(<<?f, t :: binary>>), do: [:firstline|translate_options(t)]
   defp translate_options(<<?r, t :: binary>>), do: [:ungreedy|translate_options(t)]
-  defp translate_options(<<?s, t :: binary>>), do: [:dotall,{:newline,:anycrlf}|translate_options(t)]
+  defp translate_options(<<?s, t :: binary>>), do: [:dotall, {:newline, :anycrlf}|translate_options(t)]
   defp translate_options(<<?m, t :: binary>>), do: [:multiline|translate_options(t)]
   defp translate_options(<<?g, t :: binary>>), do: [:groups|translate_options(t)]
   defp translate_options(<<>>), do: []

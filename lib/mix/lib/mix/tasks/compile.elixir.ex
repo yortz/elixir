@@ -32,6 +32,10 @@ defmodule Mix.Tasks.Compile.Elixir do
 
   * `--force` - forces compilation regardless of module times;
   * `--quick`, `-q` - only compile files that changed;
+  * `--no-docs` - Do not attach documentation to compiled modules;
+  * `--no-debug-info` - Do not attach debug info to compiled modules;
+  * `--ignore-module-conflict`
+  * `--warnings-as-errors` - Treat warnings as errors and return non-zero exit code
 
   ## Configuration
 
@@ -43,7 +47,7 @@ defmodule Mix.Tasks.Compile.Elixir do
   * `:elixirc_options` - compilation options that applies
      to Elixir's compiler, they are: `:ignore_module_conflict`,
      `:docs` and `:debug_info`. By default, uses the same
-     behaviour as Elixir
+     behaviour as Elixir;
 
    * `:elixirc_exts` - extensions to compile whenever there
      is a change:
@@ -56,9 +60,13 @@ defmodule Mix.Tasks.Compile.Elixir do
          [elixirc_watch_exts: [:ex, :eex]]
 
   """
+
+  @switches [force: :boolean, quick: :boolean, docs: :boolean,
+             ignore_module_conflict: :boolean, debug_info: :boolean,
+             warnings_as_errors: :boolean]
+
   def run(args) do
-    { opts, _ } = OptionParser.parse(args, aliases: [q: :quick],
-                    switches: [force: :boolean, quick: :boolean])
+    { opts, _ } = OptionParser.parse(args, aliases: [q: :quick], switches: @switches)
 
     project       = Mix.project
     compile_path  = project[:compile_path]
@@ -66,32 +74,37 @@ defmodule Mix.Tasks.Compile.Elixir do
     watch_exts    = project[:elixirc_watch_exts]
     elixirc_paths = project[:elixirc_paths]
 
+    manifest   = Path.join(compile_path, @manifest)
     to_compile = Mix.Utils.extract_files(elixirc_paths, compile_exts)
-    to_watch   = Mix.Project.config_files ++ Mix.Utils.extract_files(elixirc_paths, watch_exts)
-    stale      = Mix.Utils.extract_stale(to_watch, [Path.join(compile_path, @manifest)])
+    to_watch   = Mix.Utils.extract_files(elixirc_paths, watch_exts)
 
-    if opts[:force] or stale != [] do
+    force = opts[:force]
+    stale = if Mix.Utils.stale?(Mix.Project.config_files, [manifest]) do
+      force = true
+      to_watch
+    else
+      Mix.Utils.extract_stale(to_watch, [manifest])
+    end
+
+    if force or stale != [] do
       File.mkdir_p! compile_path
-      compile_files opts[:quick], project, compile_path, to_compile, stale
+      compile_files opts[:quick], project, compile_path, to_compile, stale, opts
       :ok
     else
       :noop
     end
   end
 
-  defp compile_files(true, project, compile_path, to_compile, stale) do
-    opts = project[:elixirc_options] || []
-    opts = Keyword.put(opts, :ignore_module_conflict, true)
-    Code.compiler_options(opts)
+  defp compile_files(true, project, compile_path, to_compile, stale, opts) do
+    set_compiler_opts(project, opts, ignore_module_conflict: true)
     to_compile = lc f inlist to_compile, f in stale, do: f
     compile_files(to_compile, compile_path)
     File.touch! Path.join(compile_path, @manifest)
   end
 
-  defp compile_files(false, project, compile_path, to_compile, _stale) do
+  defp compile_files(false, project, compile_path, to_compile, _stale, opts) do
     Code.delete_path compile_path
-    opts = project[:elixirc_options] || []
-    Code.compiler_options(opts)
+    set_compiler_opts(project, opts, [])
 
     { _current, to_remove } =
       Mix.Utils.manifest Path.join(compile_path, @manifest), fn ->
@@ -101,6 +114,12 @@ defmodule Mix.Tasks.Compile.Elixir do
 
     lc f inlist to_remove, do: File.rm(Path.join(compile_path, f) <> ".beam")
     Code.prepend_path compile_path
+  end
+
+  defp set_compiler_opts(project, opts, extra) do
+    opts = Dict.take(opts, [:docs, :debug_info, :ignore_module_conflict, :warnings_as_errors])
+    opts = Keyword.merge(project[:elixirc_options] || [], opts)
+    Code.compiler_options Keyword.merge(opts, extra)
   end
 
   defp compile_files(files, to) do

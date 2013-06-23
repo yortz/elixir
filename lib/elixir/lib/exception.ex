@@ -192,9 +192,7 @@ defmodule Exception do
   calculates the current stacktrace and formats it. As consequence,
   the value of `System.stacktrace` is changed.
   """
-  def format_stacktrace(trace // nil)
-
-  def format_stacktrace(trace) do
+  def format_stacktrace(trace // nil) do
     trace = trace || try do
       throw(:stacktrace)
     catch
@@ -208,14 +206,22 @@ defmodule Exception do
   end
 
   @doc """
-  Prints the current stacktrace to standard output.
-
-  A stacktrace must be given as argument. If not, this function
-  calculates the current stacktrace and formats it. As consequence,
-  the value of `System.stacktrace` is changed.
+  Formats the caller, i.e. the first entry in the stacktrace.
+  Notice that doing to tail call optimization, the stacktrace
+  may not report the direct caller of the function.
   """
-  def print_stacktrace(trace // nil) do
-    IO.write format_stacktrace(trace)
+  def format_caller(trace // nil) do
+    trace = trace || try do
+      throw(:stacktrace)
+    catch
+      :stacktrace -> Enum.drop(:erlang.get_stacktrace, 1)
+    end
+
+    if entry = Enum.at(trace, 1) do
+      format_stacktrace_entry(entry)
+    else
+      "nofile:0: "
+    end
   end
 
   ## Helpers

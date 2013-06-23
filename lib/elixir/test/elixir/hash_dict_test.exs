@@ -38,6 +38,13 @@ defmodule HashDictTest do
     assert HashDict.fetch(dict, 16) == :error
   end
 
+  test :equal? do
+    assert HashDict.equal?(filled_dict(3), filled_dict(3)) == true
+
+    assert HashDict.equal?(HashDict.new([{:a, 1}, {:b, 2}]),
+                           HashDict.new([{:a, 2}, {:b, 3}])) == false
+  end
+
   test :has_key? do
     dict = filled_dict(8)
     assert HashDict.has_key? dict, 4
@@ -155,7 +162,7 @@ defmodule HashDictTest do
     assert Enum.member?(dict, { 5, 5 })
     refute Enum.member?(dict, { 5, 8 })
     assert Enum.count(dict) == 10
-    assert Enum.map(filled_dict(3), fn({ k, v }) -> k + v end) == [2,4,6]
+    assert Enum.map(filled_dict(3), fn({ k, v }) -> k + v end) == [2, 4, 6]
   end
 
   test :access do
@@ -256,6 +263,12 @@ defmodule HashDictTest do
     assert HashDict.get(dict, 118) == 236
     assert HashDict.get(dict, 122) == 244
     assert HashDict.size(dict) == 122
+  end
+
+  test :trie_contract do
+    dict = filled_dict(120)
+    dict = Enum.reduce 16..120, dict, fn(x, acc) -> HashDict.delete(acc, x) end
+    assert (Enum.filter 1..120, fn(x) -> HashDict.get(dict, x) == x end) == (Enum.sort 1..15)
   end
 
   defp smoke_test(range) do
