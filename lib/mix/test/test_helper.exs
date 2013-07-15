@@ -1,7 +1,7 @@
 Mix.start()
 Mix.shell(Mix.Shell.Process)
 
-ExUnit.start []
+ExUnit.start [trace: "--trace" in System.argv]
 System.put_env("EXUNIT_CONFIG", "none")
 
 defmodule MixTest.Case do
@@ -23,20 +23,8 @@ defmodule MixTest.Case do
     :ok
   end
 
-  def mix(args) do
-    System.cmd "#{elixir_executable} #{mix_executable} #{args}"
-  end
-
   def elixir_root do
     Path.expand("../../..", __DIR__)
-  end
-
-  def mix_executable do
-    Path.expand("../../../bin/mix", __DIR__)
-  end
-
-  def elixir_executable do
-    Path.expand("../../../bin/elixir", __DIR__)
   end
 
   def fixture_path do

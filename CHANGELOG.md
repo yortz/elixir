@@ -1,18 +1,62 @@
+# v0.10.0 (2013-07-15)
+
+* enhancements
+  * [ExUnit] Support `trace: true` option which gives detailed reporting on test runs
+  * [HashDict] Optimize `HashDict` to store pairs in a cons cell reducing storage per key by half
+  * [Kernel] Add pretty printing support for inspect
+  * [Kernel] Add document algebra library used as the foundation for pretty printing
+  * [Kernel] Add `defrecordp/3` that enables specifying the first element of the tuple
+  * [Kernel] Add the `Set` API and a hash based implementation via `HashSet`
+  * [Kernel] Add `Stream` as composable, lazy-enumerables
+  * [Mix] `mix archive` now includes the version of the generated archive
+  * [Mix] Mix now requires explicit dependency overriding to be given with `override: true`
+  * [Mix] Projects can now define an `:elixir` key to outline supported Elixir versions
+  * [Typespec] Improve error messages to contain file, line and the typespec itself
+
+* bug fix
+  * [CLI] Elixir can now run on Unix directories with `:` in its path
+  * [Kernel] `match?/2` does not leak variables to outer scope
+  * [Kernel] Keep `head|tail` format when splicing at the tail
+  * [Kernel] Ensure variables defined in the module body are not passed to callbacks
+  * [Mix] On dependencies conflict, show from where each source is coming from
+  * [Mix] Empty projects no longer leave empty ebin files on `mix compile`
+  * [Module] Calling `Module.register_attribute/3` no longer automatically changes it to persisted or accumulated
+
+* deprecations
+  * [Enum] Receiving the index of iteration in `Enum.map/2` and `Enum.each/2` is deprecated in favor of `Stream.with_index/1`
+  * [File] `File.iterator/1` and `File.biniterator/1` are deprecated in favor of `IO.stream/1` and `IO.binstream/1`
+  * [File] `File.iterator!/2` and `File.biniterator!/2` are deprecated in favor of `File.stream!/2` and `File.binstream!/2`
+  * [Kernel] Deprecate recently added `quote binding: ...` in favor of the clearer `quote bind_quoted: ...`
+  * [Kernel] Deprecate `Kernel.float/1` in favor of a explicit conversion
+  * [Mix] Deprecate `mix run EXPR` in favor of `mix run -e EXPR`
+  * [Record] `Record.__index__/2` deprecated in favor of `Record.__record__(:index, key)`
+
+* backwards incompatible changes
+  * [Kernel] The `Binary.Inspect` protocol has been renamed to `Inspect`
+  * [Kernel] Tighten up the grammar rules regarding parentheses omission, previously the examples below would compile but now they raise an error message:
+
+            do_something 1, is_list [], 3
+            [1, is_atom :foo, 3]
+
+  * [Module] Calling `Module.register_attribute/3` no longer automatically changes it to persisted or accumulated
+  * [Record] First element of a record via `defrecordp` is now the `defrecordp` name and no longer the current atom
+  * [URI] Remove custom URI parsers in favor of `URI.default_port/2`
+
 # v0.9.3 (2013-06-23)
 
 * enhancements
   * [File] Add `File.chgrp`, `File.chmod` and `File.chown`
-  * [Kernel] Add --warnings-as-errors to Elixir's compiler options
+  * [Kernel] Add `--warnings-as-errors` to Elixir's compiler options
   * [Kernel] Print warnings to stderr
   * [Kernel] Warn on undefined module attributes
   * [Kernel] Emit warning for `x in []` in guards
   * [Kernel] Add `binding/0` and `binding/1` for retrieving bindings
   * [Kernel] `quote` now allows a binding as an option
   * [Macro] Add `Macro.expand_once/2` and `Macro.expand_all/2`
-  * [Mix] Implement `Mix.Version` for basic versioniong semantics
+  * [Mix] Implement `Mix.Version` for basic versioning semantics
   * [Mix] Support creation and installation of archives (.ez files)
   * [Mix] `github: ...` shortcut now uses the faster `git` schema instead of `https`
-  * [Record] Allow types to be given to `defrecord` and `defrecordp`
+  * [Record] Allow types to be given to `defrecordp`
 
 * bug fix
   * [Kernel] The elixir executable on Windows now supports the same options as the UNIX one
@@ -29,7 +73,7 @@
   * [Typespec] Deprecate `(fun(...) -> ...)` in favor of `(... -> ...)`
 
 * backwards incompatible changes
-  * [Bitwise] Precedence of operators used by the Bitwise module were changed. Check `elixir_parser.yrl` for more information.
+  * [Bitwise] Precedence of operators used by the Bitwise module were changed, check `elixir_parser.yrl` for more information
   * [File] `rm_rf` and `cp_r` now returns a tuple with three elements on failures
   * [Kernel] The quoted representation for `->` clauses changed from a tuple with two elements to a tuple with three elements to support metadata
   * [Kernel] Sigils now dispatch to `sigil_$` instead of `__$__` where `$` is the sigil caracter
@@ -49,7 +93,7 @@
 * bug fix
   * [HashDict] Ensure HashDict uses exact match throughout its implementation
   * [IEx] Do not interpret ANSI codes in IEx results
-  * [IEx] Ensure --cookie is set before accessing remote shell
+  * [IEx] Ensure `--cookie` is set before accessing remote shell
   * [Kernel] Do not ignore nil when dispatching protocols to avoid infinite loops
   * [Mix] Fix usage of shell expressions in `Mix.Shell.cmd`
   * [Mix] Start the application by default on escripts

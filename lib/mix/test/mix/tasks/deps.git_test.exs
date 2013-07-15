@@ -8,7 +8,7 @@ defmodule Mix.Tasks.DepsGitTest do
       [ app: :deps_on_git_app,
         version: "0.1.0",
         deps: [
-          { :deps_on_git_repo, "0.1.0", git: MixTest.Case.fixture_path("deps_on_git_repo") }
+          { :deps_on_git_repo, "0.2.0", git: MixTest.Case.fixture_path("deps_on_git_repo") }
         ] ]
     end
   end
@@ -52,7 +52,7 @@ defmodule Mix.Tasks.DepsGitTest do
       assert_received { :mix_shell, :info, ["Compiled lib/git_repo.ex"] }
       assert_received { :mix_shell, :info, ["Generated git_repo.app"] }
       assert File.exists?("deps/git_repo/ebin/Elixir.GitRepo.beam")
-      assert File.read!("mix.lock") =~ %r/"git_repo": {:git,#{inspect fixture_path("git_repo")},"[a-f0-9]+",\[\]}/
+      assert File.read!("mix.lock") =~ %r/"git_repo": {:git, #{inspect fixture_path("git_repo")}, "[a-f0-9]+", \[\]}/
 
       purge [GitRepo]
       File.touch!("deps/git_repo/ebin/.compile.elixir", { { 2010, 4, 17 }, { 14, 0, 0 } })
@@ -115,7 +115,7 @@ defmodule Mix.Tasks.DepsGitTest do
 
       # We should fail because the lock diverged
       Mix.Task.clear
-      assert_raise Mix.OutOfDateDepsError, fn ->
+      assert_raise Mix.Error, fn ->
         Mix.Tasks.Run.run ["1+2"]
       end
     end
@@ -199,7 +199,7 @@ defmodule Mix.Tasks.DepsGitTest do
     Mix.Project.push GitApp
 
     in_fixture "no_mixfile", fn ->
-      assert_raise Mix.OutOfDateDepsError, fn ->
+      assert_raise Mix.Error, fn ->
         Mix.Tasks.Compile.run []
       end
     end
@@ -254,7 +254,7 @@ defmodule Mix.Tasks.DepsGitTest do
       assert_received { :mix_shell, :info, [^message] }
 
       Mix.Deps.Lock.write [git_repo: last]
-      assert_raise Mix.OutOfDateDepsError, fn ->
+      assert_raise Mix.Error, fn ->
         Mix.Tasks.Deps.Check.run []
       end
 

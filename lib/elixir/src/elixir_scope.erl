@@ -5,7 +5,8 @@
   serialize/1, deserialize/1,
   serialize_with_vars/2, deserialize_with_vars/2,
   to_erl_env/1, to_ex_env/1,
-  umergev/2, umergec/2, merge_clause_vars/2
+  vars_from_binding/2, binding_for_eval/2, binding_from_vars/2,
+  umergev/2, umergec/2, umergea/2, merge_clause_vars/2
 ]).
 -include("elixir.hrl").
 
@@ -80,18 +81,24 @@ build_ex_var(Line, Key, Name, S) when is_integer(Line) ->
 % Handle Macro.Env conversion
 
 to_erl_env({ 'Elixir.Macro.Env', Module, File, _Line, Function, Aliases, Context,
-    Requires, Functions, Macros, ContextModules, MacroAliases }) ->
+    Requires, Functions, Macros, ContextModules, MacroAliases, Vars }) ->
   #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
     requires=Requires,macros=Macros,functions=Functions,
-    context_modules=ContextModules,macro_aliases=MacroAliases}.
+    context_modules=ContextModules,macro_aliases=MacroAliases,
+    list_vars=Vars}.
 
 to_ex_env({ Line, #elixir_scope{module=Module,file=File,
     function=Function,aliases=Aliases,context=Context,
     requires=Requires,macros=Macros,functions=Functions,
-    context_modules=ContextModules,macro_aliases=MacroAliases} }) when is_integer(Line) ->
+    context_modules=ContextModules,macro_aliases=MacroAliases,
+    vars=Vars,list_vars=ListVars} }) when is_integer(Line) ->
   { 'Elixir.Macro.Env', Module, File, Line, Function, Aliases,
-    Context, Requires, Functions, Macros, ContextModules, MacroAliases }.
+    Context, Requires, Functions, Macros, ContextModules, MacroAliases,
+    list_vars(ListVars, Vars) }.
+
+list_vars(nil, Vars) -> [K || { K, _ } <- Vars];
+list_vars(Other, _)  -> Other.
 
 % Provides a tuple with only the scope information we want to serialize.
 
@@ -134,8 +141,8 @@ deserialize_with_vars({ File, Functions, Requires, Macros,
     counter=[{'',length(Vars)}]
   }.
 
-% Receives two scopes and return a new scope based on the second
-% with their variables merged.
+%% Receives two scopes and return a new scope based on the second
+%% with their variables merged.
 
 umergev(S1, S2) ->
   V1 = S1#elixir_scope.vars,
@@ -147,11 +154,22 @@ umergev(S1, S2) ->
     clause_vars=merge_clause_vars(C1, C2)
   }.
 
-% Receives two scopes and return the later scope
-% keeping the variables from the first (counters,
-% imports and everything else are passed forward).
+%% Receives two scopes and return the first scope with
+%% counters and flags from the later.
 
 umergec(S1, S2) ->
+  S1#elixir_scope{
+    counter=S2#elixir_scope.counter,
+    extra_guards=S2#elixir_scope.extra_guards,
+    super=S2#elixir_scope.super,
+    caller=S2#elixir_scope.caller
+  }.
+
+%% Receives two scopes and return the later scope
+%% keeping the variables from the first (counters,
+%% imports and everything else are passed forward).
+
+umergea(S1, S2) ->
   S2#elixir_scope{
     vars=S1#elixir_scope.vars,
     temp_vars=S1#elixir_scope.temp_vars,
@@ -183,3 +201,40 @@ var_merger(_Var, K1, K2) ->
 var_number([$@|T], _Acc) -> var_number(T, []);
 var_number([H|T], Acc)   -> var_number(T, [H|Acc]);
 var_number([], Acc)      -> list_to_integer(lists:reverse(Acc)).
+
+%% Setup the vars in scope from binding
+
+vars_from_binding(Scope, Binding) ->
+  Scope#elixir_scope{
+    vars=binding_dict(Binding),
+    temp_vars=[],
+    clause_vars=nil,
+    counter=[]
+  }.
+
+binding_dict(List) -> binding_dict(List, orddict:new()).
+binding_dict([{{H,Kind},_}|T], Dict) -> binding_dict(T, orddict:store({ H, Kind }, H, Dict));
+binding_dict([{H,_}|T], Dict) -> binding_dict(T, orddict:store({ H, nil }, H, Dict));
+binding_dict([], Dict) -> Dict.
+
+binding_for_eval(Binding, Module) ->
+  Keyword = orddict:from_list(Binding),
+  case orddict:find('_@MODULE', Keyword) of
+    { ok, _ } -> Keyword;
+    _ -> orddict:store('_@MODULE', Module, Keyword)
+  end.
+
+binding_from_vars(#elixir_scope{vars=Vars}, Binding) ->
+  binding_from_vars(Binding, [], Binding, Vars).
+
+binding_from_vars([{Var,_}|T], Acc, Binding, Vars) ->
+  case lists:member($@, atom_to_list(Var)) of
+    true  ->
+      binding_from_vars(T, Acc, Binding, Vars);
+    false ->
+      RealName  = orddict:fetch({ Var, nil }, Vars),
+      RealValue = proplists:get_value(RealName, Binding, nil),
+      binding_from_vars(T, [{Var, RealValue}|Acc], Binding, Vars)
+  end;
+
+binding_from_vars([], Acc, _Binding, _Vars) -> lists:reverse(Acc).

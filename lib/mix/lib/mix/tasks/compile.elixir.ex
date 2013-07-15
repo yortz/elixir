@@ -78,16 +78,17 @@ defmodule Mix.Tasks.Compile.Elixir do
     to_compile = Mix.Utils.extract_files(elixirc_paths, compile_exts)
     to_watch   = Mix.Utils.extract_files(elixirc_paths, watch_exts)
 
-    force = opts[:force]
     stale = if Mix.Utils.stale?(Mix.Project.config_files, [manifest]) do
       force = true
       to_watch
     else
+      force = opts[:force]
       Mix.Utils.extract_stale(to_watch, [manifest])
     end
 
     if force or stale != [] do
       File.mkdir_p! compile_path
+      Code.prepend_path compile_path
       compile_files opts[:quick], project, compile_path, to_compile, stale, opts
       :ok
     else
@@ -97,23 +98,23 @@ defmodule Mix.Tasks.Compile.Elixir do
 
   defp compile_files(true, project, compile_path, to_compile, stale, opts) do
     set_compiler_opts(project, opts, ignore_module_conflict: true)
-    to_compile = lc f inlist to_compile, f in stale, do: f
+    to_compile = lc f inlist stale, f in to_compile, do: f
     compile_files(to_compile, compile_path)
     File.touch! Path.join(compile_path, @manifest)
   end
 
   defp compile_files(false, project, compile_path, to_compile, _stale, opts) do
-    Code.delete_path compile_path
+    previous = Mix.Utils.read_manifest(Path.join(compile_path, @manifest))
+
+    Enum.each previous, fn entry ->
+      Path.join(compile_path, entry <> ".beam") |> File.rm
+    end
+
     set_compiler_opts(project, opts, [])
+    compiled = compile_files to_compile, compile_path
+    compiled = lc { mod, _ } inlist compiled, do: atom_to_binary(mod)
 
-    { _current, to_remove } =
-      Mix.Utils.manifest Path.join(compile_path, @manifest), fn ->
-        compiled = compile_files to_compile, compile_path
-        lc { mod, _ } inlist compiled, do: atom_to_binary(mod)
-      end
-
-    lc f inlist to_remove, do: File.rm(Path.join(compile_path, f) <> ".beam")
-    Code.prepend_path compile_path
+    Mix.Utils.update_manifest(Path.join(compile_path, @manifest), compiled)
   end
 
   defp set_compiler_opts(project, opts, extra) do

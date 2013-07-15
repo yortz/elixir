@@ -19,7 +19,7 @@ defmodule Kernel.RecordRewriterTest do
 
   defp extract_clause(fun) do
     { { :fun, _, { :clauses, clauses } }, _ } =
-      :elixir_translator.translate_each(fun, :elixir.scope_for_eval([]))
+      :elixir_translator.translate_each(fun, :elixir.scope_for_eval(delegate_locals_to: __MODULE__))
     hd(clauses)
   end
 
@@ -87,6 +87,18 @@ defmodule Kernel.RecordRewriterTest do
   test "inside body with nested tuple" do
     clause = clause(fn(x = Range[]) -> ^x = Range[first: { :hello, 2 }] end)
     assert optimize_clause(clause) == { clause, [x: Range], { Range, [nil, { :hello, nil }, nil] } }
+  end
+
+  test "with setelement" do
+    clause = clause(fn(x = Macro.Env[]) -> :erlang.setelement(2, x, :foo) end)
+    assert optimize_clause(clause) == { clause, [x: Macro.Env], { Macro.Env, nil } }
+
+    clause = clause(fn(x = Macro.Env[]) -> :erlang.setelement(2, x, y = Macro.Env[]) end)
+    assert optimize_clause(clause) == { clause, [x: Macro.Env, y: Macro.Env], { Macro.Env, nil } }
+
+    # Not optimized with changing the first element
+    clause = clause(fn(x = Macro.Env[]) -> :erlang.setelement(1, x, :foo) end)
+    assert optimize_clause(clause) == { clause, [x: Macro.Env], nil }
   end
 
   test "conflicting definition" do

@@ -1,6 +1,6 @@
 %% Implements Elixir quote.
 -module(elixir_quote).
--export([escape/2, erl_escape/3, erl_quote/4, linify/2, unquote/5]).
+-export([escape/2, erl_escape/3, erl_quote/4, linify/2, unquote/6, join/5]).
 -include("elixir.hrl").
 
 %% Apply the line from site call on quoted contents.
@@ -9,7 +9,7 @@ linify(Line, Exprs) when is_integer(Line) ->
 
 do_linify(Line, { Left, Meta, Right }) ->
   NewMeta = case ?line(Meta) of
-    0 -> lists:keystore(line, 1, Meta, { line, Line });
+    0 -> keystore(line, Meta, Line);
     _ -> Meta
   end,
   { do_linify(Line, Left), NewMeta, do_linify(Line, Right) };
@@ -24,10 +24,10 @@ do_linify(_, Else) -> Else.
 
 %% Some expressions cannot be unquoted at compilation time.
 %% This function is responsible for doing runtime unquoting.
-unquote(_File, Meta, Left, { '__aliases__', _, Args }, nil) ->
+unquote(_File, _Line, Meta, Left, { '__aliases__', _, Args }, nil) ->
   { '__aliases__', Meta, [Left|Args] };
 
-unquote(_File, Meta, Left, Right, nil) when is_atom(Right) ->
+unquote(_File, _Line, Meta, Left, Right, nil) when is_atom(Right) ->
   case atom_to_list(Right) of
     "Elixir." ++ _ ->
       { '__aliases__', Meta, [Left, Right] };
@@ -35,11 +35,32 @@ unquote(_File, Meta, Left, Right, nil) when is_atom(Right) ->
       { { '.', Meta, [Left, Right] }, Meta, [] }
   end;
 
-unquote(_File, Meta, Left, Right, Args) when is_atom(Right) ->
+unquote(_File, _Line, Meta, Left, { Right, _, Context }, nil) when is_atom(Right), is_atom(Context) ->
+  { { '.', Meta, [Left, Right] }, Meta, [] };
+
+unquote(_File, _Line, Meta, Left, { Right, _, Args }, nil) when is_atom(Right) ->
   { { '.', Meta, [Left, Right] }, Meta, Args };
 
-unquote(File, Meta, _Left, _Right, _Args) ->
-  elixir_errors:syntax_error(Meta, File, "expected unquote after dot to return an atom or an alias").
+unquote(File, Line, _Meta, _Left, Right, nil) ->
+  elixir_errors:syntax_error(Line, File, "expected unquote after dot to return an atom, "
+    "an alias or a quoted call, got: ~ts", ['Elixir.Macro':to_string(Right)]);
+
+unquote(_File, _Line, Meta, Left, Right, Args) when is_atom(Right) ->
+  { { '.', Meta, [Left, Right] }, Meta, Args };
+
+unquote(_File, _Line, Meta, Left, { Right, _, Context }, Args) when is_atom(Right), is_atom(Context) ->
+  { { '.', Meta, [Left, Right] }, Meta, Args };
+
+unquote(File, Line, _Meta, _Left, Right, _Args) ->
+  elixir_errors:syntax_error(Line, File, "expected unquote after dot with args to return an atom "
+    "or a quoted call, got: ~ts", ['Elixir.Macro':to_string(Right)]).
+
+join(_File, _Line, Left, Right, Rest) when is_list(Left), is_list(Right), is_list(Rest) ->
+  Rest ++ Left ++ Right;
+
+join(_File, _Line, Left, Right, Rest)  ->
+  [H|T] = lists:reverse(Rest ++ Left),
+  lists:reverse([{ '|', [], [H, Right] }|T]).
 
 %% Escapes the given expression. It is similar to quote, but
 %% lines are kept and hygiene mechanisms are disabled.
@@ -50,7 +71,7 @@ escape(Expr, Unquote) ->
     aliases_hygiene=false,
     imports_hygiene=false,
     unquote=Unquote,
-    mark=false
+    escape=true
   }, nil).
 
 erl_escape(Expr, Unquote, S) ->
@@ -92,12 +113,12 @@ do_quote({ unquote, _Meta, [Expr] }, #elixir_quote{unquote=true} = Q, _) ->
 
 %% Context mark
 
-do_quote({ Def, Meta, Args }, #elixir_quote{mark=true} = Q, S) when ?defs(Def); Def == defmodule; Def == alias; Def == import ->
-  NewMeta = lists:keystore(context, 1, Meta, { context, Q#elixir_quote.context }),
+do_quote({ Def, Meta, Args }, #elixir_quote{escape=false} = Q, S) when ?defs(Def); Def == defmodule; Def == alias; Def == import ->
+  NewMeta = keystore(context, Meta, Q#elixir_quote.context),
   do_quote_tuple({ Def, NewMeta, Args }, Q, S);
 
-do_quote({ { '.', _, [_, Def] } = Target, Meta, Args }, #elixir_quote{mark=true} = Q, S) when ?defs(Def); Def == defmodule; Def == alias; Def == import ->
-  NewMeta = lists:keystore(context, 1, Meta, { context, Q#elixir_quote.context }),
+do_quote({ { '.', _, [_, Def] } = Target, Meta, Args }, #elixir_quote{escape=false} = Q, S) when ?defs(Def); Def == defmodule; Def == alias; Def == import ->
+  NewMeta = keystore(context, Meta, Q#elixir_quote.context),
   do_quote_tuple({ Target, NewMeta, Args }, Q, S);
 
 %% Aliases
@@ -111,7 +132,7 @@ do_quote({ '__aliases__', Meta, [H|T] } = Alias, #elixir_quote{aliases_hygiene=t
     Atom when is_atom(Atom) -> Atom;
     Aliases when is_list(Aliases) -> false
   end,
-  AliasMeta = lists:keystore(alias, 1, Meta, { alias, Annotation }),
+  AliasMeta = keystore(alias, Meta, Annotation),
   do_quote_tuple({ '__aliases__', AliasMeta, [H|T] }, Q, S);
 
 %% Vars
@@ -137,23 +158,29 @@ do_quote({ { '.', _, [_, function] } = Target, Meta, [{ '/', _, [{F, _, C}, A]}]
     #elixir_quote{imports_hygiene=true} = Q, S) when is_atom(F), is_integer(A), is_atom(C) ->
   do_quote_fa(Target, Meta, Args, F, A, Q, S);
 
-do_quote({ Name, Meta, ArgsOrAtom } = Tuple, #elixir_quote{imports_hygiene=true} = Q, S) when is_atom(Name) ->
+do_quote({ Name, Meta, ArgsOrAtom }, #elixir_quote{imports_hygiene=true} = Q, S) when is_atom(Name) ->
   Arity = case is_atom(ArgsOrAtom) of
     true  -> 0;
     false -> length(ArgsOrAtom)
   end,
 
-  case (lists:keyfind(import, 1, Meta) == false) andalso
+  case (keyfind(import, Meta) == false) andalso
       elixir_dispatch:find_import(Meta, Name, Arity, S) of
-    false    -> do_quote_tuple(Tuple, Q, S);
+    false ->
+      AmbMeta =
+        case (Arity == 1) andalso keyfind(ambiguous_op, Meta) of
+          { ambiguous_op, nil } -> keystore(ambiguous_op, Meta, Q#elixir_quote.context);
+          _ -> Meta
+        end,
+      do_quote_tuple({ Name, AmbMeta, ArgsOrAtom }, Q, S);
     Receiver ->
-      ImportMeta = lists:keystore(import, 1,
-        lists:keystore(context, 1, Meta, { context, Q#elixir_quote.context }),
-        { import, Receiver }),
+      ImportMeta = keystore(import,
+        keystore(context, Meta, Q#elixir_quote.context),
+        Receiver),
       do_quote_tuple({ Name, ImportMeta, ArgsOrAtom }, Q, S)
   end;
 
-do_quote({ _, _, _ } = Tuple, Q, S) ->
+do_quote({ _, _, _ } = Tuple, #elixir_quote{escape=false} = Q, S) ->
   do_quote_tuple(Tuple, Q, S);
 
 %% Literals
@@ -168,7 +195,7 @@ do_quote({ Left, Right }, Q, S) ->
   { TRight, RQ } = do_quote(Right, LQ, S),
   { { TLeft, TRight }, RQ };
 
-do_quote(Tuple, Q, S) when is_tuple(Tuple) ->
+do_quote(Tuple, #elixir_quote{escape=true} = Q, S) when is_tuple(Tuple) ->
   { TT, TQ } = do_quote(tuple_to_list(Tuple), Q, S),
   { { '{}', [], TT }, TQ };
 
@@ -181,16 +208,16 @@ do_quote(Other, Q, _) ->
 %% Quote helpers
 
 do_quote_call(Left, Meta, Expr, Args, Q, S) ->
-  All  = [meta(Meta, Q), Left, { unquote, Meta, [Expr] }, Args],
+  All  = [?line(Meta), meta(Meta, Q), Left, { unquote, Meta, [Expr] }, Args],
   { TAll, TQ } = lists:mapfoldl(fun(X, Acc) -> do_quote(X, Acc, S) end, Q, All),
   { { { '.', Meta, [elixir_quote, unquote] }, Meta, [{ '__FILE__', [], nil }|TAll] }, TQ }.
 
 do_quote_fa(Target, Meta, Args, F, A, Q, S) ->
   NewMeta =
-    case (lists:keyfind(import_fa, 1, Meta) == false) andalso
+    case (keyfind(import_fa, Meta) == false) andalso
          elixir_dispatch:find_import(Meta, F, A, S) of
       false    -> Meta;
-      Receiver -> lists:keystore(import_fa, 1, Meta, { import_fa, { Receiver, Q#elixir_quote.context } })
+      Receiver -> keystore(import_fa, Meta, { Receiver, Q#elixir_quote.context })
     end,
   do_quote_tuple({ Target, NewMeta, Args }, Q, S).
 
@@ -202,15 +229,29 @@ do_quote_tuple({ Left, Meta, Right }, Q, S) ->
 meta(Meta, #elixir_quote{line=keep}) ->
   Meta;
 meta(Meta, #elixir_quote{line=nil}) ->
-  lists:keydelete(line, 1, Meta);
+  keydelete(line, Meta);
 meta(Meta, #elixir_quote{line=Line}) ->
-  lists:keystore(line, 1, Meta, { line, Line }).
+  keystore(line, Meta, Line).
+
+keyfind(Key, Meta) ->
+  lists:keyfind(Key, 1, Meta).
+keydelete(Key, Meta) ->
+  lists:keydelete(Key, 1, Meta).
+keystore(Key, Meta, Value) ->
+  lists:keystore(Key, 1, Meta, { Key, Value }).
 
 %% Quote splicing
 
-do_splice([{ '|', _, [{ unquote_splicing, _, [Left] }, Right] }|T], #elixir_quote{unquote=true} = Q, S) ->
-  { TT, TQ } = do_splice(T, Q, S, [], []),
-  { do_splice_join(do_splice_join(TT, Left), Right), TQ#elixir_quote{unquoted=true} };
+do_splice([{ '|', Meta, [{ unquote_splicing, _, [Left] }, Right] }|T], #elixir_quote{unquote=true} = Q, S) ->
+  %% Process the remaining entries on the list.
+  %% For [1, 2, 3, unquote_splicing(arg)|tail], this will quote
+  %% 1, 2 and 3, which could even be unquotes.
+  { TT, QT } = do_splice(T, Q, S, [], []),
+  { TR, QR } = do_quote(Right, QT, S),
+
+  %% Do the joining at runtime when we are aware of the values.
+  Args = [{ '__FILE__', [], nil }, ?line(Meta), Left, TR, TT],
+  { { { '.', Meta, [elixir_quote, join] }, Meta, Args }, QR#elixir_quote{unquoted=true} };
 
 do_splice(List, Q, S) ->
   do_splice(List, Q, S, [], []).

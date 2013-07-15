@@ -47,7 +47,7 @@ set beforeExtra=
 
 rem Recursive loop called for each parameter that parses the cmd line parameters
 :startloop
-set par=%1
+set par="%1"
 shift
 if "%par%"=="" (
   rem if no parameters defined
@@ -103,6 +103,10 @@ for /f "usebackq" %%m in (`echo %par%^|findstr \-[er]`) do (
   goto:startloop
 )
 for /f "usebackq" %%m in (`echo %par%^|findstr \-p[raz]`) do (
+  shift
+  goto:startloop
+)
+for /f "usebackq" %%m in (`echo %par%^|findstr \--app`) do (
   shift
   goto:startloop
 )

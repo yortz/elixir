@@ -1,5 +1,5 @@
 defrecord IEx.Config, binding: nil, cache: '', counter: 1, scope: nil,
-                      result: nil, dot_iex_path: nil
+                      result: nil, dot_iex_path: nil, input_pid: nil
 
 defmodule IEx do
   @moduledoc %B"""
@@ -8,32 +8,32 @@ defmodule IEx do
   This module is the main entry point for Interactive Elixir and
   in this documentation we will talk a bit about how IEx works.
 
-  Notice some of the functionality described here will be available
+  Notice that some of the functionality described here will not be available
   depending on your terminal. In particular, if you get a message
   saying that the smart terminal could not be run, some of the
   features described here won't work.
 
   ## The Break command
 
-  Inside IEx, hitting Ctrl+C will open up the BREAK menu. In this
+  Inside IEx, hitting `Ctrl+C` will open up the `BREAK` menu. In this
   menu you can quit the shell, see process and ets tables information
   and much more.
 
   ## The User Switch command
 
-  Besides the break command, one can type Ctrl+G to get to the
+  Besides the break command, one can type `Ctrl+G` to get to the
   user switch command menu. When reached, you can type `h` to
   get more information.
 
   In this menu, developers are able to start new shells and
-  alternate in between them. Let's give it a try:
+  alternate between them. Let's give it a try:
 
       User switch command
        --> s 'Elixir.IEx'
        --> c
 
   The command above will start a new shell and connect to it.
-  Create a new variable called hello and assign some value to it:
+  Create a new variable called `hello` and assign some value to it:
 
       hello = :world
 
@@ -42,19 +42,19 @@ defmodule IEx do
       User switch command
        --> c 1
 
-  Now, try to access the hello variable again:
+  Now, try to access the `hello` variable again:
 
       hello
       ** (UndefinedFunctionError) undefined function: IEx.Helpers.hello/0
 
-  The command above fails because we have switched the shells.
+  The command above fails because we have switched shells.
   Since shells are isolated from each other, you can't access the
   variables defined in one shell from the other one.
 
   The user switch command menu also allows developers to connect to remote
-  shells using the "r" command. Keep in mind that you can't connect to a
+  shells using the `r` command. Keep in mind that you can't connect to a
   remote node if you haven't given a name to the current node
-  (i.e. Process.is_alive? must return true).
+  (i.e. `Process.is_alive?` must return `true`).
 
   ## The .iex file
 
@@ -88,11 +88,11 @@ defmodule IEx do
       13
 
   It is possible to override the default loading sequence for .iex file by
-  supplying the --dot-iex option to iex. See `iex --help`.
+  supplying the `--dot-iex` option to iex. See `iex --help`.
 
   ## Configuring the shell
 
-  There is a number of customization options provided by the shell. Take a look
+  There are a number of customization options provided by the shell. Take a look
   at the docs for the `IEx.Options` module.
 
   The main functions there are `IEx.Options.get/1` and `IEx.Options.set/2`. One
@@ -123,7 +123,7 @@ defmodule IEx do
   This means that any benchmarking done in the shell is going to have
   skewed results. So never run any profiling nor benchmarks in the shell.
 
-  Second of all, IEx alows you to break an expression into many lines,
+  Second, IEx allows you to break an expression into many lines,
   since this is common in Elixir. For example:
 
       iex(1)> "ab
@@ -136,7 +136,7 @@ defmodule IEx do
   the state of incomplete expression with no ability to terminate it other
   than by exiting the shell.
 
-  For such cases, there is a special break-trigger ("#iex:break") that when
+  For such cases, there is a special break-trigger (`#iex:break`) that when
   encountered on a line by itself will force the shell to break out of any
   pending expression and return to its normal state:
 
@@ -150,14 +150,14 @@ defmodule IEx do
   """
 
   @doc """
-  Registers a function to be invoked after IEx process is spawned.
+  Registers a function to be invoked after the IEx process is spawned.
   """
   def after_spawn(fun) when is_function(fun) do
     :application.set_env(:iex, :after_spawn, [fun|after_spawn])
   end
 
   @doc """
-  Returns registered after spawn callbacks.
+  Returns registered `after_spawn` callbacks.
   """
   def after_spawn do
     { :ok, list } = :application.get_env(:iex, :after_spawn)
@@ -165,7 +165,7 @@ defmodule IEx do
   end
 
   @doc """
-  Returns true if IEx was properly started.
+  Returns `true` if IEx was properly started.
   """
   def started? do
     match?({ :ok, true }, :application.get_env(:iex, :started))
@@ -206,8 +206,8 @@ defmodule IEx do
   end
 
   @doc """
-  Returns default config used to launch IEx. This config is also used by
-  IEx.TestFramework.
+  Returns the default config used to launch IEx. This config is also used by
+  `IEx.TestFramework`.
   """
   def boot_config(opts) do
     scope = :elixir.scope_for_eval(

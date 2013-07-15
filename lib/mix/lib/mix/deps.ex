@@ -1,17 +1,19 @@
 defrecord Mix.Dep, [ scm: nil, app: nil, requirement: nil, status: nil, opts: nil,
-                     deps: [], source: nil, manager: nil ] do
+                     deps: [], source: nil, manager: nil, from: nil ] do
   @moduledoc """
   This is a record that keeps information about your project
-  dependencies. It keeps:
+  dependencies. It contains:
 
-  * scm - a module representing the source code management tool (SCM) operations;
-  * app - the app name as an atom;
-  * requirements - a binary or regexp with the deps requirement;
-  * status - the current status of dependency, check `Mix.Deps.format_status/1` for more info;
-  * opts - the options given by the developer
-  * source - any possible configuration associated with the manager field,
-             rebar.config for rebar or the Mix.Project for Mix
-  * manager - the project management, possible values: :rebar | :mix | :make | nil
+  * `scm` - a module representing the source code management tool (SCM) operations;
+  * `app` - the application name as an atom;
+  * `requirement` - a binary or regex with the dependency's requirement
+  * `status` - the current status of the dependency, check `Mix.Deps.format_status/1` for more info;
+  * `opts` - the options given by the developer
+  * `deps` - dependencies of this dependency
+  * `source` - any possible configuration associated with the `manager` field,
+      `rebar.config` for rebar or the `Mix.Project` for Mix
+  * `manager` - the project management, possible values: `:rebar` | `:mix` | `:make` | `nil`
+  * `from` - path to the file where the dependency was defined
   """
 end
 
@@ -21,12 +23,12 @@ defmodule Mix.Deps do
   """
 
   @doc """
-  Returns all dependencies recursively as `Mix.Dep` record.
+  Return all dependencies recursively as a `Mix.Dep` record.
 
   ## Exceptions
 
-  This function raises an exception in case the developer
-  provides a dependency in the wrong format.
+  This function raises an exception if the provided
+  dependency is in the wrong format.
   """
   def all do
     { deps, _ } = Mix.Deps.Converger.all(nil, fn(dep, acc) -> { dep, acc } end)
@@ -34,7 +36,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Returns all dependencies but with a custom callback and
+  Return all dependencies, but with a custom callback and
   accumulator.
   """
   def all(acc, callback) do
@@ -43,12 +45,12 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Returns all direct child dependencies.
+  Return all direct child dependencies.
   """
   defdelegate children(), to: Mix.Deps.Retriever
 
   @doc """
-  Returns all dependencies depending on given dependencies.
+  Return all dependencies depending on the given dependencies.
   """
   def depending(deps, all_deps // all)
 
@@ -67,7 +69,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Receives a list of deps names and returns deps records.
+  Receives a list of dependency names and returns dependency records.
   Logs a message if the dependency could not be found.
   """
   def by_name(given, all_deps // all) do
@@ -80,7 +82,7 @@ defmodule Mix.Deps do
     deps = Enum.filter all_deps, fn(dep) -> dep.app in apps end
 
     # Now we validate the given atoms
-    index = Mix.Dep.__index__(:app)
+    index = Mix.Dep.__record__(:index, :app)
     Enum.each apps, fn(app) ->
       unless List.keyfind(deps, app, index) do
         Mix.shell.info "unknown dependency #{app} for env #{Mix.env}"
@@ -91,9 +93,9 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Runs the given `fun` inside the given dependency project by
+  Run the given `fun` inside the given dependency project by
   changing the current working directory and loading the given
-  project into the project stack.
+  project onto the project stack.
   """
   def in_dependency(dep, post_config // [], fun)
 
@@ -121,13 +123,13 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Formats the status of a dependency.
+  Format the status of a dependency.
   """
   def format_status(Mix.Dep[status: { :ok, _vsn }]),
     do: "ok"
 
   def format_status(Mix.Dep[status: { :noappfile, path }]),
-    do: "could not find app file at #{Mix.Utils.relative_to_cwd(path)}"
+    do: "could not find an app file at #{Mix.Utils.relative_to_cwd(path)}"
 
   def format_status(Mix.Dep[status: { :invalidapp, path }]),
     do: "the app file at #{Mix.Utils.relative_to_cwd(path)} is invalid"
@@ -141,20 +143,24 @@ defmodule Mix.Deps do
   def format_status(Mix.Dep[status: :nolock]),
     do: "the dependency is not locked"
 
-  def format_status(Mix.Dep[status: { :diverged, other }, opts: opts]),
-    do: "different specs were given for this dependency, choose one in your deps:\n" <>
-        "$ #{inspect_kw opts}\n$ #{inspect_kw other.opts}\n"
+  def format_status(Mix.Dep[status: { :diverged, other }, opts: opts] = dep) do
+    "different specs were given for this dependency, choose one in your deps:\n" <>
+    "> In #{dep.from}:\n$ #{inspect opts, pretty: true}\n" <>
+    "> In #{other.from}:\n$ #{inspect other.opts, pretty: true}\n"
+  end
+
+  def format_status(Mix.Dep[status: { :override, other }, opts: opts] = dep) do
+    "the dependency is overriding another dependency of one of your dependencies, " <>
+    "if this is intended set `override: true` in the options\n" <>
+    "> In #{dep.from}:\n$ #{inspect opts}\n" <>
+    "> In #{other.from}:\n$ #{inspect other.opts}\n"
+  end
 
   def format_status(Mix.Dep[status: { :unavailable, _ }]),
     do: "the dependency is not available, run `mix deps.get`"
 
-  defp inspect_kw(list) do
-    middle = lc { key, value } inlist Enum.sort(list), do: "#{key}: #{inspect value, raw: true}"
-    "[ " <> Enum.join(middle, ",\n  ") <> " ]"
-  end
-
   @doc """
-  Checks the lock for the given dependency and update its status accordingly.
+  Check the lock for the given dependency and update its status accordingly.
   """
   def check_lock(Mix.Dep[scm: scm, app: app, opts: opts] = dep, lock) do
     if available?(dep) do
@@ -173,7 +179,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Updates the dependency inside the given project.
+  Update the dependency inside the given project.
   """
   defdelegate update(dep), to: Mix.Deps.Retriever
 
@@ -186,6 +192,7 @@ defmodule Mix.Deps do
   @doc """
   Check if a dependency is available.
   """
+  def available?(Mix.Dep[status: { :override, _ }]),    do: false
   def available?(Mix.Dep[status: { :diverged, _ }]),    do: false
   def available?(Mix.Dep[status: { :unavailable, _ }]), do: false
   def available?(_), do: true
@@ -198,7 +205,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Check if a dependency is out of date or not, considering its
+  Check if a dependency is out of date, considering its
   lock status. Therefore, be sure to call `check_lock` before
   invoking this function.
   """
@@ -207,7 +214,7 @@ defmodule Mix.Deps do
   def out_of_date?(dep),                                   do: not available?(dep)
 
   @doc """
-  Format the dependency for printing.
+  Format a dependency for printing.
   """
   def format_dep(Mix.Dep[scm: scm, app: app, status: status, opts: opts]) do
     version =
@@ -220,7 +227,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Returns all compile paths for the dependency.
+  Return all compile paths for the dependency.
   """
   def compile_paths(Mix.Dep[app: app, opts: opts, manager: manager]) do
     if manager == :mix do
@@ -233,7 +240,7 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Returns all load paths for the dependency.
+  Return all load paths for the dependency.
   """
   def load_paths(Mix.Dep[manager: :mix, app: app, opts: opts]) do
     paths = Mix.Project.in_project app, opts[:dest], fn _ ->
@@ -260,21 +267,21 @@ defmodule Mix.Deps do
   end
 
   @doc """
-  Returns true if dependency is a mix project.
+  Return `true` if dependency is a mix project.
   """
   def mix?(Mix.Dep[manager: manager]) do
     manager == :mix
   end
 
   @doc """
-  Returns true if dependency is a rebar project.
+  Return `true` if dependency is a rebar project.
   """
   def rebar?(Mix.Dep[manager: manager]) do
     manager == :rebar
   end
 
   @doc """
-  Returns true if dependency is a make project.
+  Return `true` if dependency is a make project.
   """
   def make?(Mix.Dep[manager: manager]) do
     manager == :make

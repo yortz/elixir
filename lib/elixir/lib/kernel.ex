@@ -3,9 +3,9 @@ import Kernel, except: [raise: 1, raise: 2]
 defmodule Kernel do
   @moduledoc """
   `Kernel` provides the default macros and functions
-  Elixir imports into your environment. Those macros and functions
+  Elixir imports into your environment. These macros and functions
   can be skipped or cherry-picked via the `import` macro. For
-  instance, if you want to tell Elixir to not import the `case`
+  instance, if you want to tell Elixir not to import the `case`
   macro, you can do:
 
       import Kernel, except: [case: 2]
@@ -14,7 +14,7 @@ defmodule Kernel do
   cannot be skipped. These are described in `Kernel.SpecialForms`.
 
   Some of the functions described in this module are simply
-  a proxy to its Erlang counterpart. Although they are documented
+  a proxy to their Erlang counterpart. Although they are documented
   here for convenience, you can access their original documentation
   at http://www.erlang.org/doc/man/erlang.html.
   """
@@ -85,8 +85,8 @@ defmodule Kernel do
   end
 
   @doc """
-  Arithmetic division. Differently from other languages,
-  the result is always a float. Use div and rem if you want
+  Arithmetic division. Unlike other languages,
+  the result is always a float. Use `div` and `rem` if you want
   a natural division or the remainder. Allowed in guard clauses.
 
   ## Examples
@@ -103,7 +103,7 @@ defmodule Kernel do
 
   @doc """
   Sends a message to the process identified on the left.
-  A process can be identified bu its PID or, if it is registered,
+  A process can be identified by its PID or, if it is registered,
   by an atom.
 
   ## Examples
@@ -133,7 +133,7 @@ defmodule Kernel do
   end
 
   @doc """
-  Removes the first occorrence of an item on the left
+  Removes the first occurrence of an item on the left
   for each item on the right. Allowed in guard clauses.
 
   ## Examples
@@ -568,7 +568,7 @@ defmodule Kernel do
 
   @doc """
   Returns an integer which is the number of bytes needed to contain `bitstring`.
-  (That is, if the number of bits in Bitstring is not divisible by 8, the resulting
+  (That is, if the number of bits in `bitstring` is not divisible by 8, the resulting
   number of bytes will be rounded up.)
 
   Allowed in guard tests.
@@ -607,6 +607,7 @@ defmodule Kernel do
   """
   @spec float(number) :: float
   def float(number) do
+    IO.write "[WARNING] Kernel.float is deprecated, please do an explicit conversion instead\n#{Exception.format_stacktrace}"
     :erlang.float(number)
   end
 
@@ -1272,16 +1273,16 @@ defmodule Kernel do
 
   ## Nesting
 
-  Nesting a module inside the other affects its name:
+  Nesting a module inside another module affects its name:
 
       defmodule Foo do
         defmodule Bar do
         end
       end
 
-  In the example above, two modules `Foo` and `Foo.Bar`. The
+  In the example above, two modules `Foo` and `Foo.Bar` are created. The
   second can be accessed as `Bar` inside `Foo` in the same
-  lexical scope. If the module Bar is moved away to another
+  lexical scope. If the module `Bar` is moved to another
   file, it needs to be referenced via the full name or an
   alias need to be set with the help of `Kernel.SpecialForms.alias/2`.
 
@@ -1319,7 +1320,7 @@ defmodule Kernel do
       end
 
   In the example above, we defined a function `sum` that receives
-  two arguments and sum them.
+  two arguments and sums them.
 
   """
   defmacro def(name, do: contents)
@@ -1328,8 +1329,8 @@ defmodule Kernel do
   This macro allows a function to be defined more explicitly
   by accepting the name, args and guards as different entries.
 
-  Differently from `def/2`, the macro arguments are evaluated
-  and therefore requires quoting.
+  Unlike `def/2`, the macro arguments are evaluated
+  and therefore require quoting.
 
   The `name` must be an atom, the `arguments` a list where each
   element represents another argument and `guards` a list of
@@ -1359,8 +1360,8 @@ defmodule Kernel do
   defmacro def(name, args, guards, do: contents)
 
   @doc """
-  Defines a function that is private. Private functions
-  can only be accessible from the same module it is defined.
+  Defines a function that is private. Private functions are
+  only accessible from within the module in which they are defined.
 
   Check `def/2` for more information
 
@@ -1411,8 +1412,8 @@ defmodule Kernel do
   defmacro defmacro(name, args, guards, do: contents)
 
   @doc """
-  Defines a macro that is private. Private macros
-  can only be accessible from the same module it is defined.
+  Defines a macro that is private. Private macros are
+  only accessible from the same module in which they are defined.
 
   Check `defmacro/2` for more information
   """
@@ -1424,20 +1425,117 @@ defmodule Kernel do
   defmacro defmacrop(name, args, guards, do: contents)
 
   @doc %B"""
-  Defines a record.
+  Exports a module with a record definition and runtime operations.
 
-  This macro defines a module that generates accessors to manipulate the record
-  at both compilation and runtime.
-
-  See the `Record` module's documentation for a detailed description of records
-  in Elixir.
+  Please see the `Record` module's documentation for an introduction
+  to records in Elixir. The following sections are going into details
+  specific to `defrecord`.
 
   ## Examples
 
-      defrecord FileInfo, atime: nil, accesses: 0
+      defrecord User, name: nil, age: 0
+
+  The following line defines a module that exports information
+  about a record. The definition above provides a shortcut
+  syntax for creating and updating the record at compilation
+  time:
+
+      user = User[]
+      #=> User[name: nil, age: 0]
+
+      User[user, name: "José", age: 25]
+      #=> User[name: "José", age: 25]
+
+  And also a set of functions for working with the record
+  at runtime:
+
+      user = User.new(age: 25)
+      user.name          #=> Returns the value of name
+      user.name("José")  #=> Updates the value of name
+
+      # Update multiple attributes at once:
+      user.update(name: "Other", age: 25)
+
+      # Obtain the keywords representation of a record:
+      user.to_keywords #=> [name: "José", age: 25]
+
+  Since a record is simply a tuple where the first element is
+  the record name, we can get the raw record representation as
+  follows:
+
+      inspect User.new, raw: true
+      #=> { User, nil, 0 }
+
+  In addition to defining readers and writers for each attribute, Elixir also
+  defines an `update_#{attribute}` function to update the value. Such
+  functions expect a function as an argument that receives the current
+  value and must return the new one. For example, every time the file
+  is accessed, the accesses counter can be incremented with:
+
+      user.update_age(fn(old) -> old + 1 end)
+
+  ## Types
+
+  Every record defines a type named `t` that can be accessed in typespecs.
+  Those types can be specified inside the record definition:
+
+      defrecord User do
+        record_type name: string, age: integer
+      end
+
+  All fields without a specified type are assumed to have type `term`.
+
+  Assuming the `User` record defined above, it could be used in typespecs
+  as follow:
+
+      @spec handle_user(User.t) :: boolean()
+
+  ## Runtime introspection
+
+  At runtime, developers can use `__record__` to get information
+  about the given record:
+
+      User.__record__(:name)
+      #=> User
+
+      User.__record__(:fields)
+      #=> [name: nil, age: 0]
+
+  In order to quickly access the index of a field, one can use
+  the `__record__` function with `:index` as the first argument:
+
+      User.__record__(:index, :age)
+      #=> 2
+
+      User.__record__(:index, :unknown)
+      #=> nil
+
+  ## Compile-time introspection
+
+  At compile time, one can access the following information about the record
+  from within the record module:
+
+  * `@record_fields` — a keyword list of record fields with defaults
+  * `@record_types` — a keyword list of record fields with types
+
+  For example:
+
+      defrecord Foo, bar: nil do
+        record_type bar: nil | integer
+        IO.inspect @record_fields
+        IO.inspect @record_types
+      end
+
+  Prints out:
+
+       [bar: nil]
+       [bar: {:|,[line: ...],[nil,{:integer,[line: ...],nil}]}]
+
+  Where the last line is a quoted representation of
+
+       [bar: nil | integer]
 
   """
-
   defmacro defrecord(name, fields, do_block // [])
 
   defmacro defrecord(name, fields, do_block) do
@@ -1448,17 +1546,13 @@ defmodule Kernel do
   end
 
   @doc %B"""
-  Defines a record with a set of private macros to manipulate it.
+  Defines a set of private macros to manipulate a record definition.
 
   This macro defines a set of macros private to the current module to
   manipulate the record exclusively at compilation time.
 
-  `defrecordp` must be used instead of `defrecord` when there is no interest in
-  exposing the record outside of the module it's defined in. In many ways, it
-  is similar to an Erlang record, since it is only available at compilation time.
-
-  See the `Record` module's documentation for a detailed description of records
-  in Elixir.
+  Please see the `Record` module's documentation for an introduction
+  to records in Elixir.
 
   ## Examples
 
@@ -1470,8 +1564,8 @@ defmodule Kernel do
   arities will be defined to manipulate the underlying record:
 
       # To create records
-      user()        #=> { User, "José", 25 }
-      user(age: 26) #=> { User, "José", 26 }
+      user()        #=> { :user, "José", 25 }
+      user(age: 26) #=> { :user, "José", 26 }
 
       # To get a field from the record
       user(record, :name) #=> "José"
@@ -1480,7 +1574,7 @@ defmodule Kernel do
       user(record, [:name, :age]) #=> ["José", 25]
 
       # To update the record
-      user(record, age: 26) #=> { User, "José", 26 }
+      user(record, age: 26) #=> { :user, "José", 26 }
 
       # To convert the record to keywords
       user(record) #=> [name: "José", age: 25]
@@ -1488,6 +1582,19 @@ defmodule Kernel do
       # To match against the record
       user(name: name) = record
       name #=> "José"
+
+  By default, Elixir uses the record name as the first element of the tuple.
+  In some cases though, this might be undesirable and one can explicitly
+  define what the first element of the record should be:
+
+      defmodule MyServer do
+        defrecordp :state, MyServer, data: nil
+      end
+
+  This way, the record created will have `MyServer` as the first element,
+  not `:state`:
+
+      state() #=> { MyServer, nil }
 
   ## Types
 
@@ -1504,8 +1611,8 @@ defmodule Kernel do
       @typep user_t :: { :user, binary, integer }
 
   """
-  defmacro defrecordp(name, fields) when is_atom(name) do
-    Record.defrecordp(name, fields)
+  defmacro defrecordp(name, tag // nil, fields) when is_atom(name) do
+    Record.defrecordp(name, Macro.expand(tag, __CALLER__), fields)
   end
 
   @doc """
@@ -1515,7 +1622,7 @@ defmodule Kernel do
   the same API and similar behavior to `defrecord/4` with two notable
   differences:
 
-  1) Differently from records, exceptions are documented by default;
+  1) Unlike records, exceptions are documented by default;
 
   2) Exceptions **must** implement `message/1` -- a function that returns a
      string;
@@ -1546,6 +1653,82 @@ defmodule Kernel do
         raise "expected exception #{inspect unquote(name)} to implement message/1"
       end
     end
+  end
+
+  @doc """
+  Get the element at the zero-based `index` in `tuple`.
+
+  Implemented as a macro so it can be used in guards.
+
+  ## Example
+
+      iex> tuple = { :foo, :bar, 3 }
+      ...> elem(tuple, 1)
+      :bar
+
+  """
+  defmacro elem(tuple, index) when is_integer(index) do
+    quote do: :erlang.element(unquote(index + 1), unquote(tuple))
+  end
+
+  defmacro elem(tuple, index) do
+    quote do: :erlang.element(unquote(index) + 1, unquote(tuple))
+  end
+
+  @doc """
+  Sets the element in `tuple` at the zero-based `index` to the given `value`.
+
+  ## Example
+
+      iex> tuple = { :foo, :bar, 3 }
+      ...> set_elem(tuple, 0, :baz)
+      { :baz, :bar, 3 }
+
+  """
+  defmacro set_elem(tuple, index, value) when is_integer(index) do
+    quote do: :erlang.setelement(unquote(index + 1), unquote(tuple), unquote(value))
+  end
+
+  defmacro set_elem(tuple, index, value) do
+    quote do: :erlang.setelement(unquote(index) + 1, unquote(tuple), unquote(value))
+  end
+
+  @doc """
+  Inserts `value` into `tuple` at the given zero-based `index`.
+
+  ## Example
+
+      iex> tuple = { :bar, :baz }
+      ...> insert_elem(tuple, 0, :foo)
+      { :foo, :bar, :baz }
+  """
+  defmacro insert_elem(tuple, index, value) when is_integer(index) do
+    quote do: :erlang.insert_element(unquote(index + 1), unquote(tuple), unquote(value))
+  end
+
+  defmacro insert_elem(tuple, index, value) do
+    quote do: :erlang.insert_element(unquote(index) + 1, unquote(tuple), unquote(value))
+  end
+
+  @doc """
+  Deletes the element at the zero-based `index` from `tuple`.
+
+  Please note that in versions of Erlang prior to R16B there is no BIF
+  for this operation and it is emulated by converting the tuple to a list
+  and back and is, therefore, inefficient.
+
+  ## Example
+
+      iex> tuple = { :foo, :bar, :baz }
+      ...> delete_elem(tuple, 0)
+      { :bar, :baz }
+  """
+  defmacro delete_elem(tuple, index) when is_integer(index) do
+    quote do: :erlang.delete_element(unquote(index + 1), unquote(tuple))
+  end
+
+  defmacro delete_elem(tuple, index) do
+    quote do: :erlang.delete_element(unquote(index) + 1, unquote(tuple))
   end
 
   @doc """
@@ -1665,7 +1848,8 @@ defmodule Kernel do
     :binary.match(left, right) != :nomatch
   end
 
-  def left =~ right when is_binary(left) and is_tuple(right) and :erlang.element(1, right) == Regex do
+  def left =~ right when is_binary(left) and is_tuple(right) and
+      tuple_size(right) > 0 and elem(right, 0) == Regex do
     Regex.match?(right, left)
   end
 
@@ -1883,18 +2067,23 @@ defmodule Kernel do
     end
   end
 
-  @doc """
-  Inspect the given arguments according to the `Binary.Inspect` protocol.
+  @doc %B"""
+  Inspect the given arguments according to the `Inspect` protocol.
 
   ## Options
 
   The following options are supported:
 
-  * raw   -- when true, record tuples are not formatted by the inspect protocol,
-             but are printed as just tuples; default: false
+  * `:raw`   - when true, record tuples are not formatted by the inspect protocol,
+               but are printed as just tuples, defaults to false;
 
-  * limit -- limits the number of items that are printed for tuples, bitstrings,
-             and lists; does not apply to strings
+  * `:limit` - limits the number of items that are printed for tuples, bitstrings,
+               and lists, does not apply to strings nor char lists;
+
+  * `:pretty` - if set to true enables pretty printing, defaults to false;
+
+  * `:width` - the width avaliable for inspect to lay out the data structure
+               representation. Defaults to the least of 80 and terminal width;
 
   ## Examples
 
@@ -1902,26 +2091,38 @@ defmodule Kernel do
       ":foo"
 
       iex> inspect [1, 2, 3, 4, 5], limit: 3
-      "[1,2,3,...]"
+      "[1, 2, 3, ...]"
 
-      inspect(ArgumentError[])
-      #=> "ArgumentError[message: \"argument error\"]"
+      iex> inspect(ArgumentError[])
+      "ArgumentError[message: \"argument error\"]"
 
-      inspect(ArgumentError[], raw: true)
-      #=> "{ArgumentError,:__exception__,\"argument error\"}"
+      iex> inspect(ArgumentError[], raw: true)
+      "{ArgumentError, :__exception__, \"argument error\"}"
 
   Note that the inspect protocol does not necessarily return a valid
-  representation of an Elixir term. In such cases, the inspected result must
-  start with `#`. For example, inspecting a function will return:
+  representation of an Elixir term. In such cases, the inspected result
+  must start with `#`. For example, inspecting a function will return:
 
       inspect &1 + &2
       #=> #Function<...>
 
   """
-  def inspect(arg, opts // []) do
-    case is_tuple(arg) and Keyword.get(opts, :raw, false) do
-      true  -> Binary.Inspect.Tuple.inspect(arg, opts)
-      false -> Binary.Inspect.inspect(arg, opts)
+  def inspect(arg, opts // [])
+
+  def inspect(arg, opts) when is_tuple(opts) and tuple_size(opts) > 0 and
+      elem(opts, 0) == Inspect.Opts do
+    case is_tuple(arg) and elem(opts, 1) do
+      true  -> Inspect.Tuple.inspect(arg, opts)
+      false -> Inspect.inspect(arg, opts)
+    end
+  end
+
+  def inspect(arg, opts) when is_list(opts) do
+    opts = Inspect.Opts.new(opts)
+
+    case opts.pretty do
+      true  -> Inspect.Algebra.pretty(inspect(arg, opts), opts.width)
+      false -> Inspect.Algebra.pretty(inspect(arg, opts), :infinity)
     end
   end
 
@@ -1953,88 +2154,6 @@ defmodule Kernel do
   end
 
   @doc """
-  Define elem to get Tuple element according to Elixir conventions
-  (i.e. it expects the tuple as first argument, zero-index based).
-
-  It is implemented as a macro so it can be used in guards.
-
-  ## Example
-
-      iex> tuple = { :foo, :bar, 3 }
-      ...> elem(tuple, 1)
-      :bar
-
-  """
-  defmacro elem(tuple, index) when is_integer(index) do
-    quote do: :erlang.element(unquote(index + 1), unquote(tuple))
-  end
-
-  defmacro elem(tuple, index) do
-    quote do: :erlang.element(unquote(index) + 1, unquote(tuple))
-  end
-
-  @doc """
-  Define set_elem to set Tuple element according to Elixir conventions
-  (i.e. it expects the tuple as first argument, zero-index based).
-
-  ## Example
-
-      iex> tuple = { :foo, :bar, 3 }
-      ...> set_elem(tuple, 0, :baz)
-      { :baz, :bar, 3 }
-
-  """
-  defmacro set_elem(tuple, index, value) when is_integer(index) do
-    quote do: :erlang.setelement(unquote(index + 1), unquote(tuple), unquote(value))
-  end
-
-  defmacro set_elem(tuple, index, value) do
-    quote do: :erlang.setelement(unquote(index) + 1, unquote(tuple), unquote(value))
-  end
-
-  @doc """
-  Define insert_elem to insert element into a tuple according to
-  Elixir conventions (i.e. it expects the tuple as first argument,
-  zero-index based).
-
-  ## Example
-
-      iex> tuple = { :bar, :baz }
-      ...> insert_elem(tuple, 0, :foo)
-      { :foo, :bar, :baz }
-  """
-  defmacro insert_elem(tuple, index, value) when is_integer(index) do
-    quote do: :erlang.insert_element(unquote(index + 1), unquote(tuple), unquote(value))
-  end
-
-  defmacro insert_elem(tuple, index, value) do
-    quote do: :erlang.insert_element(unquote(index) + 1, unquote(tuple), unquote(value))
-  end
-
-  @doc """
-  Define delete_elem to delete element from a tuple according to
-  Elixir conventions (i.e. it expects the tuple as first argument,
-  zero-index based).
-
-  Please note that in versions of Erlang prior to R16B there is no BIF
-  for this operation and it is emulated by converting the tuple to a list
-  and back and is, therefore, inefficient.
-
-  ## Example
-
-      iex> tuple = { :foo, :bar, :baz }
-      ...> delete_elem(tuple, 0)
-      { :bar, :baz }
-  """
-  defmacro delete_elem(tuple, index) when is_integer(index) do
-    quote do: :erlang.delete_element(unquote(index + 1), unquote(tuple))
-  end
-
-  defmacro delete_elem(tuple, index) do
-    quote do: :erlang.delete_element(unquote(index) + 1, unquote(tuple))
-  end
-
-  @doc """
   Provides an integer division macro according to Erlang semantics.
   Raises an error if one of the arguments is not an integer.
   Can be used in guard tests.
@@ -2046,7 +2165,7 @@ defmodule Kernel do
 
   """
   defmacro div(left, right) do
-    quote do: __op__ :div, unquote(left), unquote(right)
+    quote do: __op__(:div, unquote(left), unquote(right))
   end
 
   @doc """
@@ -2061,7 +2180,7 @@ defmodule Kernel do
 
   """
   defmacro rem(left, right) do
-    quote do: __op__ :rem, unquote(left), unquote(right)
+    quote do: __op__(:rem, unquote(left), unquote(right))
   end
 
   @doc """
@@ -2103,13 +2222,25 @@ defmodule Kernel do
       list = [{:a, 1}, {:b, 2}, {:a, 3}]
       Enum.filter list, match?({:a, x } when x < 2, &1)
 
+  However, variables assigned in the match will not be available
+  outside of the function call:
+
+      iex> match?(x, 1)
+      true
+      iex> binding([:x]) == []
+      true
+
   """
+  defmacro match?(pattern, expr)
+
+  # Special case underscore since it always matches
   defmacro match?({ :_, _, atom }, _right) when is_atom(atom) do
-    # Special case underscore since it always matches.
     true
   end
 
   defmacro match?(left, right) do
+    { left, _ } = falsify_var(left, [], falsify_all(&1, &2))
+
     quote do
       case unquote(right) do
         unquote(left) ->
@@ -2118,6 +2249,51 @@ defmodule Kernel do
           false
       end
     end
+  end
+
+  defp falsify_all({ var, meta, scope }, acc) when is_atom(var) and is_atom(scope) do
+    { { var, meta, false }, [{ var, scope }|acc] }
+  end
+
+  defp falsify_selected({ var, meta, scope } = original, acc) when is_atom(var) and is_atom(scope) do
+    case :lists.member({ var, scope }, acc) do
+      true  -> { { var, meta, false }, acc }
+      false -> { original, acc }
+    end
+  end
+
+  defp falsify_var({ :^, _, [_] } = contents, acc, _fun) do
+    { contents, acc }
+  end
+
+  defp falsify_var({ :when, meta, [left, right] }, acc, fun) do
+    { left, acc }  = falsify_var(left, acc, fun)
+    { right, acc } = falsify_var(right, acc, falsify_selected(&1, &2))
+    { { :when, meta, [left, right] }, acc }
+  end
+
+  defp falsify_var({ var, _, scope } = original, acc, fun) when is_atom(var) and is_atom(scope) do
+    fun.(original, acc)
+  end
+
+  defp falsify_var({ left, meta, right }, acc, fun) do
+    { left, acc }  = falsify_var(left, acc, fun)
+    { right, acc } = falsify_var(right, acc, fun)
+    { { left, meta, right }, acc }
+  end
+
+  defp falsify_var({ left, right }, acc, fun) do
+    { left, acc }  = falsify_var(left, acc, fun)
+    { right, acc } = falsify_var(right, acc, fun)
+    { { left, right }, acc }
+  end
+
+  defp falsify_var(list, acc, fun) when is_list(list) do
+    :lists.mapfoldl(falsify_var(&1, &2, fun), acc, list)
+  end
+
+  defp falsify_var(other, acc, _fun) do
+    { other, acc }
   end
 
   @doc """
@@ -2417,7 +2593,7 @@ defmodule Kernel do
         # ... callbacks ...
       end
 
-  Elixir supports by default all Erlang module attributes but any developer
+  By default Elixir supports all Erlang module attributes, but any developer
   can also add custom attributes:
 
       defmodule MyServer do
@@ -2425,12 +2601,12 @@ defmodule Kernel do
         IO.inspect @my_data #=> 13
       end
 
-  Differently from Erlang, such attributes are not stored in the module by
+  Unlike Erlang, such attributes are not stored in the module by
   default since it is common in Elixir to use such attributes to store
   temporary data. A developer can configure an attribute to behave closer
-  to Erlang by calling `Module.register_attribute/2`.
+  to Erlang by calling `Module.register_attribute/3`.
 
-  Finally notice that attributes can also be read inside functions:
+  Finally, notice that attributes can also be read inside functions:
 
       defmodule MyServer do
         @my_data 11
@@ -2463,12 +2639,15 @@ defmodule Kernel do
       [x: 2]
 
   """
-  defmacro binding
+  defmacro binding() do
+    do_binding(nil, __CALLER__.vars, __CALLER__.in_match?)
+  end
 
   @doc """
   Receives a list of atoms at compilation time and returns the
   binding of the given variables as a keyword list where the
   variable name is the key and the variable value is the value.
+
   In case a variable in the list does not exist in the binding,
   it is not included in the returned result.
 
@@ -2479,13 +2658,19 @@ defmodule Kernel do
       [x: 1]
 
   """
-  defmacro binding(list)
+  defmacro binding(list) when is_list(list) do
+    do_binding(list, nil, __CALLER__.vars, __CALLER__.in_match?)
+  end
+
+  defmacro binding(context) when is_atom(context) do
+    do_binding(context, __CALLER__.vars, __CALLER__.in_match?)
+  end
 
   @doc """
-  Receives a list of tuples at compilation time containing the
-  variable name and its scope and returns the binding of the given
-  variables as a keyword list with the variable name and scope pair
-  as key and the variable value as value.
+  Receives a list of atoms at compilation time and returns the
+  binding of the given variables in the given context as a keyword
+  list where the variable name is the key and the variable value
+  is the value.
 
   In case a variable in the list does not exist in the binding,
   it is not included in the returned result.
@@ -2493,13 +2678,35 @@ defmodule Kernel do
   ## Examples
 
       iex> var!(x, :foo) = 1
-      iex> binding([x: nil], true)
+      iex> binding([:x, :y])
       []
-      iex> binding([x: :foo], true)
-      [{ { :x, :foo }, 1 }]
+      iex> binding([:x, :y], :foo)
+      [x: 1]
 
   """
-  defmacro binding(list, true)
+  defmacro binding(list, context) when is_list(list) and is_atom(context) do
+    do_binding(list, context, __CALLER__.vars, __CALLER__.in_match?)
+  end
+
+  defp do_binding(context, vars, in_match) do
+    lc { v, c } inlist vars, c == context, v != :_@CALLER do
+      { v, wrap_binding(in_match, { v, [], c }) }
+    end
+  end
+
+  defp do_binding(list, context, vars, in_match) do
+    lc { v, c } inlist vars, c == context, :lists.member(v, list) do
+      { v, wrap_binding(in_match, { v, [], c }) }
+    end
+  end
+
+  defp wrap_binding(true, var) do
+    quote do: ^(unquote(var))
+  end
+
+  defp wrap_binding(_, var) do
+    var
+  end
 
   @doc """
   Provides an `if` macro. This macro expects the first argument to
@@ -2509,24 +2716,24 @@ defmodule Kernel do
 
       if(foo, do: bar)
 
-  In the example above, bar will be returned if foo evaluates to
-  true (i.e. it is not false nor nil). Otherwise, nil will be returned.
+  In the example above, `bar` will be returned if `foo` evaluates to
+  `true` (i.e. it is neither `false` nor `nil`). Otherwise, `nil` will be returned.
 
-  An else option can be given to specify the opposite:
+  An `else` option can be given to specify the opposite:
 
-      if(foo, do: bar, else: bar)
+      if(foo, do: bar, else: baz)
 
   ## Blocks examples
 
-  Elixir also allows you to pass a block to the if macro. The first
+  Elixir also allows you to pass a block to the `if` macro. The first
   example above would be translated to:
 
       if foo do
         bar
       end
 
-  Notice that do/end becomes delimiters. The second example would
-  then translate do:
+  Notice that `do/end` becomes delimiters. The second example would
+  then translate to:
 
       if foo do
         bar
@@ -2881,8 +3088,8 @@ defmodule Kernel do
       iex> false && throw(:bad)
       false
 
-  Notice that, differently from Erlang `and` operator,
-  this operator accepts any expression as arguments,
+  Notice that, unlike Erlang's `and` operator,
+  this operator accepts any expression as an argument,
   not only booleans, however it is not allowed in guards.
   """
   defmacro left && right do
@@ -2912,8 +3119,8 @@ defmodule Kernel do
       iex> true || throw(:bad)
       true
 
-  Notice that, differently from Erlang `or` operator,
-  this operator accepts any expression as arguments,
+  Notice that, unlike Erlang's `or` operator,
+  this operator accepts any expression as an argument,
   not only booleans, however it is not allowed in guards.
   """
   defmacro left || right do
@@ -2928,8 +3135,8 @@ defmodule Kernel do
   end
 
   @doc """
-  Returns true if the element on the left is equal (==) to
-  any of the items in the right.
+  Returns `true` if the element on the left is equal (==) to
+  any of the items on the right.
 
   ## Examples
 
@@ -3129,7 +3336,7 @@ defmodule Kernel do
   def function_exported?(module, function, arity) do
     case is_tuple(module) do
       true  ->
-        :erlang.function_exported(:erlang.element(1, module), function, arity + 1)
+        :erlang.function_exported(elem(module, 0), function, arity + 1)
       false ->
         :erlang.function_exported(module, function, arity)
     end
@@ -3159,12 +3366,12 @@ defmodule Kernel do
       sample = [a: 1, b: 2, c: 3]
       sample[:b] #=> 2
 
-  ## Atoms
+  ## Aliases
 
-  Whenever invoked on an atom, the access protocol is expanded
-  at compilation time rather than on runtime. This feature is used
-  by records to allow a developer to match against an specific part
-  of a record:
+  Whenever invoked on an alias or an atom, the access protocol is
+  expanded at compilation time rather than on runtime. This feature
+  is used by records to allow a developer to match against an specific
+  part of a record:
 
       def increment(State[counter: counter, other: 13] = state) do
         state.counter(counter + 1)
@@ -3188,9 +3395,9 @@ defmodule Kernel do
         State[counter: counter]
       end
 
-  The example above is slightly faster than `State.new(counter: :counter)`
-  because the record is expanded at compilation time and not at runtime.
-  If a field is not specified on creation, it will have its default value.
+  The example above is faster than `State.new(counter: :counter)` because
+  the record is expanded at compilation time and not at runtime. If a field
+  is not specified on creation, it will have its default value.
 
   Finally, as in Erlang, Elixir also allows the following syntax:
 
@@ -3203,7 +3410,6 @@ defmodule Kernel do
       new_uri = State[_: IO.puts "Hello"]
 
   In this case, `"Hello"` will be printed twice (one per each field).
-
   """
   defmacro access(element, args) do
     caller = __CALLER__
@@ -3530,6 +3736,8 @@ defmodule Kernel do
     end
   end
 
+  defp split_words("", _modifiers), do: []
+
   defp split_words(string, modifiers) do
     mod = case modifiers do
       [] -> ?b
@@ -3539,8 +3747,8 @@ defmodule Kernel do
 
     case mod do
       ?b -> quote do: String.split(unquote(string))
-      ?a -> quote do: lc p inlist String.split(unquote(string)), do: binary_to_atom(p)
-      ?c -> quote do: lc p inlist String.split(unquote(string)), do: :unicode.characters_to_list(p)
+      ?a -> quote do: lc(p inlist String.split(unquote(string)), do: binary_to_atom(p))
+      ?c -> quote do: lc(p inlist String.split(unquote(string)), do: :unicode.characters_to_list(p))
     end
   end
 end

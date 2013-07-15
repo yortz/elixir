@@ -69,7 +69,7 @@ defmodule IEx.Autocomplete do
   end
 
   defp identifier?(h) do
-    (h in ?a..?z) or (h in ?A..?Z) or h in [?_, ??, ?!]
+    (h in ?a..?z) or (h in ?A..?Z) or (h in ?0..?9) or h in [?_, ??, ?!]
   end
 
   defp expand_dot(expr) do
@@ -135,7 +135,7 @@ defmodule IEx.Autocomplete do
     prefix = :binary.longest_common_prefix(binary)
     if prefix == 0 or (prefix == length) do
       {:yes, '',
-         Enum.reduce entries, [], fn e, acc -> Entry.to_entries(e) ++ acc end }
+         Enum.reduce(entries, [], fn e, acc -> Entry.to_entries(e) ++ acc end) }
     else
       {:yes, :lists.sublist(first.name, 1 + length, prefix-length), [] }
     end

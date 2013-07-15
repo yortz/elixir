@@ -138,6 +138,67 @@ defmodule String do
   def printable?(<<>>), do: true
   def printable?(_),    do: false
 
+  @doc %B"""
+  Escape the given string. It expects one extra paremeter
+  representing the string surrounds which should also be escaped.
+
+  ## Examples
+
+      iex> String.escape("abc", ?")
+      "abc"
+
+      iex> String.escape("a\nb", ?")
+      "a\\nb"
+
+  """
+  def escape(other, char) do
+    escape(other, char, <<>>)
+  end
+
+  @compile { :inline, escape: 3 }
+
+  defp escape(<<>>, _char, binary), do: binary
+
+  defp escape(<< char, t :: binary >>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, char >>)
+  end
+  defp escape(<<?#, ?{, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?#, ?{ >>)
+  end
+  defp escape(<<?\a, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?a >>)
+  end
+  defp escape(<<?\b, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?b >>)
+  end
+  defp escape(<<?\d, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?d >>)
+  end
+  defp escape(<<?\e, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?e >>)
+  end
+  defp escape(<<?\f, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?f >>)
+  end
+  defp escape(<<?\n, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?n >>)
+  end
+  defp escape(<<?\r, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?r >>)
+  end
+  defp escape(<<?\\, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?\\ >>)
+  end
+  defp escape(<<?\t, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?t >>)
+  end
+  defp escape(<<?\v, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, ?\\, ?v >>)
+  end
+  defp escape(<<h, t :: binary>>, char, binary) do
+    escape(t, char, << binary :: binary, h >>)
+  end
+
   @doc """
   Splits a string on sub strings at each Unicode whitespace
   occurrence with leading and trailing whitespace ignored.
@@ -184,6 +245,8 @@ defmodule String do
   @spec split(t, t | [t] | Regex.t) :: [t]
   @spec split(t, t | [t] | Regex.t, Keyword.t) :: [t]
   def split(binary, pattern, options // [])
+
+  def split("", _pattern, _options), do: [""]
 
   def split(binary, pattern, options) when is_regex(pattern) do
     Regex.split(pattern, binary, global: options[:global])
@@ -410,6 +473,8 @@ defmodule String do
 
   ## Examples
 
+      iex> String.duplicate("abc", 0)
+      ""
       iex> String.duplicate("abc", 1)
       "abc"
       iex> String.duplicate("abc", 2)
@@ -417,7 +482,7 @@ defmodule String do
 
   """
   @spec duplicate(t, pos_integer) :: t
-  def duplicate(subject, n) when is_integer(n) and n > 0 do
+  def duplicate(subject, n) when is_integer(n) and n >= 0 do
     :binary.copy(subject, n)
   end
 
@@ -789,7 +854,7 @@ defmodule String do
         {int_result, int_remainder} = :string.to_integer(charlist)
         case int_result do
           :error -> :error
-          _ -> {float(int_result), list_to_binary(int_remainder)}
+          _ -> {:erlang.float(int_result), list_to_binary(int_remainder)}
         end
       _ -> {result, list_to_binary(remainder)}
     end

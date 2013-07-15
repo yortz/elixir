@@ -29,6 +29,18 @@ defmodule KernelTest do
     end
   end
 
+  test :match? do
+    assert match?(x, 1)
+    assert binding([:x]) == []
+
+    a = 0
+    assert match?(b when b > a, 1)
+    assert binding([:b]) == []
+
+    refute match?(b when b > a, -1)
+    assert binding([:b]) == []
+  end
+
   test :nil? do
     assert nil?(nil)
     refute nil?(0)
@@ -52,9 +64,18 @@ defmodule KernelTest do
 
   test :paren do
     assert nil?(())
+    assert ((); ();) == nil
     assert [ 1, (), 3 ] == [1, nil, 3 ]
     assert [do: ()] == [do: nil]
     assert { 1, (), 3 } == { 1, nil, 3 }
+    assert (Kernel.&& nil, ()) == nil
+    assert (Kernel.&& nil, ()) == nil
+    assert (() && ()) == nil
+    assert (if(() && ()) do
+      :ok
+    else
+      :error
+    end) == :error
   end
 
   test :__info__ do
@@ -95,21 +116,23 @@ defmodule KernelTest do
     x = 1
     assert binding == [x: 1]
     assert binding([:x, :y]) == [x: 1]
+    assert binding([:x, :y], nil) == [x: 1]
 
     x = 2
     assert binding == [x: 2]
 
     y = 3
     assert binding == [x: 2, y: 3]
-  end
-
-  test :binding_with_all_contexts do
-    x = 1
-    assert { { :x, nil }, 1 } in binding(true)
 
     var!(x, :foo) = 2
-    assert { { :x, :foo }, 2 } in binding(true)
-    assert binding([x: :foo], true) == [{ { :x, :foo }, 2 }]
+    assert binding(:foo) == [x: 2]
+    assert binding([:x, :y], :foo) == [x: 2]
+  end
+
+  test :binding_on_match do
+    x = 1
+    assert binding() = [x: 1]
+    refute binding() = [x: 2]
   end
 
   defp x(value) when value in [1, 2, 3], do: true

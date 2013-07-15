@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Deps.Update do
   @moduledoc """
   Update dependencies.
 
-  By default, updates all dependencies. A list of deps can
+  By default, updates all dependencies. A list of dependencies can
   be given to update specific ones. Recompiles the given
   projects after updating.
 
@@ -40,7 +40,7 @@ defmodule Mix.Tasks.Deps.Update do
 
   defp finalize_update({ apps, lock }, no_compile) do
     Mix.Deps.Lock.write(lock)
-    unless no_compile, do: Mix.Task.run "deps.compile", apps
+    unless no_compile, do: Mix.Task.run("deps.compile", apps)
   end
 
   defp deps_updater(dep, { acc, lock }) do

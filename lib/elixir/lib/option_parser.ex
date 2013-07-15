@@ -1,7 +1,11 @@
 defmodule OptionParser do
+  @moduledoc """
+  This module contains functions to parse command line arguments.
+  """
+
   @doc """
-  Parses the argv and returns one tuple with parsed options
-  and the arguments.
+  Parses `argv` and returns a tuple with parsed options
+  and arguments.
 
   ## Examples
 
@@ -16,26 +20,28 @@ defmodule OptionParser do
 
   ## Aliases
 
-  A set of aliases can be given as second argument:
+  A set of aliases can be given as the second argument:
 
       iex> OptionParser.parse(["-d"], aliases: [d: :debug])
       { [debug: true], [] }
 
   ## Switches
 
-  Extra information about switches can be given as argument too.
-  This is useful in order to say a switch must behave as a boolean
+  Extra information about switches can be given as arguments, too.
+  This is useful when a switch must behave as a boolean
   or if duplicated switches should be kept, overriden or accumulated.
 
   The following types are supported:
 
-  * `:boolean` - Mark the given switch as boolean. Boolean switches
-                 never consumes the following value unless it is
-                 true or false;
+  * `:boolean` - Marks the given switch as a boolean. Boolean switches
+                 never consume the following value unless it is
+                 `true` or `false`;
+  * `:integer` - Parses the switch as an integer;
+  * `:float`   - Parses the switch as a float;
 
   The following extra options are supported:
 
-  * `:keep` - Keep duplicated items in the list instead of overriding;
+  * `:keep` - Keeps duplicated items in the list instead of overriding;
 
   Examples:
 
@@ -59,16 +65,18 @@ defmodule OptionParser do
   end
 
   @doc """
-  Similar to parse but only parses the head of the argv.
-  I.e. as soon as it finds a non switch, it stops parsing.
+  Similar to `parse/2` but only parses the head of `argv`;
+  as soon as it finds a non-switch, it stops parsing.
 
-  Check `parse/2` for more info.
+  See `parse/2` for more information.
 
   ## Example
 
       iex> OptionParser.parse_head(["--source", "lib", "test/enum_test.exs", "--verbose"])
       { [source: "lib"], ["test/enum_test.exs", "--verbose"] }
 
+      iex> OptionParser.parse_head(["--verbose", "--source", "lib", "test/enum_test.exs", "--unlock"])
+      {[verbose: true, source: "lib"], ["test/enum_test.exs", "--unlock"]}
   """
   def parse_head(argv, opts // []) when is_list(argv) and is_list(opts) do
     parse(argv, opts, false)
@@ -127,10 +135,21 @@ defmodule OptionParser do
   end
 
   defp store_option(dict, option, value, kind) do
-    if is_switch_a? :keep, kind do
-      [{ option, value }|dict]
-    else
-      [{ option, value }|Keyword.delete(dict, option)]
+    case kind do
+      :keep ->
+        [{ option, value }|dict]
+      :integer ->
+        case String.to_integer(value) do
+          { value, "" } -> [{ option, value }|Keyword.delete(dict, option)]
+          _ -> dict
+        end
+      :float ->
+        case String.to_float(value) do
+          { value, "" } -> [{ option, value }|Keyword.delete(dict, option)]
+          _ -> dict
+        end
+      _ ->
+        [{ option, value }|Keyword.delete(dict, option)]
     end
   end
 
@@ -160,7 +179,7 @@ defmodule OptionParser do
   end
 
   defp to_underscore(option) do
-    bc <<c>> inbits option, do: << if c == ?-, do: ?_, else: c >>
+    bc <<c>> inbits option, do: << if(c == ?-, do: ?_, else: c) >>
   end
 
   defp is_no?("no-" <> _), do: true

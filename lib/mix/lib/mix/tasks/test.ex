@@ -9,9 +9,9 @@ defmodule Mix.Tasks.Test do
 
   This task will preload the `test/test_helper.exs` which
   should do all testing setup and then require all files
-  that matches the given `test_pattern` in parallel.
+  that match the given `test_pattern` in parallel.
 
-  Before running tests, it invokes the prepare task
+  Before running tests, it invokes the `App.Start` task
   which defaults to compile and load your project.
 
   A list of files can be given after the task name in
@@ -19,6 +19,8 @@ defmodule Mix.Tasks.Test do
 
   ## Command line options
 
+  * `--trace` - run tests with detailed reporting. Automatically sets `max-cases` to 1;
+  * `--max-cases` - set the maximum number of cases running async;
   * `--cover` - the directory to include coverage results;
   * `--force` - forces compilation regardless of module times;
   * `--quick`, `-q` - only compile files that changed;
@@ -27,7 +29,7 @@ defmodule Mix.Tasks.Test do
 
   ## Configuration
 
-  * `:test_paths` - path containing tests.
+  * `:test_paths` - list of paths containing test files.
     Defaults to `["test"]`.
 
   * `:test_pattern` - a pattern to load test files.
@@ -37,12 +39,15 @@ defmodule Mix.Tasks.Test do
     for testing. Defaults to `test/test_helper.exs`.
 
   * `:test_coverage` - the directory to include test coverage results.
-    Defaults to nil.
+    Defaults to `nil`.
 
   """
+
+  @switches [quick: :boolean, force: :boolean,
+             trace: :boolean, max_cases: :integer]
+
   def run(args) do
-    { opts, files } = OptionParser.parse(args, aliases: [q: :quick],
-                        switches: [quick: :boolean, force: :boolean])
+    { opts, files } = OptionParser.parse(args, aliases: [q: :quick], switches: @switches)
 
     unless System.get_env("MIX_ENV") do
       Mix.env(:test)
@@ -60,6 +65,9 @@ defmodule Mix.Tasks.Test do
 
     test_paths   = if files == [], do: project[:test_paths] || ["test"], else: files
     test_pattern = project[:test_pattern] || "*_test.exs"
+
+    :application.load(:ex_unit)
+    ExUnit.configure(Dict.take(opts, [:trace, :max_cases]))
 
     files = Mix.Utils.extract_files(test_paths, test_pattern)
     Kernel.ParallelRequire.files files

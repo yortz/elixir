@@ -4,15 +4,15 @@ defmodule Mix.Tasks.Deps.Check do
   import Mix.Deps, only: [all: 0, format_dep: 1, format_status: 1, check_lock: 2, out_of_date?: 1]
 
   @hidden true
-  @shortdoc "Check if all dependencies are ok"
+  @shortdoc "Check if all dependencies are valid"
   @recursive :both
 
   @moduledoc """
   Checks if all dependencies are valid and if not, abort.
-  Prints the invalid dependencies status before aborting.
+  Prints the invalid dependencies' status before aborting.
 
   This task is not shown in `mix help` but it is part
-  of mix public API and can be depended on.
+  of the `mix` public API and can be depended on.
   """
   def run(_) do
     lock = Mix.Deps.Lock.read
@@ -24,20 +24,12 @@ defmodule Mix.Tasks.Deps.Check do
         shell = Mix.shell
         shell.error "Unchecked dependencies for environment #{Mix.env}:"
 
-        if Enum.all? not_ok, out_of_date?(&1) do
-          Enum.each not_ok, fn(dep) ->
-            shell.error "* #{format_dep(dep)}"
-          end
-
-          raise Mix.OutOfDateDepsError, env: Mix.env
-        else
-          Enum.each not_ok, fn(dep) ->
-            shell.error "* #{format_dep(dep)}"
-            shell.error "  #{format_status dep}"
-          end
-
-          raise Mix.Error
+        Enum.each not_ok, fn(dep) ->
+          shell.error "* #{format_dep(dep)}"
+          shell.error "  #{format_status dep}"
         end
+
+        raise Mix.Error, message: "Can't continue due to errors on dependencies"
     end
   end
 

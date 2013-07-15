@@ -75,16 +75,20 @@ defmodule Mix.Utils do
   compared to the given target.
   """
   def stale?(sources, targets) do
-    extract_stale(sources, targets) != []
+    Enum.any? stale_stream(sources, targets)
   end
 
   @doc """
   Extract all stale sources compared to the given targets.
   """
   def extract_stale(sources, targets) do
+    stale_stream(sources, targets) |> Enum.to_list
+  end
+
+  defp stale_stream(sources, targets) do
     last_modifieds = Enum.map(targets, last_modified(&1))
 
-    Enum.filter sources, fn(source) ->
+    Stream.filter sources, fn(source) ->
       source_stat = source_mtime(source)
       Enum.any?(last_modifieds, source_stat > &1)
     end
@@ -106,21 +110,24 @@ defmodule Mix.Utils do
   end
 
   @doc """
+  Reads the manifest and return each entry.
+  """
+  def read_manifest(file) do
+    case File.read(file) do
+      { :ok, contents } -> String.split(contents, "\n")
+      { :error, _ } -> []
+    end
+  end
+
+  @doc """
   Generates a manifest containing all files generated
   during a given compilation step. It receives the manifest
   file name and a function to execute. The result of the
   function is compared to the manifest in order do detect
   the files removed from the manifest file.
   """
-  def manifest(file, fun) do
-    old =
-      case File.read(file) do
-        { :ok, contents } -> String.split(contents, "\n")
-        { :error, _ } -> []
-      end
-    current = fun.()
-    File.write!(file, Enum.join(current, "\n"))
-    { current, old -- current }
+  def update_manifest(file, new) do
+    File.write!(file, Enum.join(new, "\n"))
   end
 
   @doc """

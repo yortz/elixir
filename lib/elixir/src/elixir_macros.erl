@@ -3,9 +3,11 @@
 -module(elixir_macros).
 -export([translate/2]).
 -import(elixir_translator, [translate_each/2, translate_args/2, translate_apply/7]).
--import(elixir_scope, [umergec/2]).
--import(elixir_errors, [syntax_error/3, syntax_error/4,
-  assert_no_function_scope/3, assert_module_scope/3, assert_no_match_or_guard_scope/3]).
+-import(elixir_scope, [umergec/2, umergea/2]).
+-import(elixir_errors, [compile_error/3, compile_error/4,
+  syntax_error/3, syntax_error/4,
+  assert_no_function_scope/3, assert_module_scope/3,
+  assert_no_match_or_guard_scope/3]).
 
 -include("elixir.hrl").
 -define(opt_in_types(Kind), Kind == atom orelse Kind == integer orelse Kind == float).
@@ -70,13 +72,15 @@ translate({ function, MetaFA, [{ '/', _, [{F, Meta, C}, A]}] }, S) when is_atom(
     end,
 
   case elixir_dispatch:import_function(WrappedMeta, F, A, S) of
-    false -> syntax_error(WrappedMeta, S#elixir_scope.file, "expected ~ts/~B to be a function, but it is a macro", [F, A]);
+    false -> compile_error(WrappedMeta, S#elixir_scope.file,
+                           "expected ~ts/~B to be a function, but it is a macro", [F, A]);
     Else  -> Else
   end;
 
-translate({ function, Meta, [_] }, S) ->
+translate({ function, Meta, [Arg] }, S) ->
   assert_no_match_or_guard_scope(Meta, 'function', S),
-  syntax_error(Meta, S#elixir_scope.file, "invalid args for function");
+  syntax_error(Meta, S#elixir_scope.file, "invalid args for function/1: ~ts",
+               ['Elixir.Macro':to_string(Arg)]);
 
 translate({ function, Meta, [_,_,_] = Args }, S) when is_list(Args) ->
   assert_no_match_or_guard_scope(Meta, 'function', S),
@@ -130,58 +134,9 @@ translate({'@', Meta, [{ Name, _, Args }]}, S) ->
       end
   end;
 
-%% Binding
-
-translate({ 'binding', Meta, [] }, S) ->
-  translate({ 'binding', Meta, [false] }, S);
-
-translate({ 'binding', Meta, [false] }, S) ->
-  Line = ?line(Meta),
-  { elixir_tree_helpers:list_to_cons(Line,
-    [ to_var_value_tuple(Line, Name, Var) || { { Name, nil }, Var } <- S#elixir_scope.vars]), S };
-
-translate({ 'binding', Meta, [true] }, S) ->
-  Line = ?line(Meta),
-  { elixir_tree_helpers:list_to_cons(Line,
-    [ to_var_value_tuple(Line, Name, Kind, Var) || { { Name, Kind }, Var } <- S#elixir_scope.vars]), S };
-
-translate({ 'binding', Meta, [List] }, #elixir_scope{vars=Vars} = S) when is_list(List) ->
-  Line = ?line(Meta),
-  Dict = lists:foldl(fun
-    (Name, Acc) when is_atom(Name) ->
-      case orddict:find({ Name, nil }, Vars) of
-        { ok, Var } ->
-          orddict:store(Name, Var, Acc);
-        error ->
-          Acc
-      end;
-    (Name, _Acc) ->
-      elixir_errors:syntax_error(Line, S#elixir_scope.file, "binding/1 expects a list of atoms "
-        "at compilation time, got: ~ts", ['Elixir.Macro':to_string(Name)])
-  end, [], List),
-  { elixir_tree_helpers:list_to_cons(Line,
-    [ to_var_value_tuple(Line, Name, Var) || { Name, Var } <- Dict]), S };
-
-translate({ 'binding', Meta, [List, true] }, #elixir_scope{vars=Vars} = S) when is_list(List) ->
-  Line = ?line(Meta),
-  Dict = lists:foldl(fun
-    (Tuple, Acc) when is_tuple(Tuple) ->
-      case orddict:find(Tuple, Vars) of
-        { ok, Var } ->
-          orddict:store(Tuple, Var, Acc);
-        error ->
-          Acc
-      end;
-    (Tuple, _Acc) ->
-      elixir_errors:syntax_error(Line, S#elixir_scope.file, "binding/2 expects a list of tuples "
-        "at compilation time, got: ~ts", ['Elixir.Macro':to_string(Tuple)])
-  end, [], List),
-  { elixir_tree_helpers:list_to_cons(Line,
-    [ to_var_value_tuple(Line, Name, Kind, Var) || { { Name, Kind }, Var } <- Dict]), S };
-
 %% Case
 
-translate({'case', Meta, [Expr, KV]}, S) ->
+translate({'case', Meta, [Expr, KV]}, S) when is_list(KV) ->
   assert_no_match_or_guard_scope(Meta, 'case', S),
   Clauses = elixir_clauses:get_pairs(Meta, do, KV, S),
   { TExpr, NS } = translate_each(Expr, S),
@@ -196,27 +151,27 @@ translate({'case', Meta, [Expr, KV]}, S) ->
 
 %% Try
 
-translate({'try', Meta, [Clauses]}, S) ->
+translate({'try', Meta, [Clauses]}, S) when is_list(Clauses) ->
   assert_no_match_or_guard_scope(Meta, 'try', S),
 
   Do = proplists:get_value('do', Clauses, nil),
   { TDo, SB } = elixir_translator:translate_each(Do, S#elixir_scope{noname=true}),
 
   Catch = [Tuple || { X, _ } = Tuple <- Clauses, X == 'rescue' orelse X == 'catch'],
-  { TCatch, SC } = elixir_try:clauses(Meta, Catch, umergec(S, SB)),
+  { TCatch, SC } = elixir_try:clauses(Meta, Catch, umergea(S, SB)),
 
   After = proplists:get_value('after', Clauses, nil),
-  { TAfter, SA } = elixir_translator:translate_each(After, umergec(S, SC)),
+  { TAfter, SA } = elixir_translator:translate_each(After, umergea(S, SC)),
 
   Else = elixir_clauses:get_pairs(Meta, else, Clauses, S),
-  { TElse, SE } = elixir_clauses:match(Meta, Else, umergec(S, SA)),
+  { TElse, SE } = elixir_clauses:match(Meta, Else, umergea(S, SA)),
 
   SF = (umergec(S, SE))#elixir_scope{noname=S#elixir_scope.noname},
   { { 'try', ?line(Meta), pack(TDo), TElse, TCatch, pack(TAfter) }, SF };
 
 %% Receive
 
-translate({'receive', Meta, [KV] }, S) ->
+translate({'receive', Meta, [KV] }, S) when is_list(KV) ->
   assert_no_match_or_guard_scope(Meta, 'receive', S),
   Do = elixir_clauses:get_pairs(Meta, do, KV, S, true),
 
@@ -234,12 +189,12 @@ translate({'receive', Meta, [KV] }, S) ->
 
 %% Definitions
 
-translate({defmodule, Meta, [Ref, KV]}, S) ->
+translate({defmodule, Meta, [Ref, KV]}, S) when is_list(KV) ->
   { TRef, _ } = translate_each(Ref, S),
 
   Block = case lists:keyfind(do, 1, KV) of
     { do, DoValue } -> DoValue;
-    false -> syntax_error(Meta, S#elixir_scope.file, "expected do: argument in defmodule")
+    false -> syntax_error(Meta, S#elixir_scope.file, "missing do keyword in defmodule")
   end,
 
   { FRef, FS } = case TRef of
@@ -292,7 +247,11 @@ translate({ apply, Meta, [Left, Right, Args] }, S) when is_list(Args) ->
 
 translate({ apply, Meta, Args }, S) ->
   { TArgs, NS } = translate_args(Args, S),
-  { ?wrap_call(?line(Meta), erlang, apply, TArgs), NS }.
+  { ?wrap_call(?line(Meta), erlang, apply, TArgs), NS };
+
+translate({ Name, Meta, Args }, S) ->
+  syntax_error(Meta, S#elixir_scope.file,
+               "invalid arguments for macro ~ts/~B", [Name, length(Args)]).
 
 %% Helpers
 
@@ -351,7 +310,8 @@ translate_in(Meta, Left, Right, S) ->
         true ->
           { false, ?wrap_call(Line, 'Elixir.Enum', 'member?', [TRight, TLeft]) };
         false ->
-          syntax_error(Meta, S#elixir_scope.file, "invalid args for operator in, it expects an explicit array or an explicit range on the right side when used in guard expressions")
+          compile_error(Meta, S#elixir_scope.file, "invalid args for operator in, it expects a "
+                        "compile time list or range on the right side when used in guard expressions")
       end
   end,
 
@@ -400,19 +360,6 @@ expand_module(_Raw, Module, S) ->
 is_reserved_data(moduledoc) -> true;
 is_reserved_data(doc)       -> true;
 is_reserved_data(_)         -> false.
-
-to_var_value_tuple(Line, Name, Var) ->
-  { tuple, Line,
-    [ { atom, Line, Name },
-      { var, Line, Var } ] }.
-
-to_var_value_tuple(Line, Name, Kind, Var) ->
-  { tuple, Line,
-    [ { tuple, Line, [
-        { atom, Line, Name },
-        { atom, Line, Kind }
-      ] },
-      { var, Line, Var } ] }.
 
 spec_to_macro(type)     -> deftype;
 spec_to_macro(typep)    -> deftypep;

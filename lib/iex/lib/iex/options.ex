@@ -33,11 +33,7 @@ defmodule IEx.Options do
 
   """
 
-  @supported_options [
-    colors: [],
-    inspect: [],
-    history_size: [],
-  ]
+  @supported_options %w(colors inspect history_size)a
 
   @doc """
   Returns all supported IEx options with their respective values as a keyword
@@ -50,24 +46,20 @@ defmodule IEx.Options do
   end
 
   @doc """
-  Get current value of the option `name`. Raises ArgumentError if name is not a
+  Get current value of the option `name`. Raises `ArgumentError` if `name` is not a
   known option.
   """
   def get(name)
 
-  def get(:colors) do
-    { :ok, colors } = :application.get_env(:iex, :colors)
-    colors
-  end
+  keys = [ colors: :colors,
+           inspect: :inspect_opts,
+           history_size: :history_size ]
 
-  def get(:inspect) do
-    { :ok, opts } = :application.get_env(:iex, :inspect_opts)
-    opts
-  end
-
-  def get(:history_size) do
-    { :ok, size } = :application.get_env(:iex, :history_size)
-    size
+  Enum.each keys, fn { key, env } ->
+    def get(unquote(key)) do
+      { :ok, value } = :application.get_env(:iex, unquote(env))
+      value
+    end
   end
 
   def get(name) do
@@ -89,17 +81,15 @@ defmodule IEx.Options do
   @doc """
   Sets the value for the option `name` to `value`.
 
-  Returns option's previous value in the case of success.
+  Returns the option's previous value in the case of success.
 
-  Raises if `name` is not a known option or if the value is invalid.
+  If `name` is not a known option or if `value` is invalid, raises
+  `ArgumentError`.
   """
   def set(name, value)
 
   def set(:colors, colors) when is_list(colors) do
-    old_colors = get(:colors)
-    filtered_colors = filtered_kw(old_colors, colors)
-    :application.set_env(:iex, :colors, Keyword.merge(old_colors, filtered_colors))
-    old_colors
+    filter_and_merge(:colors, colors)
   end
 
   def set(:colors, _) do
@@ -107,10 +97,7 @@ defmodule IEx.Options do
   end
 
   def set(:inspect, opts) when is_list(opts) do
-    old_opts = get(:inspect)
-    filtered_opts = filtered_kw(old_opts, opts)
-    :application.set_env(:iex, :inspect_opts, Keyword.merge(old_opts, filtered_opts))
-    old_opts
+    filter_and_merge(:inspect, :inspect_opts, opts)
   end
 
   def set(:inspect, _) do
@@ -132,22 +119,21 @@ defmodule IEx.Options do
   end
 
   @doc """
-  Returns a string with the option's description. Raises if `name` is not a
-  known option.
+  Returns a string with the option's description. Raises `ArgumentError` 
+  if `name` is not a known option.
   """
   def help(name) do
-    case @supported_options[name] do
-      kv when is_list(kv) ->
-        docs = __MODULE__.__info__(:docs)
-        { {_, _}, _, _, _, doc } = Enum.find docs, fn { {f, _}, _, _, _, _ } ->
-          f == name
-        end
+    if name in @supported_options do
+      docs = __MODULE__.__info__(:docs)
+      { {_, _}, _, _, _, doc } = Enum.find docs, fn { {f, _}, _, _, _, _ } ->
+        f == name
+      end
 
-        # Strip the first paragraph
-        stripped = String.lstrip(Regex.replace %r/\A.+?^$/ms, doc, "")
-        IEx.color :info, stripped
-
-      nil -> raise_option(name)
+      # Strip the first paragraph
+      stripped = String.lstrip(Regex.replace %r/\A.+?^$/ms, doc, "")
+      IEx.color :info, stripped
+    else
+      raise_option(name)
     end
   end
 
@@ -162,7 +148,7 @@ defmodule IEx.Options do
   Returns all supported options as a list of names.
   """
   def list() do
-    Enum.map @supported_options, fn {k, _} -> k end
+    @supported_options
   end
 
   @doc """
@@ -223,9 +209,25 @@ defmodule IEx.Options do
     raise ArgumentError, message: "Expected the value to be #{type}"
   end
 
-  defp filtered_kw(reference_kw, user_kw) do
+  defp raise_key(option_name, name) do
+    raise ArgumentError, message: "Unsupported key '#{name}' for option '#{option_name}'"
+  end
+
+  defp filter_and_merge(option_name, env_var_name // nil, values) when is_list(values) do
+    env_var_name = env_var_name || option_name
+
+    old_values = get(option_name)
+    filtered_values = filtered_kw(option_name, old_values, values)
+    :application.set_env(:iex, env_var_name, Keyword.merge(old_values, filtered_values))
+    old_values
+  end
+
+  defp filtered_kw(option_name, reference_kw, user_kw) do
     Enum.filter user_kw, fn {name, _} ->
-      Keyword.has_key? reference_kw, name
+      if not Keyword.has_key?(reference_kw, name) do
+        raise_key(option_name, name)
+      end
+      true
     end
   end
 end

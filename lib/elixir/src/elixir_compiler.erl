@@ -84,12 +84,12 @@ eval_forms(Forms, Line, Vars, S) ->
 %% Compile the module by forms based on the scope information
 %% executes the callback in case of success. This automatically
 %% handles errors and warnings. Used by this module and elixir_module.
-module(Forms, S, Callback) ->
+module(Forms, File, Callback) ->
   Options = case get_opt(debug_info) of
     true -> [debug_info];
     _ -> []
   end,
-  module(Forms, S#elixir_scope.file, Options, false, Callback).
+  module(Forms, File, Options, false, Callback).
 
 module(Forms, File, RawOptions, Bootstrap, Callback) when
     is_binary(File), is_list(Forms), is_list(RawOptions), is_boolean(Bootstrap), is_function(Callback) ->
@@ -218,7 +218,8 @@ core_main() ->
     "lib/elixir/lib/code.ex",
     "lib/elixir/lib/protocol.ex",
     "lib/elixir/lib/enum.ex",
-    "lib/elixir/lib/binary/inspect.ex",
+    "lib/elixir/lib/inspect/algebra.ex",
+    "lib/elixir/lib/inspect.ex",
     "lib/elixir/lib/binary/chars.ex",
     "lib/elixir/lib/io.ex",
     "lib/elixir/lib/path.ex",

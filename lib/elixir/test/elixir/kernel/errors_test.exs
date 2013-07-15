@@ -63,10 +63,42 @@ defmodule Kernel.ErrorsTest do
       '+.foo'
   end
 
+  test :syntax_error_on_op_ambiguity do
+    msg = "nofile:1: \"a -1\" looks like a function call but there is a variable named \"a\", " <>
+          "please use explicit parenthesis or even spaces"
+    assert_compile_fail SyntaxError, msg, 'a = 1; a -1'
+
+    max = 1
+    assert max == 1
+    assert (max 1, 2) == 2
+  end
+
   test :syntax_error_on_parens_call do
-    assert_compile_fail SyntaxError, "nofile:1: invalid comma inside parenthesis. If you are making a function call, " <>
-     "do not insert spaces in between the function name and the opening parentheses. " <>
-     "Syntax error before: )", 'foo (hello, world)'
+    msg = "nofile:1: unexpected parenthesis. If you are making a function call, do not " <>
+          "insert spaces in between the function name and the opening parentheses. " <>
+          "Syntax error before: '('"
+
+    assert_compile_fail SyntaxError, msg, 'foo (hello, world)'
+    assert_compile_fail SyntaxError, msg, 'foo ()'
+    assert_compile_fail SyntaxError, msg, 'foo (), 1'
+  end
+
+  test :syntax_error_on_nested_no_parens_call do
+    msg = "nofile:1: unexpected comma. Parentheses are required to solve ambiguity in " <>
+          "nested calls. Syntax error before: ','"
+
+    assert_compile_fail SyntaxError, msg, '[foo 1, 2]'
+    assert_compile_fail SyntaxError, msg, '[do: foo 1, 2]'
+    assert_compile_fail SyntaxError, msg, 'foo(do: bar 1, 2)'
+    assert_compile_fail SyntaxError, msg, '{foo 1, 2}'
+    assert_compile_fail SyntaxError, msg, 'foo 1, foo 2, 3'
+    assert_compile_fail SyntaxError, msg, 'foo(1, foo 2, 3)'
+
+    assert is_list []
+    assert is_list do: 1
+    assert is_list List.flatten [1]
+    assert is_atom binary_to_atom "foo", :utf8
+    assert is_atom(binary_to_atom "foo", :utf8)
   end
 
   test :syntax_error_with_no_token do
@@ -118,13 +150,13 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :unbound_var do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: unbound variable ^x",
       '^x = 1'
   end
 
   test :unbound_not_match do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: cannot use ^x outside of match clauses",
       '^x'
   end
@@ -151,7 +183,7 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :invalid_unquote do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: unquote called outside quote",
       'unquote 1'
   end
@@ -166,6 +198,24 @@ defmodule Kernel.ErrorsTest do
     assert_compile_fail SyntaxError,
       "nofile:1: unexpected parenthesis after foo(1)",
       'foo(1)(2)'
+  end
+
+  test :unhandled_stab do
+    assert_compile_fail SyntaxError,
+      "nofile:3: unhandled operator ->",
+      '''
+      defmodule Mod do
+        def fun do
+          casea foo, do: (bar -> baz)
+        end
+      end
+      '''
+  end
+
+  test :undefined_non_local_function do
+    assert_compile_fail CompileError,
+      "nofile:1: function casea/2 undefined",
+      'casea foo, do: (bar -> baz)'
   end
 
   test :invalid_fn_args do
@@ -279,6 +329,20 @@ defmodule Kernel.ErrorsTest do
       '''
   end
 
+  test :invalid_macro do
+    assert_compile_fail CompileError,
+      "nofile: invalid quoted expression: {:foo, :bar, :baz, :bat}",
+      '''
+      defmodule ErrorsTest do
+        defmacrop oops do
+          { :foo, :bar, :baz, :bat }
+        end
+
+        def test, do: oops
+      end
+      '''
+  end
+
   test :unloaded_module do
     assert_compile_fail CompileError,
       "nofile:1: module Certainly.Doesnt.Exist is not loaded and could not be found",
@@ -360,24 +424,24 @@ defmodule Kernel.ErrorsTest do
 
     assert_compile_fail SyntaxError,
       "nofile:1: unit in bitstring expects an integer as argument",
-      '<<1 :: unit(x)>>'
+      '<<1 :: unit(:x)>>'
   end
 
   test :invalid_var! do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: expected var!(x) to expand to an existing variable or be a part of a match",
       'var!(x)'
   end
 
   test :invalid_alias do
-    assert_compile_fail SyntaxError,
-      "nofile:1: invalid args for alias, cannot create nested alias Sample.Lists",
+    assert_compile_fail CompileError,
+      "nofile:1: invalid :as for alias, nested alias Sample.Lists not allowed",
       'alias :lists, as: Sample.Lists'
   end
 
   test :invalid_import_option do
-    assert_compile_fail SyntaxError,
-      "nofile:1: unsupported option ops given to import",
+    assert_compile_fail CompileError,
+      "nofile:1: unsupported option :ops given to import",
       'import :lists, [ops: 1]'
   end
 
@@ -466,7 +530,7 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :invalid_var_or_function_on_guard do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:2: unknown variable something_that_does_not_exist or " <>
       "cannot invoke function something_that_does_not_exist/0 inside guard",
       '''
@@ -478,7 +542,7 @@ defmodule Kernel.ErrorsTest do
 
   test :bodyless_function_with_guard do
     assert_compile_fail SyntaxError,
-      "nofile:2: missing keyword do in def",
+      "nofile:2: missing do keyword in def",
       '''
       defmodule ErrorsTest do
         def foo(n) when is_number(n)
@@ -487,19 +551,19 @@ defmodule Kernel.ErrorsTest do
   end
 
   test :invalid_function_on_match do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: cannot invoke function something_that_does_not_exist/0 inside match",
       'case [] do; something_that_does_not_exist() -> :ok; end'
   end
 
   test :invalid_remote_on_match do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: cannot invoke remote function Hello.something_that_does_not_exist/0 inside match",
       'case [] do; Hello.something_that_does_not_exist() -> :ok; end'
   end
 
   test :invalid_remote_on_guard do
-    assert_compile_fail SyntaxError,
+    assert_compile_fail CompileError,
       "nofile:1: cannot invoke remote function Hello.something_that_does_not_exist/0 inside guard",
       'case [] do; [] when Hello.something_that_does_not_exist == [] -> :ok; end'
   end

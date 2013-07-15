@@ -387,7 +387,7 @@ defmodule Kernel.SpecialForms do
   * `:location` - When set to `:keep`, keeps the current line and file on quotes.
                   Read the Stacktrace information section below for more information;
   * `:hygiene` - Allows a developer to disable hygiene selectively;
-  * `:context` - Sets the context resolution happens at;
+  * `:context` - Sets the resolution context;
   * `:binding` - Passes a binding to the macro. Whenever a binding is given,
                  unquote is automatically disabled;
 
@@ -689,13 +689,13 @@ defmodule Kernel.SpecialForms do
 
   One solution for this problem is to disable unquoting in the
   macro, however, doing that would make it impossible to inject
-  `kv` representation into the tree. That's when the `:binding`
-  option comes to the rescue. By using `:binding`, we can
+  `kv` representation into the tree. That's when the `:bind_quoted`
+  option comes to the rescue. By using `:bind_quoted`, we can
   automatically disable unquoting while still injecting the
   desired variables into the tree:
 
       defmacro defkv(kv) do
-        quote binding: [kv: kv] do
+        quote bind_quoted: [kv: kv] do
           Enum.each kv, fn { k, v } ->
             def unquote(k)(), do: unquote(v)
           end
@@ -812,6 +812,19 @@ defmodule Kernel.SpecialForms do
       iex> pixels = <<213, 45, 132, 64, 76, 32, 76, 0, 0, 234, 32, 15>>
       iex> lc <<r::8, g::8, b::8>> inbits pixels, do: {r, g, b}
       [{213,45,132},{64,76,32},{76,0,0},{234,32,15}]
+
+  Note: Differently from Erlang, Elixir comprehensions filters
+  never behave as guards when it comes to errors. Errors in
+  list comprehensions will always be raised. Consider this
+  Erlang example:
+
+      erl> [I || I <- [1,2,3], hd(I)].
+      []
+
+  In Elixir, it will raise:
+
+      iex> lc i inlist [1,2,3], hd(i), do: i
+      ** (ArgumentError) argument error
 
   """
   defmacro lc(args)

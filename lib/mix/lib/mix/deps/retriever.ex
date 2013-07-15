@@ -5,17 +5,18 @@ defmodule Mix.Deps.Retriever do
   @moduledoc false
 
   @doc """
-  Gets all direct children for the current Mix.Project
+  Gets all direct children of the current Mix.Project
   as a `Mix.Dep` record.
   """
   def children() do
     # Don't run recursively for the top-level project
     scms = Mix.SCM.available
-    (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, nil))
+    from = current_source(:mix)
+    (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, from))
   end
 
   @doc """
-  Gets all children for a given dependency.
+  Gets all children of a given dependency.
   """
   def children(dep, config) do
     cond do
@@ -35,10 +36,11 @@ defmodule Mix.Deps.Retriever do
   end
 
   @doc """
-  Receives a dependency and update its status.
+  Updates the status of a dependency.
   """
-  def update(Mix.Dep[scm: scm, app: app, requirement: req, opts: opts]) do
-    update({ app, req, opts }, [scm], nil)
+  def update(Mix.Dep[scm: scm, app: app, requirement: req, opts: opts,
+                     manager: manager, from: from]) do
+    update({ app, req, opts }, [scm], from, manager)
   end
 
   ## Helpers
@@ -46,39 +48,63 @@ defmodule Mix.Deps.Retriever do
   defp mix_children(config) do
     scms = Mix.SCM.available
     Mix.Project.recur(config, fn _ ->
-      (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, nil))
+      from = current_source(:mix)
+
+      # The manager must be nil because mix supports mix,
+      # rebar and make dependencies/managers.
+      (Mix.project[:deps] || []) |> Enum.map(update(&1, scms, from))
     end) |> List.concat
   end
 
   defp rebar_children(dir) do
     scms = Mix.SCM.available
     Mix.Rebar.recur(dir, fn config ->
-      Mix.Rebar.deps(config) |> Enum.map(update(&1, scms, :rebar))
+      from = current_source(:rebar)
+
+      # Rebar dependencies are always managed by rebar.
+      Mix.Rebar.deps(config) |> Enum.map(update(&1, scms, from, :rebar))
     end) |> List.concat
   end
 
-  defp update(tuple, scms, manager) do
-    dep = with_scm_and_status(tuple, scms)
+  defp update(tuple, scms, from, manager // nil) do
+    dep = with_scm_and_status(tuple, scms).from(from)
 
-    if Mix.Deps.available?(dep) do
-      cond do
-        mixfile?(dep) ->
-          Mix.Deps.in_dependency(dep, fn project ->
-            mix_dep(dep, project)
-          end)
-
-        rebarconfig?(dep) or rebarexec?(dep) ->
-          rebar_dep(dep)
-
-        makefile?(dep) ->
-          make_dep(dep)
-
-        true ->
-          dep.manager(manager)
-      end
-    else
-      dep
+    if match?({ _, req, _ } when is_regex(req), tuple) and
+        not String.ends_with?(from, "rebar.config") do
+      Mix.shell.info("[WARNING] Regex version requirements for dependencies are " <>
+        "deprecated, please use Mix.Version instead")
     end
+
+    cond do
+      # If it is not available, there is nothing we can do
+      not Mix.Deps.available?(dep) ->
+        dep
+
+      # If the manager was already set to rebar, let's use it
+      manager == :rebar ->
+        rebar_dep(dep)
+
+      mixfile?(dep) ->
+        Mix.Deps.in_dependency(dep, fn project ->
+          mix_dep(dep, project)
+        end)
+
+      rebarconfig?(dep) or rebarexec?(dep) ->
+        rebar_dep(dep)
+
+      makefile?(dep) ->
+        make_dep(dep)
+
+      true ->
+        dep
+    end
+  end
+
+  defp current_source(manager) do
+    case manager do
+      :mix   -> "mix.exs"
+      :rebar -> "rebar.config"
+    end |> Path.absname
   end
 
   defp mix_dep(Mix.Dep[manager: nil] = dep, project) do
@@ -172,8 +198,10 @@ defmodule Mix.Deps.Retriever do
   end
 
   defp vsn_match?(nil, _actual), do: true
-  defp vsn_match?(expected, actual) when is_binary(expected), do: actual == expected
-  defp vsn_match?(expected, actual) when is_regex(expected),  do: actual =~ expected
+  defp vsn_match?(req, actual) when is_regex(req),  do: actual =~ req
+  defp vsn_match?(req, actual) when is_binary(req) do
+    Mix.Version.match?(actual, req)
+  end
 
   defp mixfile?(dep) do
     File.regular?(Path.join(dep.opts[:dest], "mix.exs"))

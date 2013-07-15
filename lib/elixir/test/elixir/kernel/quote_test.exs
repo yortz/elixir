@@ -53,6 +53,8 @@ defmodule Kernel.QuoteTest do
     assert quote(do: foo.unquote(:bar)) == quote(do: foo.bar)
     assert quote(do: foo.unquote(:bar)(1)) == quote(do: foo.bar(1))
     assert quote(do: foo.unquote(:bar)(1) do 2 + 3 end) == quote(do: foo.bar(1) do 2 + 3 end)
+    assert quote(do: foo.unquote({ :bar, [], nil })) == quote(do: foo.bar)
+    assert quote(do: foo.unquote({ :bar, [], [1,2] })) == quote(do: foo.bar(1,2))
 
     assert Code.eval_quoted(quote(do: Foo.unquote(Bar)))  == { Elixir.Foo.Bar, [] }
     assert Code.eval_quoted(quote(do: Foo.unquote(quote do: Bar))) == { Elixir.Foo.Bar, [] }
@@ -97,9 +99,16 @@ defmodule Kernel.QuoteTest do
     assert quote(do: (unquote_splicing(contents))) == quote do: (1; 2; 3)
   end
 
-  test :splice_on_pipe do
+  test :splice_with_tail do
     contents = [1, 2, 3]
-    assert quote(do: [unquote_splicing(contents)|[1, 2, 3]]) == [1, 2, 3, 1, 2, 3]
+    assert quote(do: [unquote_splicing(contents)|[1, 2, 3]]) ==
+           [1, 2, 3, 1, 2, 3]
+
+    assert quote(do: [unquote_splicing(contents)|val]) ==
+           quote(do: [1, 2, 3 | val])
+
+    assert quote(do: [unquote_splicing(contents)|unquote([4])]) ==
+           quote(do: [1, 2, 3, 4])
   end
 
   test :splice_on_stab do
@@ -110,6 +119,16 @@ defmodule Kernel.QuoteTest do
     { fun, [] } =
       Code.eval_quoted(quote(do: fn(1, unquote_splicing([2, 3])) -> :ok end), [])
     assert fun.(1, 2, 3) == :ok
+  end
+
+  test :splice_on_definition do
+    defmodule Hello do
+      def world([unquote_splicing(["foo", "bar"])|rest]) do
+        rest
+      end
+    end
+
+    assert Hello.world(["foo", "bar", "baz"]) == ["baz"]
   end
 
   test :when do
@@ -139,11 +158,15 @@ defmodule Kernel.QuoteTest do
     assert quote(dynamic_opts, do: bar(1, 2, 3)) == { :bar, [line: 3], [1, 2, 3] }
   end
 
-  test :binding do
-    assert quote(binding: [foo: 1 + 2], do: foo) == { :__block__, [], [
+  test :bind_quoted do
+    assert quote(bind_quoted: [foo: 1 + 2], do: foo) == { :__block__, [], [
       { :=, [], [{ :foo, [], Kernel.QuoteTest }, 3] },
       { :foo, [], Kernel.QuoteTest }
     ] }
+  end
+
+  test :quote_with_list_block do
+    assert (quote do [] end) == []
   end
 end
 

@@ -34,7 +34,7 @@ defmodule Mix.Local do
   end
 
   defp archive_ebin(archive_file) do
-    app_name = archive_file |> Path.rootname |> Path.split |> List.last
-    Path.join([archive_file, app_name, "ebin"])
+    dir = Mix.Archive.dir(archive_file)
+    Path.join [archive_file, dir, "ebin"]
   end
 end
