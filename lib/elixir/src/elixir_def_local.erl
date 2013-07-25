@@ -21,7 +21,7 @@ function_for(Module, Name, Arity) ->
   case elixir_def:lookup_definition(Module, Tuple) of
     { { Tuple, _, Line, _, _, _, _ }, Clauses } ->
       %% There is no need to record such calls
-      %% since they come from funtions that were
+      %% since they come from functions that were
       %% already analyzed at compilation time.
       get_function(Line, Module, Clauses);
     _ ->
